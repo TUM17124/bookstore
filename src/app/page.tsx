@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { Suspense, useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { BooksShowcase, type BookCfg } from "@/components/ui/books-showcase"
 import { getBooks, asBookList } from "@/lib/api"
@@ -40,9 +40,7 @@ function HomeInner() {
   const load = useCallback(() => {
     setLoading(true)
     setError("")
-    getBooks(
-      q ? { search: q } : category ? { category } : { featured: true },
-    )
+    getBooks(q ? { search: q } : category ? { category } : { featured: true })
       .then((data) => setBooks(asBookList(data).map(toCfg)))
       .catch(() => setError("Could not load books. Is the API up?"))
       .finally(() => setLoading(false))
@@ -72,7 +70,7 @@ function HomeInner() {
     return (
       <main className="flex min-h-[50vh] items-center justify-center p-8 text-center text-sm text-foreground/50">
         {category
-          ? `No books in “${category}”. Check the Category field in Django admin.`
+          ? `No books in “${category}”. Check Category in Django admin.`
           : "No books found."}
       </main>
     )
@@ -84,13 +82,7 @@ function HomeInner() {
         <BooksShowcase
           books={books}
           heroTitle="Books"
-          navTitle={
-            category
-              ? category
-              : q
-                ? `Search: ${q}`
-                : "Bestsellers"
-          }
+          navTitle={category ? category : q ? `Search: ${q}` : "Bestsellers"}
           className="h-full w-full"
         />
       </div>
@@ -98,8 +90,19 @@ function HomeInner() {
   )
 }
 
+function HomeFallback() {
+  return (
+    <main className="flex min-h-[50vh] items-center justify-center text-sm text-foreground/50">
+      Loading…
+    </main>
+  )
+}
+
+/** Default export MUST wrap useSearchParams in Suspense for static export */
 export default function HomePage() {
   return (
-    <HomeInner />
+    <Suspense fallback={<HomeFallback />}>
+      <HomeInner />
+    </Suspense>
   )
 }
