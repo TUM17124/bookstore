@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
+import { useSearchParams } from "next/navigation"
 import { BooksShowcase, type BookCfg } from "@/components/ui/books-showcase"
 import { getBooks, asBookList } from "@/lib/api"
 
@@ -27,26 +28,29 @@ function toCfg(b: ReturnType<typeof asBookList>[number]): BookCfg {
   }
 }
 
-export default function HomePage() {
+function HomeInner() {
+  const sp = useSearchParams()
+  const q = (sp.get("q") || "").trim()
+  const category = (sp.get("category") || "").trim()
+
   const [books, setBooks] = useState<BookCfg[]>([])
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const q = params.get("q")?.trim() || ""
-    const category = params.get("category")?.trim() || ""
-
+  const load = useCallback(() => {
     setLoading(true)
     setError("")
-
     getBooks(
       q ? { search: q } : category ? { category } : { featured: true },
     )
       .then((data) => setBooks(asBookList(data).map(toCfg)))
       .catch(() => setError("Could not load books. Is the API up?"))
       .finally(() => setLoading(false))
-  }, [])
+  }, [q, category])
+
+  useEffect(() => {
+    load()
+  }, [load])
 
   if (error) {
     return (
@@ -66,8 +70,10 @@ export default function HomePage() {
 
   if (!books.length) {
     return (
-      <main className="flex min-h-[50vh] items-center justify-center text-sm text-foreground/50">
-        No books found!.
+      <main className="flex min-h-[50vh] items-center justify-center p-8 text-center text-sm text-foreground/50">
+        {category
+          ? `No books in “${category}”. Check the Category field in Django admin.`
+          : "No books found."}
       </main>
     )
   }
@@ -78,10 +84,22 @@ export default function HomePage() {
         <BooksShowcase
           books={books}
           heroTitle="Books"
-          navTitle="Bestsellers"
+          navTitle={
+            category
+              ? category
+              : q
+                ? `Search: ${q}`
+                : "Bestsellers"
+          }
           className="h-full w-full"
         />
       </div>
     </main>
+  )
+}
+
+export default function HomePage() {
+  return (
+    <HomeInner />
   )
 }
