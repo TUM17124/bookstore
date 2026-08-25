@@ -3,7 +3,6 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { NotchNavbar } from "@/components/ui/notch-navbar"
 import { BookmarksProvider } from '@/components/bookmarks-context';
-import { SessionProvider } from "next-auth/react"
 import { SiteFooter } from "@/components/site-footer";
 
 export const metadata: Metadata = {
@@ -24,13 +23,13 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-           <SessionProvider>
+           
           <BookmarksProvider>
           <NotchNavbar />
           <div className="pt-20">{children}</div>
           <SiteFooter />
           </BookmarksProvider>
-          </SessionProvider>
+          
         </ThemeProvider>
       </body>
     </html>

@@ -1,18 +1,10 @@
-import { BooksShowcase } from "@/components/ui/books-showcase"
-import type { BookCfg } from "@/components/ui/books-showcase"
+"use client"
+
+import { useEffect, useState } from "react"
+import { BooksShowcase, type BookCfg } from "@/components/ui/books-showcase"
 import { getBooks, asBookList } from "@/lib/api"
 
-type Props = {
-  searchParams: Promise<{
-    q?: string
-    category?: string
-    book?: string
-  }>
-}
-
-function toCfg(
-  b: Awaited<ReturnType<typeof asBookList>>[number]
-): BookCfg {
+function toCfg(b: ReturnType<typeof asBookList>[number]): BookCfg {
   return {
     id: String(b.id),
     title: b.title,
@@ -35,139 +27,60 @@ function toCfg(
   }
 }
 
-export default async function Home({
-  searchParams,
-}: Props) {
-  const sp = await searchParams
+export default function HomePage() {
+  const [books, setBooks] = useState<BookCfg[]>([])
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(true)
 
-  const q = sp.q?.trim() || ""
-  const category = sp.category?.trim() || ""
-  const selectedBookId = sp.book?.trim() || ""
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const q = params.get("q")?.trim() || ""
+    const category = params.get("category")?.trim() || ""
 
-  let books: BookCfg[] = []
+    setLoading(true)
+    setError("")
 
-  try {
-    const data = await getBooks(
-      q
-        ? { search: q }
-        : category
-          ? { category }
-          : { featured: true }
+    getBooks(
+      q ? { search: q } : category ? { category } : { featured: true },
     )
+      .then((data) => setBooks(asBookList(data).map(toCfg)))
+      .catch(() => setError("Could not load books. Is the API up?"))
+      .finally(() => setLoading(false))
+  }, [])
 
-    const fetchedBooks =
-      asBookList(data).map(toCfg)
-
-    /*
-     * ======================================================
-     * IF A SPECIFIC BOOK WAS SELECTED FROM SEARCH
-     * ======================================================
-     *
-     * Put that exact book FIRST.
-     */
-
-    if (selectedBookId) {
-  const selectedIndex =
-    fetchedBooks.findIndex(
-      (book) =>
-        String(book.id) === selectedBookId
+  if (error) {
+    return (
+      <main className="flex min-h-[50vh] items-center justify-center p-8 text-sm text-red-500">
+        {error}
+      </main>
     )
-
-  if (selectedIndex !== -1) {
-    const selectedBook =
-      fetchedBooks[selectedIndex]
-
-    const remainingBooks =
-      fetchedBooks.filter(
-        (_, index) =>
-          index !== selectedIndex
-      )
-
-    if (remainingBooks.length === 0) {
-      books = [selectedBook]
-    } else {
-      books = [
-        remainingBooks[0],
-        selectedBook,
-        ...remainingBooks.slice(1),
-      ]
-    }
-  } else {
-    books = fetchedBooks
   }
-} else {
-  books = fetchedBooks
-}
-  } catch (e) {
-    console.error(e)
+
+  if (loading) {
+    return (
+      <main className="flex min-h-[50vh] items-center justify-center text-sm text-foreground/50">
+        Loading books…
+      </main>
+    )
+  }
+
+  if (!books.length) {
+    return (
+      <main className="flex min-h-[50vh] items-center justify-center text-sm text-foreground/50">
+        No books found.
+      </main>
+    )
   }
 
   return (
     <main className="w-full min-h-[calc(100vh-5rem)]">
-      <div className="w-full h-[calc(100vh-5rem)] min-h-[560px]">
-
-        {books.length === 0 ? (
-
-          <div
-            className="
-              flex
-              h-full
-              flex-col
-              items-center
-              justify-center
-              gap-3
-              p-8
-              text-center
-              text-sm
-              text-muted-foreground
-            "
-          >
-
-            <p>
-              {q
-                ? `No books found for “${q}”.`
-                : "No books yet. Add featured books in Django admin."
-              }
-            </p>
-
-            {q ? (
-              <a
-                href="/"
-                className="
-                  text-foreground
-                  underline
-                  hover:no-underline
-                "
-              >
-                Clear search
-              </a>
-            ) : null}
-
-          </div>
-
-        ) : (
-
-          <BooksShowcase
-            books={books}
-            heroTitle={
-              selectedBookId
-                ? "Results"
-                : q
-                  ? "Results"
-                  : "Books"
-            }
-            navTitle={
-              selectedBookId
-                ? "Results"
-                : q
-                  ? `Search: ${q}`
-                  : "Bestsellers"
-            }
-            className="h-full w-full"
-          />
-
-        )}
-
+      <div className="h-[calc(100vh-5rem)] min-h-[560px] w-full">
+        <BooksShowcase
+          books={books}
+          heroTitle="Books"
+          navTitle="Bestsellers"
+          className="h-full w-full"
+        />
       </div>
     </main>
   )

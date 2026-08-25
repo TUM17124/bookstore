@@ -41,15 +41,20 @@ export async function getBooks(params?: {
   search?: string
   page?: number
 }): Promise<Paginated<ApiBook> | ApiBook[]> {
+  const API = process.env.NEXT_PUBLIC_API_URL
+  if (!API) throw new Error("NEXT_PUBLIC_API_URL is not set")
+
   const q = new URLSearchParams()
-  if (params?.featured) q.set('featured', '1')
-  if (params?.category) q.set('category', params.category)
-  if (params?.search) q.set('search', params.search)
-  if (params?.page) q.set('page', String(params.page))
+  if (params?.featured) q.set("featured", "1")
+  if (params?.category) q.set("category", params.category)
+  if (params?.search) q.set("search", params.search)
+  if (params?.page) q.set("page", String(params.page))
+
   const qs = q.toString()
-  const url = `${API}/books/${qs ? `?${qs}` : ''}`
-  const res = await fetch(url, { next: { revalidate: 30 } })
-  if (!res.ok) throw new Error('Failed to load books')
+  const url = `${API}/books/${qs ? `?${qs}` : ""}`
+
+  const res = await fetch(url) // no next: { revalidate }
+  if (!res.ok) throw new Error("Failed to load books")
   return res.json()
 }
 
