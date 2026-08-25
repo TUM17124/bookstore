@@ -1,69 +1,174 @@
-import Image from "next/image";
+import { BooksShowcase } from "@/components/ui/books-showcase"
+import type { BookCfg } from "@/components/ui/books-showcase"
+import { getBooks, asBookList } from "@/lib/api"
 
-export default function Home() {
+type Props = {
+  searchParams: Promise<{
+    q?: string
+    category?: string
+    book?: string
+  }>
+}
+
+function toCfg(
+  b: Awaited<ReturnType<typeof asBookList>>[number]
+): BookCfg {
+  return {
+    id: String(b.id),
+    title: b.title,
+    author: b.author || "Unknown",
+    year: b.year || "",
+    stars: b.stars ?? 5,
+    desc: b.desc || "",
+    images: {
+      front: b.images?.front || undefined,
+      spine: b.images?.spine || undefined,
+      back: b.images?.back || undefined,
+    },
+    edge: b.edge,
+    spineBg: b.spineBg,
+    spineInk: b.spineInk,
+    spineFont: b.spineFont,
+    backBg: b.backBg,
+    backInk: b.backInk,
+    chapters: b.chapters,
+  }
+}
+
+export default async function Home({
+  searchParams,
+}: Props) {
+  const sp = await searchParams
+
+  const q = sp.q?.trim() || ""
+  const category = sp.category?.trim() || ""
+  const selectedBookId = sp.book?.trim() || ""
+
+  let books: BookCfg[] = []
+
+  try {
+    const data = await getBooks(
+      q
+        ? { search: q }
+        : category
+          ? { category }
+          : { featured: true }
+    )
+
+    const fetchedBooks =
+      asBookList(data).map(toCfg)
+
+    /*
+     * ======================================================
+     * IF A SPECIFIC BOOK WAS SELECTED FROM SEARCH
+     * ======================================================
+     *
+     * Put that exact book FIRST.
+     */
+
+    if (selectedBookId) {
+  const selectedIndex =
+    fetchedBooks.findIndex(
+      (book) =>
+        String(book.id) === selectedBookId
+    )
+
+  if (selectedIndex !== -1) {
+    const selectedBook =
+      fetchedBooks[selectedIndex]
+
+    const remainingBooks =
+      fetchedBooks.filter(
+        (_, index) =>
+          index !== selectedIndex
+      )
+
+    if (remainingBooks.length === 0) {
+      books = [selectedBook]
+    } else {
+      books = [
+        remainingBooks[0],
+        selectedBook,
+        ...remainingBooks.slice(1),
+      ]
+    }
+  } else {
+    books = fetchedBooks
+  }
+} else {
+  books = fetchedBooks
+}
+  } catch (e) {
+    console.error(e)
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <main className="w-full min-h-[calc(100vh-5rem)]">
+      <div className="w-full h-[calc(100vh-5rem)] min-h-[560px]">
+
+        {books.length === 0 ? (
+
+          <div
+            className="
+              flex
+              h-full
+              flex-col
+              items-center
+              justify-center
+              gap-3
+              p-8
+              text-center
+              text-sm
+              text-muted-foreground
+            "
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+
+            <p>
+              {q
+                ? `No books found for “${q}”.`
+                : "No books yet. Add featured books in Django admin."
+              }
+            </p>
+
+            {q ? (
+              <a
+                href="/"
+                className="
+                  text-foreground
+                  underline
+                  hover:no-underline
+                "
+              >
+                Clear search
+              </a>
+            ) : null}
+
+          </div>
+
+        ) : (
+
+          <BooksShowcase
+            books={books}
+            heroTitle={
+              selectedBookId
+                ? "Results"
+                : q
+                  ? "Results"
+                  : "Books"
+            }
+            navTitle={
+              selectedBookId
+                ? "Results"
+                : q
+                  ? `Search: ${q}`
+                  : "Bestsellers"
+            }
+            className="h-full w-full"
+          />
+
+        )}
+
+      </div>
+    </main>
+  )
 }

@@ -1,0 +1,134 @@
+import Link from "next/link"
+import { BookOpen } from "lucide-react"
+
+const policyLinks = [
+  { href: "/terms", label: "Terms & Conditions" },
+  { href: "/terms-of-use", label: "Terms of Use" },
+  { href: "/refund-policy", label: "Refund Policy" },
+]
+
+const browseLinks = [
+  { href: "/?category=fiction", label: "Fiction" },
+  { href: "/?category=nonfiction", label: "Non-Fiction" },
+  { href: "/?category=academic-education", label: "Academic" },
+  { href: "/?category=children-young-adult", label: "Children & YA" },
+]
+
+export function SiteFooter() {
+  const year = new Date().getFullYear()
+
+  return (
+    <footer className="relative mt-auto border-t border-foreground/5 bg-zinc-50 dark:bg-black">
+      {/* subtle top lines (match navbar detail) */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-foreground/[0.04]"
+        aria-hidden
+      />
+
+      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Brand */}
+          <div className="sm:col-span-2 lg:col-span-1">
+            <Link href="/" className="inline-flex items-center gap-2.5">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/logo.png"
+                alt=""
+                className="h-9 w-9 rounded-lg object-contain"
+              />
+              <span className="text-base font-semibold tracking-tight text-foreground">
+                Bookstore
+              </span>
+            </Link>
+            <p className="mt-3 max-w-xs text-sm leading-relaxed text-foreground/55">
+              Discover featured titles, save bookmarks, and share ratings with
+              a quiet, focused reading experience.
+            </p>
+          </div>
+
+          {/* Browse */}
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/40">
+              Browse
+            </h3>
+            <ul className="mt-4 space-y-2.5">
+              {browseLinks.map((l) => (
+                <li key={l.href}>
+                  <Link
+                    href={l.href}
+                    className="text-sm text-foreground/70 transition-colors hover:text-foreground"
+                  >
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Account */}
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/40">
+              Account
+            </h3>
+            <ul className="mt-4 space-y-2.5">
+              <li>
+                <Link
+                  href="/login"
+                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
+                >
+                  Log in
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/signup"
+                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
+                >
+                  Sign up
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/bookmarks"
+                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
+                >
+                  Bookmarks
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Legal */}
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/40">
+              Legal
+            </h3>
+            <ul className="mt-4 space-y-2.5">
+              {policyLinks.map((l) => (
+                <li key={l.href}>
+                  <Link
+                    href={l.href}
+                    className="text-sm text-foreground/70 transition-colors hover:text-foreground"
+                  >
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* Bottom bar */}
+        <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-foreground/5 pt-6 sm:flex-row sm:items-center">
+          <p className="text-xs text-foreground/45">
+            © {year} Bookstore. All rights reserved.
+          </p>
+          <p className="inline-flex items-center gap-1.5 text-xs text-foreground/40">
+            <BookOpen className="h-3.5 w-3.5 opacity-70" />
+            Read more. Worry less.
+          </p>
+        </div>
+      </div>
+    </footer>
+  )
+}
