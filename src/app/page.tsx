@@ -28,16 +28,21 @@ function toCfg(b: ReturnType<typeof asBookList>[number]): BookCfg {
   }
 }
 
-/** Put selected book at index 1 (center of the 3-book row) */
-function orderWithSelected(fetched: BookCfg[], selectedBookId: string): BookCfg[] {
-  if (!selectedBookId) return fetched
+/** Selected search book at index 1 (center of the row) */
+function orderWithSelected(
+  fetchedBooks: BookCfg[],
+  selectedBookId: string,
+): BookCfg[] {
+  if (!selectedBookId) return fetchedBooks
 
-  const selectedIndex = fetched.findIndex((book) => String(book.id) === selectedBookId)
+  const selectedIndex = fetchedBooks.findIndex(
+    (book) => String(book.id) === selectedBookId,
+  )
 
-  if (selectedIndex === -1) return fetched
+  if (selectedIndex === -1) return fetchedBooks
 
-  const selectedBook = fetched[selectedIndex]
-  const remainingBooks = fetched.filter((_, index) => index !== selectedIndex)
+  const selectedBook = fetchedBooks[selectedIndex]
+  const remainingBooks = fetchedBooks.filter((_, index) => index !== selectedIndex)
 
   if (remainingBooks.length === 0) {
     return [selectedBook]
@@ -48,24 +53,31 @@ function orderWithSelected(fetched: BookCfg[], selectedBookId: string): BookCfg[
 
 function HomeInner() {
   const sp = useSearchParams()
+
   const q = (sp.get("q") || "").trim()
   const category = (sp.get("category") || "").trim()
   const selectedBookId = (sp.get("book") || "").trim()
 
   const [books, setBooks] = useState<BookCfg[]>([])
-  const [error, setError] = useState("")
+  const [error, setError] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(() => {
     setLoading(true)
-    setError("")
+    setError(false)
 
-    getBooks(q ? { search: q } : category ? { category } : { featured: true })
+    getBooks(
+      q ? { search: q } : category ? { category } : { featured: true },
+    )
       .then((data) => {
-        const fetched = asBookList(data).map(toCfg)
-        setBooks(orderWithSelected(fetched, selectedBookId))
+        const fetchedBooks = asBookList(data).map(toCfg)
+        setBooks(orderWithSelected(fetchedBooks, selectedBookId))
       })
-      .catch(() => setError("Could not load books. Is the API up?"))
+      .catch((e) => {
+        console.error(e)
+        setBooks([])
+        setError(true)
+      })
       .finally(() => setLoading(false))
   }, [q, category, selectedBookId])
 
@@ -73,30 +85,10 @@ function HomeInner() {
     load()
   }, [load])
 
-  if (error) {
-    return (
-      <main className="flex min-h-[50vh] items-center justify-center p-8 text-sm text-red-500">
-        {error}
-      </main>
-    )
-  }
-
   if (loading) {
     return (
-      <main className="flex min-h-[50vh] items-center justify-center text-sm text-foreground/50">
+      <main className="flex min-h-[calc(100vh-5rem)] items-center justify-center text-sm text-muted-foreground">
         Loading books…
-      </main>
-    )
-  }
-
-  if (!books.length) {
-    return (
-      <main className="flex min-h-[50vh] items-center justify-center p-8 text-center text-sm text-foreground/50">
-        {category
-          ? `No books in “${category}”.`
-          : q
-            ? `No books found for “${q}”.`
-            : "No books found."}
       </main>
     )
   }
@@ -104,30 +96,53 @@ function HomeInner() {
   return (
     <main className="w-full min-h-[calc(100vh-5rem)]">
       <div className="h-[calc(100vh-5rem)] min-h-[560px] w-full">
-        <BooksShowcase
-          books={books}
-          heroTitle={selectedBookId || q ? "Results" : "Books"}
-          navTitle={
-            selectedBookId || q
-              ? q
-                ? `Search: ${q}`
-                : "Results"
-              : category
-                ? category
-                : "Bestsellers"
-          }
-          className="h-full w-full"
-        />
+        {books.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
+            <p>
+              {error
+                ? "Could not load books. Is the API up?"
+                : q
+                  ? `No books found for “${q}”.`
+                  : category
+                    ? `No books in “${category}”.`
+                    : "No books yet. Add featured books in Django admin."}
+            </p>
+
+            {q || category ? (
+              <a
+                href="/"
+                className="text-foreground underline hover:no-underline"
+              >
+                Clear filters
+              </a>
+            ) : null}
+          </div>
+        ) : (
+          <BooksShowcase
+            books={books}
+            heroTitle={selectedBookId || q ? "Results" : "Books"}
+            navTitle={
+              selectedBookId
+                ? "Results"
+                : q
+                  ? `Search: ${q}`
+                  : category
+                    ? category
+                    : "Bestsellers"
+            }
+            className="h-full w-full"
+          />
+        )}
       </div>
     </main>
   )
 }
 
-export default function HomePage() {
+export default function Home() {
   return (
     <Suspense
       fallback={
-        <main className="flex min-h-[50vh] items-center justify-center text-sm text-foreground/50">
+        <main className="flex min-h-[calc(100vh-5rem)] items-center justify-center text-sm text-muted-foreground">
           Loading…
         </main>
       }
