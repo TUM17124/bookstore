@@ -67,7 +67,7 @@ export default function HomePage() {
   if (!books.length) {
     return (
       <main className="flex min-h-[50vh] items-center justify-center text-sm text-foreground/50">
-        No books found.
+        No books found!.
       </main>
     )
   }
