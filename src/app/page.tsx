@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { BooksShowcase, type BookCfg } from "@/components/ui/books-showcase"
 import { getBooks, asBookList } from "@/lib/api"
 
-function toCfg(b: ReturnType<typeof asBookList>[number]): BookCfg {
+function toCfg(b: /* ApiBook */ any): BookCfg {
   return {
     id: String(b.id),
     title: b.title,
@@ -25,7 +25,14 @@ function toCfg(b: ReturnType<typeof asBookList>[number]): BookCfg {
     backBg: b.backBg,
     backInk: b.backInk,
     chapters: b.chapters,
-  }
+    price: b.price != null ? Number(b.price) : undefined,
+    ebookPrice: b.ebook_price != null ? Number(b.ebook_price) : undefined,
+    audiobookPrice: b.audiobook_price != null ? Number(b.audiobook_price) : undefined,
+    hasEbook: b.hasEbook !== false && b.hasEbook !== undefined
+      ? !!b.hasEbook
+      : true, // until API sends flags; better: !!b.hasEbook
+    hasAudiobook: !!b.hasAudiobook,
+  };
 }
 
 /** Selected search book at index 1 (center of the row) */

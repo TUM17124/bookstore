@@ -16,6 +16,13 @@ export interface BookCfg {
   stars: number;
   desc: string;
 
+   /** Display only (KES). Paystack still charges this via API. */
+  price?: number;
+  ebookPrice?: number;
+  audiobookPrice?: number;
+  hasEbook?: boolean;
+  hasAudiobook?: boolean;
+
   // Procedural cover painters. All optional — omit and supply `images` instead, or omit both for a generated placeholder.
   front?: (x: CanvasRenderingContext2D, w: number, h: number) => void;
   back?: (x: CanvasRenderingContext2D, w: number, h: number) => void;
@@ -1831,61 +1838,133 @@ export function BooksShowcase({
               </svg>
               <span>English</span>
             </button>
-     <button
-  type="button"
-  disabled={!!buyLoading}
-  onClick={() => {
-    if (!selectedCfg || buyLoading) return;
-    setBuyLoading('ebook');
-    const q = new URLSearchParams({
-      bookId: selectedCfg.id,
-      type: 'ebook',
-      title: selectedCfg.title,
-    });
-    window.location.href = `/checkout?${q}`;
-  }}
-  className={`inline-flex h-[54px] min-w-[140px] items-center justify-center gap-2 rounded-full bg-[var(--bs-pink)] px-6 text-[16.5px] font-semibold text-[var(--bs-navy)] transition-[transform,filter,opacity] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-105 disabled:pointer-events-none disabled:opacity-70 @max-[760px]:h-12 @max-[760px]:px-5 @max-[760px]:text-[15px]`}
->
-  {buyLoading === 'ebook' ? (
-    <>
-      <span
-        className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--bs-navy)]/25 border-t-[var(--bs-navy)]"
-        aria-hidden
-      />
-      Loading…
-    </>
-  ) : (
-    'Buy Now'
-  )}
-</button>
+     {selectedCfg && (
+  <>
+    {/* Price — website only; Paystack charges KES */}
+    {(() => {
+      const ebookKes = Number(
+        selectedCfg.ebookPrice ?? selectedCfg.price ?? 0,
+      );
+      const audioKes = Number(
+        selectedCfg.audiobookPrice ?? selectedCfg.price ?? 0,
+      );
+      const rate = 130; // rough KES per USD — update when you want
+      const hasEbook = selectedCfg.hasEbook !== false;
+      const hasAudiobook = selectedCfg.hasAudiobook === true;
 
-<button
-  type="button"
-  disabled={!!buyLoading}
-  onClick={() => {
-    if (!selectedCfg || buyLoading) return;
-    setBuyLoading('audiobook');
-    const q = new URLSearchParams({
-      bookId: selectedCfg.id,
-      type: 'audiobook',
-      title: selectedCfg.title,
-    });
-    window.location.href = `/checkout?${q}`;
-  }}
-  className={`inline-flex h-[54px] min-w-[160px] items-center justify-center gap-2 rounded-full bg-[#10152c] px-6 text-[16.5px] font-semibold text-white transition-[transform,filter,opacity] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-110 disabled:pointer-events-none disabled:opacity-70 @max-[760px]:h-12 @max-[760px]:px-5 @max-[760px]:text-[15px]`}
->
-  {buyLoading === 'audiobook' ? (
-    <>
-      <span
-        className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/25 border-t-white"
-        aria-hidden
-      />
-      Loading…
-    </>
-  ) : (
-    'Buy Audiobook'
-  )}
-</button>
+      return (
+        <div className="mb-3 space-y-1 text-[13px] text-[#10152c]/80">
+          {hasEbook && ebookKes > 0 && (
+            <p>
+              Ebook:{" "}
+              <span className="font-semibold">
+                KES {ebookKes.toLocaleString()}
+              </span>
+              <span className="text-[#10152c]/50">
+                {" "}
+                (≈ ${((ebookKes) / rate).toFixed(2)} USD)
+              </span>
+            </p>
+          )}
+          {hasAudiobook && audioKes > 0 && (
+            <p>
+              Audiobook:{" "}
+              <span className="font-semibold">
+                KES {audioKes.toLocaleString()}
+              </span>
+              <span className="text-[#10152c]/50">
+                {" "}
+                (≈ ${((audioKes) / rate).toFixed(2)} USD)
+              </span>
+            </p>
+          )}
+        </div>
+      );
+    })()}
+
+    <div className="flex flex-wrap items-center gap-3">
+      {/* BUY EBOOK */}
+      <button
+        type="button"
+        disabled={!!buyLoading || selectedCfg.hasEbook === false}
+        onClick={() => {
+          if (!selectedCfg || buyLoading || selectedCfg.hasEbook === false)
+            return;
+          setBuyLoading("ebook");
+          const q = new URLSearchParams({
+            bookId: selectedCfg.id,
+            type: "ebook",
+            title: selectedCfg.title,
+          });
+          window.location.href = `/checkout?${q}`;
+        }}
+        className={`relative inline-flex h-[54px] min-w-[140px] items-center justify-center gap-2 rounded-full bg-[var(--bs-pink)] px-6 text-[16.5px] font-semibold text-[var(--bs-navy)] transition-[transform,filter,opacity] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-105 disabled:pointer-events-none disabled:opacity-70 @max-[760px]:h-12 @max-[760px]:px-5 @max-[760px]:text-[15px] ${
+          selectedCfg.hasEbook === false ? "opacity-50" : ""
+        }`}
+      >
+        {buyLoading === "ebook" ? (
+          <>
+            <span
+              className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--bs-navy)]/25 border-t-[var(--bs-navy)]"
+              aria-hidden
+            />
+            Loading…
+          </>
+        ) : (
+          <span className="relative">
+            Buy Now
+            {selectedCfg.hasEbook === false && (
+              <span
+                className="pointer-events-none absolute left-[-8%] right-[-8%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-600"
+                aria-hidden
+              />
+            )}
+          </span>
+        )}
+      </button>
+
+      {/* BUY AUDIOBOOK */}
+      <button
+        type="button"
+        disabled={!!buyLoading || selectedCfg.hasAudiobook !== true}
+        onClick={() => {
+          if (!selectedCfg || buyLoading || selectedCfg.hasAudiobook !== true)
+            return;
+          setBuyLoading("audiobook");
+          const q = new URLSearchParams({
+            bookId: selectedCfg.id,
+            type: "audiobook",
+            title: selectedCfg.title,
+          });
+          window.location.href = `/checkout?${q}`;
+        }}
+        className={`relative inline-flex h-[54px] min-w-[160px] items-center justify-center gap-2 rounded-full bg-[#10152c] px-6 text-[16.5px] font-semibold text-white transition-[transform,filter,opacity] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-110 disabled:pointer-events-none disabled:opacity-70 @max-[760px]:h-12 @max-[760px]:px-5 @max-[760px]:text-[15px] ${
+          selectedCfg.hasAudiobook !== true ? "opacity-50" : ""
+        }`}
+      >
+        {buyLoading === "audiobook" ? (
+          <>
+            <span
+              className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/25 border-t-white"
+              aria-hidden
+            />
+            Loading…
+          </>
+        ) : (
+          <span className="relative">
+            Buy Audiobook
+            {selectedCfg.hasAudiobook !== true && (
+              <span
+                className="pointer-events-none absolute left-[-8%] right-[-8%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-600"
+                aria-hidden
+              />
+            )}
+          </span>
+        )}
+      </button>
+    </div>
+  </>
+)}
            <button
             type="button"
             aria-label={bookmarked ? 'Remove from bookmarks' : 'Save to bookmarks'}
