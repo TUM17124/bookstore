@@ -1852,27 +1852,27 @@ export function BooksShowcase({
       const hasAudiobook = selectedCfg.hasAudiobook === true;
 
       return (
-        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] leading-snug text-[#10152c]/70">
+        <div className="mb-2.5 flex flex-wrap items-baseline gap-x-5 gap-y-1">
           {hasEbook && ebookKes > 0 && (
-            <p>
-              <span className="font-semibold text-[#10152c]">
+            <p className="text-[15px] leading-none">
+              <span className="font-extrabold tabular-nums text-[#e11d48]">
                 KES {ebookKes.toLocaleString()}
               </span>
-              <span className="text-[#10152c]/45">
-                {" "}
-                · ≈ ${(ebookKes / rate).toFixed(2)}
+              <span className="ml-1.5 font-bold tabular-nums text-[#be123c]/80">
+                ≈ ${(ebookKes / rate).toFixed(2)}
               </span>
             </p>
           )}
           {hasAudiobook && audioKes > 0 && (
-            <p>
-              <span className="text-[#10152c]/45">Audio </span>
-              <span className="font-semibold text-[#10152c]">
+            <p className="text-[15px] leading-none">
+              <span className="mr-1 text-[12px] font-semibold uppercase tracking-wide text-[#10152c]/40">
+                Audio
+              </span>
+              <span className="font-extrabold tabular-nums text-[#e11d48]">
                 KES {audioKes.toLocaleString()}
               </span>
-              <span className="text-[#10152c]/45">
-                {" "}
-                · ≈ ${(audioKes / rate).toFixed(2)}
+              <span className="ml-1.5 font-bold tabular-nums text-[#be123c]/80">
+                ≈ ${(audioKes / rate).toFixed(2)}
               </span>
             </p>
           )}
