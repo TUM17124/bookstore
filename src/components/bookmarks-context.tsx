@@ -53,7 +53,6 @@ function apiBookToCfg(b: ApiBook): BookCfg {
   };
 }
 
-/** Strip non-serializable painters before writing to localStorage */
 function toSerializable(book: BookCfg): BookCfg {
   const { front, back, spine, ...rest } = book as BookCfg & {
     front?: unknown;
@@ -76,11 +75,37 @@ function readLocalBookmarks(): BookCfg[] {
 
 function writeLocalBookmarks(list: BookCfg[]) {
   try {
-    const serializable = list.map(toSerializable);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(list.map(toSerializable)),
+    );
   } catch {
-    // ignore quota / private mode
+    // ignore
   }
+}
+
+function clearLocalBookmarks() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/** Push every local bookmark to the API, then clear local storage */
+async function mergeLocalIntoServer(): Promise<void> {
+  const local = readLocalBookmarks();
+  if (!local.length || !getToken()) return;
+
+  for (const book of local) {
+    try {
+      await addBookmarkApi(book.id);
+    } catch (e) {
+      // already exists or invalid id — continue
+      console.warn('merge bookmark', book.id, e);
+    }
+  }
+  clearLocalBookmarks();
 }
 
 export function BookmarksProvider({ children }: { children: React.ReactNode }) {
@@ -89,15 +114,15 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
 
   const refreshBookmarks = useCallback(async () => {
-    // Guest: localStorage only
     if (!getToken()) {
       setBookmarks(readLocalBookmarks());
       return;
     }
 
-    // Logged in: Django API
     setLoading(true);
     try {
+      // Merge guest list into account once per login session load
+      await mergeLocalIntoServer();
       const rows = await fetchBookmarks();
       setBookmarks(rows.map((r) => apiBookToCfg(r.book)));
     } catch (e) {
@@ -109,7 +134,7 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    refreshBookmarks().finally(() => setHydrated(true));
+    void refreshBookmarks().finally(() => setHydrated(true));
 
     const onAuth = () => {
       void refreshBookmarks();
@@ -122,10 +147,10 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshBookmarks]);
 
-  // Persist guests to localStorage whenever list changes
+  // Guests only: keep localStorage in sync
   useEffect(() => {
     if (!hydrated) return;
-    if (getToken()) return; // server is source of truth when logged in
+    if (getToken()) return;
     writeLocalBookmarks(bookmarks);
   }, [bookmarks, hydrated]);
 
@@ -163,7 +188,6 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
         setBookmarks((prev) => prev.filter((b) => b.id !== id));
         return;
       }
-
       try {
         await removeBookmarkApi(id);
         await refreshBookmarks();
@@ -178,7 +202,6 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
     async (book: BookCfg) => {
       const clean = toSerializable(book);
 
-      // ——— Guest: localStorage ———
       if (!getToken()) {
         setBookmarks((prev) => {
           if (prev.some((b) => b.id === clean.id)) {
@@ -189,7 +212,6 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // ——— Logged in: API ———
       try {
         if (isBookmarked(book.id)) {
           await removeBookmarkApi(book.id);
