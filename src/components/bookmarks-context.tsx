@@ -28,6 +28,7 @@ type BookmarksContextValue = {
 };
 
 const BookmarksContext = createContext<BookmarksContextValue | null>(null);
+const STORAGE_KEY = 'bookstore-bookmarks';
 
 function apiBookToCfg(b: ApiBook): BookCfg {
   return {
@@ -52,20 +53,55 @@ function apiBookToCfg(b: ApiBook): BookCfg {
   };
 }
 
+/** Strip non-serializable painters before writing to localStorage */
+function toSerializable(book: BookCfg): BookCfg {
+  const { front, back, spine, ...rest } = book as BookCfg & {
+    front?: unknown;
+    back?: unknown;
+    spine?: unknown;
+  };
+  return rest as BookCfg;
+}
+
+function readLocalBookmarks(): BookCfg[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalBookmarks(list: BookCfg[]) {
+  try {
+    const serializable = list.map(toSerializable);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
 export function BookmarksProvider({ children }: { children: React.ReactNode }) {
   const [bookmarks, setBookmarks] = useState<BookCfg[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   const refreshBookmarks = useCallback(async () => {
+    // Guest: localStorage only
     if (!getToken()) {
-      setBookmarks([]);
+      setBookmarks(readLocalBookmarks());
       return;
     }
+
+    // Logged in: Django API
     setLoading(true);
     try {
       const rows = await fetchBookmarks();
       setBookmarks(rows.map((r) => apiBookToCfg(r.book)));
-    } catch {
+    } catch (e) {
+      console.error('Failed to load bookmarks', e);
       setBookmarks([]);
     } finally {
       setLoading(false);
@@ -73,11 +109,25 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    refreshBookmarks();
-    const onStorage = () => refreshBookmarks();
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    refreshBookmarks().finally(() => setHydrated(true));
+
+    const onAuth = () => {
+      void refreshBookmarks();
+    };
+    window.addEventListener('auth-changed', onAuth);
+    window.addEventListener('storage', onAuth);
+    return () => {
+      window.removeEventListener('auth-changed', onAuth);
+      window.removeEventListener('storage', onAuth);
+    };
   }, [refreshBookmarks]);
+
+  // Persist guests to localStorage whenever list changes
+  useEffect(() => {
+    if (!hydrated) return;
+    if (getToken()) return; // server is source of truth when logged in
+    writeLocalBookmarks(bookmarks);
+  }, [bookmarks, hydrated]);
 
   const isBookmarked = useCallback(
     (id: string) => bookmarks.some((b) => b.id === id),
@@ -86,37 +136,71 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
 
   const addBookmark = useCallback(
     async (book: BookCfg) => {
+      const clean = toSerializable(book);
+
       if (!getToken()) {
-        window.location.href = '/login';
+        setBookmarks((prev) => {
+          if (prev.some((b) => b.id === clean.id)) return prev;
+          return [...prev, clean];
+        });
         return;
       }
-      await addBookmarkApi(book.id);
-      await refreshBookmarks();
+
+      try {
+        await addBookmarkApi(book.id);
+        await refreshBookmarks();
+      } catch (e) {
+        console.error(e);
+        alert(e instanceof Error ? e.message : 'Could not save bookmark');
+      }
     },
     [refreshBookmarks],
   );
 
   const removeBookmark = useCallback(
     async (id: string) => {
-      if (!getToken()) return;
-      await removeBookmarkApi(id);
-      await refreshBookmarks();
+      if (!getToken()) {
+        setBookmarks((prev) => prev.filter((b) => b.id !== id));
+        return;
+      }
+
+      try {
+        await removeBookmarkApi(id);
+        await refreshBookmarks();
+      } catch (e) {
+        console.error(e);
+      }
     },
     [refreshBookmarks],
   );
 
   const toggleBookmark = useCallback(
     async (book: BookCfg) => {
+      const clean = toSerializable(book);
+
+      // ——— Guest: localStorage ———
       if (!getToken()) {
-        window.location.href = '/login';
+        setBookmarks((prev) => {
+          if (prev.some((b) => b.id === clean.id)) {
+            return prev.filter((b) => b.id !== clean.id);
+          }
+          return [...prev, clean];
+        });
         return;
       }
-      if (isBookmarked(book.id)) {
-        await removeBookmarkApi(book.id);
-      } else {
-        await addBookmarkApi(book.id);
+
+      // ——— Logged in: API ———
+      try {
+        if (isBookmarked(book.id)) {
+          await removeBookmarkApi(book.id);
+        } else {
+          await addBookmarkApi(book.id);
+        }
+        await refreshBookmarks();
+      } catch (e) {
+        console.error(e);
+        alert(e instanceof Error ? e.message : 'Could not update bookmark');
       }
-      await refreshBookmarks();
     },
     [isBookmarked, refreshBookmarks],
   );

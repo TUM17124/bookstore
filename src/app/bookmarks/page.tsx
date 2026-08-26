@@ -1,44 +1,41 @@
-'use client';
+'use client'
 
-import Link from 'next/link';
-import { Bookmark } from 'lucide-react';
-import { useBookmarks } from '@/components/bookmarks-context';
-import BooksShowcase from '@/components/ui/books-showcase'; // your path
+import { useBookmarks } from '@/components/bookmarks-context'
+import { BooksShowcase } from '@/components/ui/books-showcase'
+import Link from 'next/link'
+import { getToken } from '@/lib/api'
 
 export default function BookmarksPage() {
-  const { bookmarks } = useBookmarks();
-
-  if (bookmarks.length === 0) {
-    return (
-      <main className="mx-auto flex max-w-lg flex-col items-center px-4 pt-24 text-center">
-        <Bookmark className="mb-4 h-10 w-10 text-foreground/40" />
-        <h1 className="text-2xl font-bold tracking-tight">Bookmarks</h1>
-        <p className="mt-3 text-foreground/60">
-          No bookmarks yet. Open a book in the showcase and tap the bookmark icon.
-        </p>
-        <Link
-          href="/"
-          className="mt-8 text-sm font-medium text-foreground/70 hover:text-foreground"
-        >
-          ← Back home
-        </Link>
-      </main>
-    );
-  }
+  const { bookmarks, loading } = useBookmarks()
+  const loggedIn = typeof window !== 'undefined' && !!getToken()
 
   return (
-    // Exactly the space under the fixed h-16 navbar — no min-h-screen
-    <main className="fixed inset-x-0 top-16 bottom-0 overflow-hidden">
-      <BooksShowcase
-        key={bookmarks.map((b) => b.id).join('-')}
-        books={bookmarks}
-        heroTitle="Bookmarks"
-        navTitle="Your library"
-        showNav
-        showDetailPanel
-        showCarousel
-        className="h-full min-h-0" // override default min-h-[560px] if needed
-      />
+    <main className="relative z-0 w-full min-h-[calc(100vh-5rem)] pb-8">
+      <div className="w-full h-[calc(100vh-5rem)] min-h-[560px]">
+        {loading ? (
+          <div className="flex h-full items-center justify-center text-sm text-foreground/50">
+            Loading bookmarks…
+          </div>
+        ) : !loggedIn ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-sm">
+            <p className="text-foreground/60">Log in to save and view bookmarks.</p>
+            <Link href="/login" className="font-semibold text-sky-600 underline">
+              Log in
+            </Link>
+          </div>
+        ) : bookmarks.length === 0 ? (
+          <div className="flex h-full items-center justify-center p-8 text-sm text-foreground/50">
+            No bookmarks yet. Save a book from the detail panel.
+          </div>
+        ) : (
+          <BooksShowcase
+            books={bookmarks}
+            heroTitle="Bookmarks"
+            navTitle="Saved"
+            className="h-full w-full"
+          />
+        )}
+      </div>
     </main>
-  );
+  )
 }
