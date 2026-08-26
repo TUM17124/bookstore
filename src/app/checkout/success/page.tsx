@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { getOrder } from '@/lib/api'
+import { getOrder, confirmOrderPayment } from '@/lib/api'
 import { getStoredUser } from '@/lib/auth-client'
 
 const API = process.env.NEXT_PUBLIC_API_URL!
@@ -11,13 +11,13 @@ const API = process.env.NEXT_PUBLIC_API_URL!
 function SuccessInner() {
   const sp = useSearchParams()
   const orderId = sp.get('order') || ''
+  const reference = (sp.get('reference') || '').trim()
 
   const [status, setStatus] = useState('loading')
   const [email, setEmail] = useState('')
   const [emailInput, setEmailInput] = useState('')
   const [error, setError] = useState('')
 
-  // Resolve email: URL → sessionStorage → logged-in user
   useEffect(() => {
     const fromQuery = (sp.get('email') || '').trim().toLowerCase()
     const fromSession =
@@ -35,15 +35,33 @@ function SuccessInner() {
       if (orderId && !email) setStatus('need_email')
       return
     }
+
+    let cancelled = false
     setStatus('loading')
     setError('')
-    getOrder(orderId, email)
-      .then((o) => setStatus((o as { status: string }).status))
-      .catch(() => {
-        setStatus('error')
-        setError('Could not verify this order with that email.')
-      })
-  }, [orderId, email])
+
+    ;(async () => {
+      try {
+        // Paystack: verify reference → mark order paid on Django
+        if (reference) {
+          await confirmOrderPayment(orderId, { reference, email })
+        }
+        const o = await getOrder(orderId, email)
+        if (!cancelled) {
+          setStatus((o as { status: string }).status)
+        }
+      } catch {
+        if (!cancelled) {
+          setStatus('error')
+          setError('Could not verify this order with that email.')
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [orderId, email, reference])
 
   function applyEmail(e: React.FormEvent) {
     e.preventDefault()
@@ -63,7 +81,9 @@ function SuccessInner() {
       <h1 className="text-2xl font-bold">Thank you</h1>
       <p className="mt-2 text-sm text-foreground/60">
         Order #{orderId || '—'}
-        {status !== 'need_email' && status !== 'loading' ? ` — status: ${status}` : null}
+        {status !== 'need_email' && status !== 'loading'
+          ? ` — status: ${status}`
+          : null}
       </p>
 
       {status === 'loading' && (

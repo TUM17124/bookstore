@@ -69,6 +69,22 @@ export async function createCheckout(payload: {
   )
 }
 
+export async function confirmOrderPayment(
+  orderId: string,
+  payload: { reference?: string; email: string },
+) {
+  const res = await fetch(`${API}/orders/${orderId}/confirm/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || "Confirm failed")
+  }
+  return res.json()
+}
+
 export async function getOrder(orderId: string, email?: string) {
   const q = email ? `?email=${encodeURIComponent(email)}` : ''
   return api(`/orders/${orderId}/${q}`)
