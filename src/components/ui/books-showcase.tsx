@@ -1827,180 +1827,175 @@ export function BooksShowcase({
             <div className="text-[19px] italic text-[#98a4d6]">Goodreads</div>
             <div className="ml-auto text-[19px] italic text-[#98a4d6]">{selectedCfg?.year}</div>
           </div>
-          <div className={`mt-[26px] border-t border-[var(--bs-lav)]/[0.18] @max-[760px]:mt-4 ${dpChild(270)}`} />
+            <div className={`mt-[26px] border-t border-[var(--bs-lav)]/[0.18] @max-[760px]:mt-4 ${dpChild(270)}`} />
+
+          {/* PRICES — above the buttons, readable on navy */}
+          {selectedCfg && (
+            <div className={`pointer-events-none mt-5 mb-1 ${dpChild(300)}`}>
+              {(() => {
+                const ebookKes = Number(
+                  selectedCfg.ebookPrice ?? selectedCfg.price ?? 0,
+                );
+                const audioKes = Number(
+                  selectedCfg.audiobookPrice ?? selectedCfg.price ?? 0,
+                );
+                const rate = 130;
+                const hasEbook = selectedCfg.hasEbook !== false;
+                const hasAudiobook = selectedCfg.hasAudiobook === true;
+
+                return (
+                  <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
+                    {hasEbook && ebookKes > 0 && (
+                      <p className="text-[16px] leading-none">
+                        <span className="font-extrabold tabular-nums text-[var(--bs-pink)]">
+                          KES {ebookKes.toLocaleString()}
+                        </span>
+                        <span className="ml-1.5 font-bold tabular-nums text-[var(--bs-cream)]/70">
+                          ≈ ${(ebookKes / rate).toFixed(2)}
+                        </span>
+                      </p>
+                    )}
+                    {hasAudiobook && audioKes > 0 && (
+                      <p className="text-[16px] leading-none">
+                        <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--bs-lav)]/50">
+                          Audio
+                        </span>
+                        <span className="font-extrabold tabular-nums text-[var(--bs-pink)]">
+                          KES {audioKes.toLocaleString()}
+                        </span>
+                        <span className="ml-1.5 font-bold tabular-nums text-[var(--bs-cream)]/70">
+                          ≈ ${(audioKes / rate).toFixed(2)}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* ACTIONS — single row */}
           <div
-            className={`pointer-events-auto mt-8 inline-flex items-center gap-[10px] rounded-full bg-[#1a2140] p-[10px] shadow-[0_24px_60px_rgba(0,0,0,0.45)] @max-[760px]:mt-[18px] @max-[760px]:flex-wrap @max-[760px]:rounded-[28px] ${dpChild(330)}`}
+            className={`pointer-events-auto mt-4 inline-flex max-w-full flex-wrap items-center gap-[10px] rounded-full bg-[#1a2140] p-[10px] shadow-[0_24px_60px_rgba(0,0,0,0.45)] @max-[760px]:mt-3 @max-[760px]:rounded-[28px] ${dpChild(330)}`}
           >
-            <button className="inline-flex h-[54px] items-center gap-[10px] rounded-full bg-[var(--bs-cream)] px-[26px] text-[16.5px] font-semibold text-[var(--bs-navy)] transition-[transform,filter] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-105 @max-[760px]:h-12 @max-[760px]:px-5 @max-[760px]:text-[15px]">
+            <button
+              type="button"
+              className="inline-flex h-[54px] items-center gap-[10px] rounded-full bg-[var(--bs-cream)] px-[26px] text-[16.5px] font-semibold text-[var(--bs-navy)] transition-[transform,filter] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-105 @max-[760px]:h-12 @max-[760px]:px-5 @max-[760px]:text-[15px]"
+            >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} className="h-5 w-5">
                 <circle cx="12" cy="12" r="9" />
                 <path d="M3 12h18M12 3c2.8 2.6 2.8 15.4 0 18M12 3c-2.8 2.6-2.8 15.4 0 18" />
               </svg>
               <span>English</span>
             </button>
-{selectedCfg && (
-  <>
-    {(() => {
-      const ebookKes = Number(
-        selectedCfg.ebookPrice ?? selectedCfg.price ?? 0,
-      );
-      const audioKes = Number(
-        selectedCfg.audiobookPrice ?? selectedCfg.price ?? 0,
-      );
-      const rate = 130;
-      const hasEbook = selectedCfg.hasEbook !== false;
-      const hasAudiobook = selectedCfg.hasAudiobook === true;
 
-      return (
-        <div className="mb-2.5 flex flex-wrap items-baseline gap-x-5 gap-y-1">
-          {hasEbook && ebookKes > 0 && (
-            <p className="text-[15px] leading-none">
-              <span className="font-extrabold tabular-nums text-[#e11d48]">
-                KES {ebookKes.toLocaleString()}
-              </span>
-              <span className="ml-1.5 font-bold tabular-nums text-[#be123c]/80">
-                ≈ ${(ebookKes / rate).toFixed(2)}
-              </span>
-            </p>
-          )}
-          {hasAudiobook && audioKes > 0 && (
-            <p className="text-[15px] leading-none">
-              <span className="mr-1 text-[12px] font-semibold uppercase tracking-wide text-[#10152c]/40">
-                Audio
-              </span>
-              <span className="font-extrabold tabular-nums text-[#e11d48]">
-                KES {audioKes.toLocaleString()}
-              </span>
-              <span className="ml-1.5 font-bold tabular-nums text-[#be123c]/80">
-                ≈ ${(audioKes / rate).toFixed(2)}
-              </span>
-            </p>
-          )}
-        </div>
-      );
-    })()}
+            <button
+              type="button"
+              disabled={!!buyLoading || selectedCfg?.hasEbook === false}
+              onClick={() => {
+                if (!selectedCfg || buyLoading || selectedCfg.hasEbook === false) return;
+                setBuyLoading('ebook');
+                const q = new URLSearchParams({
+                  bookId: selectedCfg.id,
+                  type: 'ebook',
+                  title: selectedCfg.title,
+                });
+                window.location.href = `/checkout?${q}`;
+              }}
+              className={`relative inline-flex h-[54px] min-w-[120px] items-center justify-center gap-2 rounded-full bg-[var(--bs-pink)] px-6 text-[16.5px] font-semibold text-[var(--bs-navy)] transition-[transform,filter,opacity] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-105 disabled:pointer-events-none disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-5 @max-[760px]:text-[15px]`}
+            >
+              {buyLoading === 'ebook' ? (
+                <>
+                  <span
+                    className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--bs-navy)]/25 border-t-[var(--bs-navy)]"
+                    aria-hidden
+                  />
+                  …
+                </>
+              ) : (
+                <span className="relative inline-block">
+                  Buy Now
+                  {selectedCfg?.hasEbook === false && (
+                    <span
+                      className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500"
+                      aria-hidden
+                    />
+                  )}
+                </span>
+              )}
+            </button>
 
-    <div className="flex flex-wrap items-center gap-3">
-      <button
-        type="button"
-        disabled={!!buyLoading || selectedCfg.hasEbook === false}
-        onClick={() => {
-          if (!selectedCfg || buyLoading || selectedCfg.hasEbook === false)
-            return;
-          setBuyLoading("ebook");
-          const q = new URLSearchParams({
-            bookId: selectedCfg.id,
-            type: "ebook",
-            title: selectedCfg.title,
-          });
-          window.location.href = `/checkout?${q}`;
-        }}
-        className={`relative inline-flex h-[54px] min-w-[140px] items-center justify-center gap-2 rounded-full bg-[var(--bs-pink)] px-6 text-[16.5px] font-semibold text-[var(--bs-navy)] transition-[transform,filter,opacity] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-105 disabled:pointer-events-none disabled:opacity-70 @max-[760px]:h-12 @max-[760px]:px-5 @max-[760px]:text-[15px] ${
-          selectedCfg.hasEbook === false ? "opacity-50" : ""
-        }`}
-      >
-        {buyLoading === "ebook" ? (
-          <>
-            <span
-              className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--bs-navy)]/25 border-t-[var(--bs-navy)]"
-              aria-hidden
-            />
-            Loading…
-          </>
-        ) : (
-          <span className="relative">
-            Buy Now
-            {selectedCfg.hasEbook === false && (
-              <span
-                className="pointer-events-none absolute left-[-8%] right-[-8%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-600"
-                aria-hidden
-              />
-            )}
-          </span>
-        )}
-      </button>
+            <button
+              type="button"
+              disabled={!!buyLoading || selectedCfg?.hasAudiobook !== true}
+              onClick={() => {
+                if (!selectedCfg || buyLoading || selectedCfg.hasAudiobook !== true) return;
+                setBuyLoading('audiobook');
+                const q = new URLSearchParams({
+                  bookId: selectedCfg.id,
+                  type: 'audiobook',
+                  title: selectedCfg.title,
+                });
+                window.location.href = `/checkout?${q}`;
+              }}
+              className={`relative inline-flex h-[54px] min-w-[140px] items-center justify-center gap-2 rounded-full bg-[#10152c] px-5 text-[16.5px] font-semibold text-white ring-1 ring-[var(--bs-lav)]/25 transition-[transform,filter,opacity] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-110 disabled:pointer-events-none disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-4 @max-[760px]:text-[15px]`}
+            >
+              {buyLoading === 'audiobook' ? (
+                <>
+                  <span
+                    className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/25 border-t-white"
+                    aria-hidden
+                  />
+                  …
+                </>
+              ) : (
+                <span className="relative inline-block">
+                  Buy Audiobook
+                  {selectedCfg?.hasAudiobook !== true && (
+                    <span
+                      className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500"
+                      aria-hidden
+                    />
+                  )}
+                </span>
+              )}
+            </button>
 
-      <button
-        type="button"
-        disabled={!!buyLoading || selectedCfg.hasAudiobook !== true}
-        onClick={() => {
-          if (!selectedCfg || buyLoading || selectedCfg.hasAudiobook !== true)
-            return;
-          setBuyLoading("audiobook");
-          const q = new URLSearchParams({
-            bookId: selectedCfg.id,
-            type: "audiobook",
-            title: selectedCfg.title,
-          });
-          window.location.href = `/checkout?${q}`;
-        }}
-        className={`relative inline-flex h-[54px] min-w-[160px] items-center justify-center gap-2 rounded-full bg-[#10152c] px-6 text-[16.5px] font-semibold text-white transition-[transform,filter,opacity] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-110 disabled:pointer-events-none disabled:opacity-70 @max-[760px]:h-12 @max-[760px]:px-5 @max-[760px]:text-[15px] ${
-          selectedCfg.hasAudiobook !== true ? "opacity-50" : ""
-        }`}
-      >
-        {buyLoading === "audiobook" ? (
-          <>
-            <span
-              className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/25 border-t-white"
-              aria-hidden
-            />
-            Loading…
-          </>
-        ) : (
-          <span className="relative">
-            Buy Audiobook
-            {selectedCfg.hasAudiobook !== true && (
-              <span
-                className="pointer-events-none absolute left-[-8%] right-[-8%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-600"
-                aria-hidden
-              />
-            )}
-          </span>
-        )}
-      </button>
-    </div>
-  </>
-)}
-           <button
-            type="button"
-            aria-label={bookmarked ? 'Remove from bookmarks' : 'Save to bookmarks'}
-            aria-pressed={bookmarked}
-            onClick={handleSave}
-            className={`inline-flex h-[54px] w-[54px] items-center justify-center gap-[10px] rounded-full px-0 transition-[transform,filter,background-color,color] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-105 ${
-            bookmarked
-            ? 'bg-[var(--bs-pink)] text-[var(--bs-navy)]'
-             : 'bg-[#242c50] text-[var(--bs-lav)]'
-             }`}
-          >
-         <svg
-           viewBox="0 0 24 24"
-           fill={bookmarked ? 'currentColor' : 'none'}
-           stroke="currentColor"
-           strokeWidth={1.7}
-           className="h-5 w-5"
-           >
-           <path d="M7 3h10v18l-5-4-5 4z" />
-          </svg>
-          </button>
+            <button
+              type="button"
+              aria-label={bookmarked ? 'Remove from bookmarks' : 'Save to bookmarks'}
+              aria-pressed={bookmarked}
+              onClick={handleSave}
+              className={`inline-flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-full transition-[transform,filter,background-color,color] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-105 ${
+                bookmarked
+                  ? 'bg-[var(--bs-pink)] text-[var(--bs-navy)]'
+                  : 'bg-[#242c50] text-[var(--bs-lav)]'
+              }`}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill={bookmarked ? 'currentColor' : 'none'}
+                stroke="currentColor"
+                strokeWidth={1.7}
+                className="h-5 w-5"
+              >
+                <path d="M7 3h10v18l-5-4-5 4z" />
+              </svg>
+            </button>
           </div>
-         {selectedCfg && (
-  <div className={`pointer-events-auto mt-6 ${dpChild(330)}`}>
-    <button
-      type="button"
-      onClick={() => setReviewsOpen(true)}
-      className="
-        inline-flex items-center gap-2 rounded-full
-        border border-[var(--bs-lav)]/30
-        bg-[#1a2140]/80 px-5 py-3
-        text-[15px] font-semibold text-[var(--bs-cream)]
-        transition hover:border-[var(--bs-pink)]/50
-      "
-    >
-      Ratings & comments
-      <span aria-hidden>→</span>
-    </button>
-  </div>
-)}
+
+          {selectedCfg && (
+            <div className={`pointer-events-auto mt-6 ${dpChild(330)}`}>
+              <button
+                type="button"
+                onClick={() => setReviewsOpen(true)}
+                className="inline-flex items-center gap-2 rounded-full border border-[var(--bs-lav)]/30 bg-[#1a2140]/80 px-5 py-3 text-[15px] font-semibold text-[var(--bs-cream)] transition hover:border-[var(--bs-pink)]/50"
+              >
+                Ratings & comments
+                <span aria-hidden>→</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 
