@@ -117,6 +117,31 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+@keyframes marquee-left {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee-left {
+  animation: marquee-left 18s linear infinite;
+}
+
+/* Faster — try 10s or 12s */
+.animate-marquee-left-fast {
+  animation: marquee-left 10s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee-left,
+  .animate-marquee-left-fast {
+    animation: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
