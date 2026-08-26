@@ -1840,7 +1840,6 @@ export function BooksShowcase({
             </button>
 {selectedCfg && (
   <>
-    {/* Price — highly visible; Paystack still charges KES */}
     {(() => {
       const ebookKes = Number(
         selectedCfg.ebookPrice ?? selectedCfg.price ?? 0,
@@ -1848,47 +1847,33 @@ export function BooksShowcase({
       const audioKes = Number(
         selectedCfg.audiobookPrice ?? selectedCfg.price ?? 0,
       );
-      const rate = 130; // rough KES per 1 USD
+      const rate = 130;
       const hasEbook = selectedCfg.hasEbook !== false;
       const hasAudiobook = selectedCfg.hasAudiobook === true;
 
       return (
-        <div className="mb-4 w-full max-w-md space-y-2">
+        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] leading-snug text-[#10152c]/70">
           {hasEbook && ebookKes > 0 && (
-            <div className="rounded-2xl border border-[#10152c]/12 bg-white/90 px-4 py-3 shadow-sm">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#10152c]/45">
-                Ebook
-              </p>
-              <p className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <span className="text-[22px] font-bold tabular-nums tracking-tight text-[#10152c]">
-                  KES {ebookKes.toLocaleString()}
-                </span>
-                <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[14px] font-semibold tabular-nums text-emerald-800">
-                  ≈ ${(ebookKes / rate).toFixed(2)} USD
-                </span>
-              </p>
-            </div>
+            <p>
+              <span className="font-semibold text-[#10152c]">
+                KES {ebookKes.toLocaleString()}
+              </span>
+              <span className="text-[#10152c]/45">
+                {" "}
+                · ≈ ${(ebookKes / rate).toFixed(2)}
+              </span>
+            </p>
           )}
-
           {hasAudiobook && audioKes > 0 && (
-            <div className="rounded-2xl border border-[#10152c]/12 bg-white/90 px-4 py-3 shadow-sm">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#10152c]/45">
-                Audiobook
-              </p>
-              <p className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <span className="text-[22px] font-bold tabular-nums tracking-tight text-[#10152c]">
-                  KES {audioKes.toLocaleString()}
-                </span>
-                <span className="rounded-full bg-sky-500/15 px-2.5 py-0.5 text-[14px] font-semibold tabular-nums text-sky-900">
-                  ≈ ${(audioKes / rate).toFixed(2)} USD
-                </span>
-              </p>
-            </div>
-          )}
-
-          {!hasEbook && !hasAudiobook && (
-            <p className="text-sm font-medium text-red-600/90">
-              Digital formats not available for this title yet.
+            <p>
+              <span className="text-[#10152c]/45">Audio </span>
+              <span className="font-semibold text-[#10152c]">
+                KES {audioKes.toLocaleString()}
+              </span>
+              <span className="text-[#10152c]/45">
+                {" "}
+                · ≈ ${(audioKes / rate).toFixed(2)}
+              </span>
             </p>
           )}
         </div>
