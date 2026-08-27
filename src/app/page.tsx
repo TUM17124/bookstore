@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { BooksShowcase, type BookCfg } from "@/components/ui/books-showcase"
 import { getBooks, asBookList } from "@/lib/api"
+import { OfferMarquee } from "@/components/offer-marquee"
 
 function toCfg(b: /* ApiBook */ any): BookCfg {
   return {
@@ -103,28 +104,32 @@ function HomeInner() {
 
   if (books.length === 0) {
     return (
-      <main className="flex h-[calc(100dvh-4rem)] flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
-        <p>
-          {error
-            ? "Could not load books. Is the API up?"
-            : q
-              ? `No books found for “${q}”.`
-              : category
-                ? `No books in “${category}”.`
-                : "No books yet. Add featured books in Django admin."}
-        </p>
-        {q || category ? (
-          <a href="/" className="text-foreground underline hover:no-underline">
-            Clear filters
-          </a>
-        ) : null}
+      <main className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden">
+        <OfferMarquee />
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
+          <p>
+            {error
+              ? "Could not load books. Is the API up?"
+              : q
+                ? `No books found for “${q}”.`
+                : category
+                  ? `No books in “${category}”.`
+                  : "No books yet. Add featured books in Django admin."}
+          </p>
+          {q || category ? (
+            <a href="/" className="text-foreground underline hover:no-underline">
+              Clear filters
+            </a>
+          ) : null}
+        </div>
       </main>
     )
   }
 
   return (
-    <main className="h-[calc(100dvh-4rem)] min-h-0 overflow-hidden">
-      <div className="h-full w-full">
+    <main className="flex h-[calc(100dvh-4rem)] min-h-0 flex-col overflow-hidden">
+      <OfferMarquee />
+      <div className="min-h-0 flex-1">
         <BooksShowcase
           books={books}
           heroTitle={selectedBookId || q ? "Results" : "Books"}
