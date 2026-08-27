@@ -1841,11 +1841,11 @@ export function BooksShowcase({
       </button>
 
              {showDetailPanel && (
-        <div
+                <div
           ref={dpRef}
           aria-live="polite"
-          className={`absolute right-[5%] top-6 bottom-4 z-[15] flex w-[min(520px,40%)] flex-col justify-start pt-0 pointer-events-none
-            @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-14 @max-[760px]:bottom-4
+          className={`absolute right-[5%] top-8 bottom-4 z-[15] flex w-[min(520px,40%)] flex-col justify-start pt-0 pointer-events-none
+            @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-20 @max-[760px]:bottom-4
             @max-[760px]:w-[min(560px,92cqw)] @max-[760px]:max-h-none @max-[760px]:-translate-x-1/2 @max-[760px]:translate-y-0
             ${panelVisible ? 'visible' : 'invisible delay-[500ms]'}`}
         >
