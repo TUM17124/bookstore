@@ -1840,13 +1840,14 @@ export function BooksShowcase({
         &#10005;
       </button>
 
- {showDetailPanel && (
-                <div
+             {showDetailPanel && (
+        <div
           ref={dpRef}
           aria-live="polite"
-          className={`absolute right-[5%] top-12 bottom-4 z-[15] flex w-[min(520px,40%)] flex-col justify-start pt-2 pointer-events-none @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-auto @max-[760px]:bottom-3 @max-[760px]:w-[min(560px,94cqw)] @max-[760px]:max-h-[48%] @max-[760px]:-translate-x-1/2 @max-[760px]:justify-end ${
-            panelVisible ? 'visible' : 'invisible delay-[500ms]'
-          }`}
+          className={`absolute right-[5%] top-6 bottom-4 z-[15] flex w-[min(520px,40%)] flex-col justify-start pt-0 pointer-events-none
+            @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-14 @max-[760px]:bottom-4
+            @max-[760px]:w-[min(560px,92cqw)] @max-[760px]:max-h-none @max-[760px]:-translate-x-1/2 @max-[760px]:translate-y-0
+            ${panelVisible ? 'visible' : 'invisible delay-[500ms]'}`}
         >
           <h1
             className={`m-0 mb-2 line-clamp-2 max-w-full break-words text-[var(--bs-pink)] text-[clamp(22px,3.2cqw,42px)] font-extrabold leading-[1.12] tracking-[-0.02em] [overflow-wrap:anywhere] @max-[760px]:text-[clamp(20px,6cqw,32px)] ${dpChild(50)}`}
@@ -1855,7 +1856,7 @@ export function BooksShowcase({
           </h1>
 
           <p
-            className={`mt-0 line-clamp-4 max-w-[54ch] text-[var(--bs-lav)] text-[clamp(13px,1.1cqw,16px)] leading-[1.45] @max-[760px]:line-clamp-2 @max-[760px]:text-[13px] ${dpChild(130)}`}
+            className={`mt-0 line-clamp-4 max-w-[54ch] text-[var(--bs-lav)] text-[clamp(13px,1.1cqw,16px)] leading-[1.45] @max-[760px]:line-clamp-3 @max-[760px]:text-[13px] ${dpChild(130)}`}
           >
             {selectedCfg?.desc}
           </p>
@@ -1875,7 +1876,6 @@ export function BooksShowcase({
             <div className="h-4 w-px bg-[var(--bs-lav)]/[0.28]" />
             <div className="text-[13px] italic text-[#98a4d6]">{selectedCfg?.year}</div>
           </div>
-
           {/* Fast scrolling support notice */}
 <div
   className="relative mt-6 overflow-hidden rounded-2xl border border-foreground/10 bg-foreground/[0.04]"
