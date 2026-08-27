@@ -19,7 +19,7 @@ export function PdfReader({ url }: { url: string }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState('Loading…')
   const [pages, setPages] = useState<string[]>([])
-  const [fontSize, setFontSize] = useState(18)
+  const [fontSize, setFontSize] = useState(8)
   const [page, setPage] = useState(1)
   const [marked, setMarked] = useState(0)
 
