@@ -148,8 +148,6 @@ export function BooksShowcase({
     return () => cancelAnimationFrame(id);
   }, []);
 
-  
-
     useEffect(() => {
     if (!selectedCfg) {
       setOwnedEbookOrderId(null);
