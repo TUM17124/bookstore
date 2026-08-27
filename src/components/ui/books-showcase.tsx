@@ -1879,7 +1879,7 @@ export function BooksShowcase({
             <div className="text-[13px] italic text-[#98a4d6]">{selectedCfg?.year}</div>
           </div>
     
-           
+            <div className={`mt-[26px] border-t border-[var(--bs-lav)]/[0.18] @max-[760px]:mt-4 ${dpChild(270)}`} />
 
           {/* PRICES — above the buttons, readable on navy */}
           {selectedCfg && (
