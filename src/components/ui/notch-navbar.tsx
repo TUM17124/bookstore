@@ -6,7 +6,9 @@ import {
   Home,
   BookOpen,
   GraduationCap,
-  Baby,
+  Briefcase,
+  Wallet,
+  Heart,
   Search,
   Menu,
   X,
@@ -109,18 +111,19 @@ export function NotchNavbar({
   }
 
   const categories = [
-    { label: "Fiction", href: "/?category=fiction", icon: BookOpen },
-    { label: "Non-Fiction", href: "/?category=nonfiction", icon: BookOpen },
     {
-      label: "Academic & Education",
-      href: "/?category=academic-education",
-      icon: GraduationCap,
+      label: "Business",
+      href: "/?category=business-compliance",
+      icon: Briefcase,
     },
+    { label: "Career", href: "/?category=career", icon: GraduationCap },
+    { label: "Academic", href: "/?category=academic", icon: BookOpen },
     {
-      label: "Children & Young Adult",
-      href: "/?category=children-young-adult",
-      icon: Baby,
+      label: "Finance",
+      href: "/?category=personal-finance",
+      icon: Wallet,
     },
+    { label: "Lifestyle", href: "/?category=lifestyle", icon: Heart },
   ]
 
   const authDesktop = !authReady ? null : user ? (
@@ -156,7 +159,7 @@ export function NotchNavbar({
   return (
     <>
       <header
-        className={cn("fixed top-0 inset-x-0 z-50 h-16 flex px-0", className)}
+        className={cn("site-navbar fixed top-0 inset-x-0 z-50 h-16 flex px-0", className)}
         {...props}
       >
         <div className="flex-1 h-10 bg-zinc-50 dark:bg-black z-20 relative min-w-0">
@@ -305,7 +308,7 @@ export function NotchNavbar({
               </Link>
 
               <div className="h-px bg-foreground/10 my-3" />
-              <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-foreground/40">Browse Books</p>
+              <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-foreground/40">Browse</p>
 
               {categories.map((category) => (
                 <Link key={category.label} href={category.href} className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>

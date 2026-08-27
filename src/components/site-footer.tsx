@@ -8,10 +8,11 @@ const policyLinks = [
 ]
 
 const browseLinks = [
-  { href: "/?category=fiction", label: "Fiction" },
-  { href: "/?category=nonfiction", label: "Non-Fiction" },
-  { href: "/?category=academic-education", label: "Academic" },
-  { href: "/?category=children-young-adult", label: "Children & YA" },
+  { href: "/?category=business-compliance", label: "Business & Compliance" },
+  { href: "/?category=career", label: "Career" },
+  { href: "/?category=academic", label: "Academic" },
+  { href: "/?category=personal-finance", label: "Personal Finance" },
+  { href: "/?category=lifestyle", label: "Lifestyle" },
 ]
 
 export function SiteFooter() {
