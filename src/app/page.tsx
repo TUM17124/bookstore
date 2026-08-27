@@ -27,15 +27,14 @@ function toCfg(b: /* ApiBook */ any): BookCfg {
     chapters: b.chapters,
     price: b.price != null ? Number(b.price) : undefined,
     ebookPrice: b.ebook_price != null ? Number(b.ebook_price) : undefined,
-    audiobookPrice: b.audiobook_price != null ? Number(b.audiobook_price) : undefined,
-    hasEbook: b.hasEbook !== false && b.hasEbook !== undefined
-      ? !!b.hasEbook
-      : true, // until API sends flags; better: !!b.hasEbook
+    audiobookPrice:
+      b.audiobook_price != null ? Number(b.audiobook_price) : undefined,
+    hasEbook:
+      b.hasEbook !== false && b.hasEbook !== undefined ? !!b.hasEbook : true,
     hasAudiobook: !!b.hasAudiobook,
-  };
+  }
 }
 
-/** Selected search book at index 1 (center of the row) */
 function orderWithSelected(
   fetchedBooks: BookCfg[],
   selectedBookId: string,
@@ -49,7 +48,9 @@ function orderWithSelected(
   if (selectedIndex === -1) return fetchedBooks
 
   const selectedBook = fetchedBooks[selectedIndex]
-  const remainingBooks = fetchedBooks.filter((_, index) => index !== selectedIndex)
+  const remainingBooks = fetchedBooks.filter(
+    (_, index) => index !== selectedIndex,
+  )
 
   if (remainingBooks.length === 0) {
     return [selectedBook]
@@ -94,52 +95,50 @@ function HomeInner() {
 
   if (loading) {
     return (
-      <main className="flex min-h-[calc(100vh-5rem)] items-center justify-center text-sm text-muted-foreground">
+      <main className="-mt-20 flex h-[100dvh] items-center justify-center text-sm text-muted-foreground">
         Loading books…
       </main>
     )
   }
 
-  return (
-    <main className="w-full min-h-[calc(100vh-5rem)]">
-      <div className="h-[calc(100vh-5rem)] min-h-[560px] w-full">
-        {books.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
-            <p>
-              {error
-                ? "Could not load books. Is the API up?"
-                : q
-                  ? `No books found for “${q}”.`
-                  : category
-                    ? `No books in “${category}”.`
-                    : "No books yet. Add featured books in Django admin."}
-            </p>
+  if (books.length === 0) {
+    return (
+      <main className="-mt-20 flex h-[100dvh] flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
+        <p>
+          {error
+            ? "Could not load books. Is the API up?"
+            : q
+              ? `No books found for “${q}”.`
+              : category
+                ? `No books in “${category}”.`
+                : "No books yet. Add featured books in Django admin."}
+        </p>
+        {q || category ? (
+          <a href="/" className="text-foreground underline hover:no-underline">
+            Clear filters
+          </a>
+        ) : null}
+      </main>
+    )
+  }
 
-            {q || category ? (
-              <a
-                href="/"
-                className="text-foreground underline hover:no-underline"
-              >
-                Clear filters
-              </a>
-            ) : null}
-          </div>
-        ) : (
-          <BooksShowcase
-            books={books}
-            heroTitle={selectedBookId || q ? "Results" : "Books"}
-            navTitle={
-              selectedBookId
-                ? "Results"
-                : q
-                  ? `Search: ${q}`
-                  : category
-                    ? category
-                    : "Bestsellers"
-            }
-            className="h-full w-full"
-          />
-        )}
+  return (
+    <main className="-mt-20 h-[100dvh] min-h-0 overflow-hidden">
+      <div className="h-full w-full">
+        <BooksShowcase
+          books={books}
+          heroTitle={selectedBookId || q ? "Results" : "Books"}
+          navTitle={
+            selectedBookId
+              ? "Results"
+              : q
+                ? `Search: ${q}`
+                : category
+                  ? category
+                  : "Bestsellers"
+          }
+          className="h-full min-h-0 w-full"
+        />
       </div>
     </main>
   )
@@ -149,7 +148,7 @@ export default function Home() {
   return (
     <Suspense
       fallback={
-        <main className="flex min-h-[calc(100vh-5rem)] items-center justify-center text-sm text-muted-foreground">
+        <main className="-mt-20 flex h-[100dvh] items-center justify-center text-sm text-muted-foreground">
           Loading…
         </main>
       }
