@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { getOrder, confirmOrderPayment } from '@/lib/api'
 import { getStoredUser } from '@/lib/auth-client'
+import { PdfReader } from '@/components/pdf-reader'
 
 const API = process.env.NEXT_PUBLIC_API_URL!
 
@@ -152,32 +153,21 @@ function SuccessInner() {
         </Link>
       </p>
 
-      {readerOpen && readUrl && (
+            {readerOpen && readUrl && (
         <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
             <button
               type="button"
               onClick={() => setReaderOpen(false)}
-              aria-label="Close reader"
               className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10"
             >
               ×
             </button>
             <p className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-white">
-              PDF reader
+              Reader
             </p>
-            <a
-              href={downloadUrl!}
-              className="rounded-full bg-white px-3 py-1.5 text-[12px] font-semibold text-[#0b1020]"
-            >
-              Download
-            </a>
           </header>
-          <iframe
-            title="PDF reader"
-            src={readUrl}
-            className="min-h-0 w-full flex-1 border-0 bg-neutral-900"
-          />
+          <PdfReader url={readUrl} />
         </div>
       )}
     </main>

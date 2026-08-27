@@ -9,6 +9,7 @@ import { BookReviews } from '@/components/book-reviews';
 import { createPortal } from 'react-dom';
 import { getPurchases, downloadOrderUrl, getToken } from '@/lib/api';
 import { getStoredUser } from '@/lib/auth-client';
+import { PdfReader } from '@/components/pdf-reader'
 
 export interface BookCfg {
   id: string;
@@ -2138,6 +2139,7 @@ export function BooksShowcase({
     document.body,
   )}
 
+        
         {readerOpen &&
         ownedEbookOrderId &&
         buyerEmail &&
@@ -2148,35 +2150,20 @@ export function BooksShowcase({
               <button
                 type="button"
                 onClick={() => setReaderOpen(false)}
-                aria-label="Close reader"
                 className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10"
               >
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
-                </svg>
+                ×
               </button>
-              <div className="min-w-0 flex-1">
-                <h2 className="truncate text-[16px] font-bold text-white">
-                  {selectedCfg?.title}
-                </h2>
-                <p className="text-[12px] text-white/50">PDF reader</p>
-              </div>
-              <a
-                href={downloadOrderUrl(ownedEbookOrderId, buyerEmail)}
-                className="rounded-full bg-white px-3 py-1.5 text-[12px] font-semibold text-[#0b1020]"
-              >
-                Download
-              </a>
+              <h2 className="min-w-0 flex-1 truncate text-[16px] font-bold text-white">
+                {selectedCfg?.title}
+              </h2>
             </header>
-            <iframe
-              title="PDF reader"
-              src={`${downloadOrderUrl(ownedEbookOrderId, buyerEmail)}&inline=1`}
-              className="min-h-0 w-full flex-1 border-0 bg-neutral-900"
+            <PdfReader
+              url={`${downloadOrderUrl(ownedEbookOrderId, buyerEmail)}&inline=1`}
             />
           </div>,
           document.body,
         )}
-
     </div>
   );
 }
