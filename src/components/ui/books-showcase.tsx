@@ -1985,7 +1985,7 @@ export function BooksShowcase({
                 </>
               ) : (
                 <span className="relative inline-block">
-                  {ownedEbookOrderId ? 'Read / Download' : 'Buy Now'}
+                  {ownedEbookOrderId ? 'Download' : 'Buy Now'}
                   {!ownedEbookOrderId && selectedCfg?.hasEbook === false && (
                     <span
                       className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500"
@@ -2029,7 +2029,7 @@ export function BooksShowcase({
                 </>
               ) : (
                 <span className="relative inline-block">
-                  {ownedAudioOrderId ? 'Re-download audio' : 'Buy Audiobook'}
+                  {ownedAudioOrderId ? 'Download audio' : 'Buy Audiobook'}
                   {!ownedAudioOrderId && selectedCfg?.hasAudiobook !== true && (
                     <span
                       className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500"
