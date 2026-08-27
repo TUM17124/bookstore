@@ -113,15 +113,6 @@ function SuccessInner() {
       )}
 
       {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
-
-      {downloadUrl && (
-        <a
-          href={downloadUrl}
-          className="mt-6 inline-flex rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background"
-        >
-          Download your file
-        </a>
-      )}
             {downloadUrl && (
         <>
           <a
