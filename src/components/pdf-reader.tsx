@@ -44,21 +44,28 @@ export function PdfReader({ url }: { url: string }) {
         if (!host) return
         host.innerHTML = ''
 
-        const width = host.clientWidth || Math.min(window.innerWidth, 720)
+                const cssWidth = host.clientWidth || Math.min(window.innerWidth, 720)
+        const dpr = Math.min(window.devicePixelRatio || 1, 3)
+
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i)
           const base = page.getViewport({ scale: 1 })
-          const scale = width / base.width
+          const scale = (cssWidth / base.width) * dpr
           const viewport = page.getViewport({ scale })
+
           const canvas = document.createElement('canvas')
           canvas.width = viewport.width
           canvas.height = viewport.height
           canvas.style.width = '100%'
+          canvas.style.height = 'auto'
           canvas.style.display = 'block'
           canvas.style.marginBottom = '12px'
           host.appendChild(canvas)
+
+          const ctx = canvas.getContext('2d')!
+          ctx.setTransform(1, 0, 0, 1, 0, 0)
           await page.render({
-            canvasContext: canvas.getContext('2d')!,
+            canvasContext: ctx,
             viewport,
           }).promise
           if (cancelled) return
