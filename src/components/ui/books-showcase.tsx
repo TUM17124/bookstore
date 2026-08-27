@@ -1840,55 +1840,41 @@ export function BooksShowcase({
         &#10005;
       </button>
 
- {showDetailPanel && (
-                        <div
+       {showDetailPanel && (
+        <div
           ref={dpRef}
           aria-live="polite"
-          className={`absolute right-[5%] top-12 bottom-4 z-[15] flex w-[min(520px,40%)] flex-col gap-2 pointer-events-none
-            @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-auto @max-[760px]:bottom-2
-            @max-[760px]:w-[min(560px,94cqw)] @max-[760px]:max-h-[42%] @max-[760px]:-translate-x-1/2
-            ${panelVisible ? 'visible' : 'invisible delay-[500ms]'}`}
+          className={`absolute right-[5%] top-6 bottom-4 z-[15] flex w-[min(520px,40%)] flex-col justify-start pt-0 pointer-events-none @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-auto @max-[760px]:bottom-8 @max-[760px]:w-[min(560px,94cqw)] @max-[760px]:max-h-[48%] @max-[760px]:-translate-x-1/2 @max-[760px]:justify-end ${
+            panelVisible ? 'visible' : 'invisible delay-[500ms]'
+          }`}
         >
           <h1
-            className={`m-0 shrink-0 overflow-hidden text-ellipsis text-[var(--bs-pink)]
-              text-[clamp(20px,3cqw,40px)] font-extrabold leading-tight tracking-[-0.02em]
-              line-clamp-2 break-words [overflow-wrap:anywhere]
-              @max-[760px]:text-[20px] @max-[760px]:leading-snug
-              ${dpChild(50)}`}
+            className={`m-0 mb-2 line-clamp-2 max-w-full break-words text-[var(--bs-pink)] text-[clamp(22px,3.2cqw,42px)] font-extrabold leading-[1.12] tracking-[-0.02em] [overflow-wrap:anywhere] @max-[760px]:text-[clamp(20px,6cqw,32px)] ${dpChild(50)}`}
           >
             {selectedCfg?.title}
           </h1>
 
           <p
-            className={`m-0 min-h-0 shrink overflow-hidden text-[var(--bs-lav)]
-              text-[clamp(13px,1.05cqw,15px)] leading-snug
-              line-clamp-3
-              @max-[760px]:line-clamp-2 @max-[760px]:text-[12px]
-              ${dpChild(130)}`}
+            className={`mt-0 line-clamp-4 max-w-[54ch] text-[var(--bs-lav)] text-[clamp(13px,1.1cqw,16px)] leading-[1.45] @max-[760px]:line-clamp-2 @max-[760px]:text-[13px] ${dpChild(130)}`}
           >
             {selectedCfg?.desc}
           </p>
 
-          <div
-            className={`mt-0 flex shrink-0 items-center gap-2 ${dpChild(210)}`}
-          >
-            <div className="flex shrink-0 gap-[3px]">
+          <div className={`mt-3 flex items-center gap-3 ${dpChild(210)}`}>
+            <div className="flex gap-[3px]">
               {[0, 1, 2, 3, 4].map((i) => (
                 <svg
                   key={i}
                   viewBox="0 0 24 24"
-                  className={`h-3.5 w-3.5 fill-[var(--bs-pink)] ${
-                    i < (selectedCfg?.stars ?? 0) ? '' : 'opacity-25'
-                  }`}
+                  className={`h-4 w-4 fill-[var(--bs-pink)] ${i < (selectedCfg?.stars ?? 0) ? '' : 'opacity-25'}`}
                 >
                   <path d="M12 2.6l2.8 6 6.6.6-5 4.4 1.5 6.5L12 16.7 6.1 20.1l1.5-6.5-5-4.4 6.6-.6z" />
                 </svg>
               ))}
             </div>
-            <div className="h-3.5 w-px shrink-0 bg-[var(--bs-lav)]/[0.28]" />
-            <div className="text-[12px] italic text-[#98a4d6]">{selectedCfg?.year}</div>
+            <div className="h-4 w-px bg-[var(--bs-lav)]/[0.28]" />
+            <div className="text-[13px] italic text-[#98a4d6]">{selectedCfg?.year}</div>
           </div>
-
           {/* Fast scrolling support notice */}
 <div
   className="relative mt-6 overflow-hidden rounded-2xl border border-foreground/10 bg-foreground/[0.04]"
