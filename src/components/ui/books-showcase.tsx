@@ -1878,15 +1878,7 @@ export function BooksShowcase({
             <div className="h-4 w-px bg-[var(--bs-lav)]/[0.28]" />
             <div className="text-[13px] italic text-[#98a4d6]">{selectedCfg?.year}</div>
           </div>
-          {/* Fast scrolling support notice */}
-<div
-  className="relative mt-6 overflow-hidden rounded-2xl border border-foreground/10 bg-foreground/[0.04]"
-  aria-label="Library support fee notice"
->
-  <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-10 bg-gradient-to-r from-background to-transparent" />
-  <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-background to-transparent" />
-
-</div>
+    
             <div className={`mt-[26px] border-t border-[var(--bs-lav)]/[0.18] @max-[760px]:mt-4 ${dpChild(270)}`} />
 
           {/* PRICES — above the buttons, readable on navy */}

@@ -128,7 +128,7 @@
 
 
 .animate-marquee-left {
-  animation: marquee-left 10s linear infinite;
+  animation: marquee-left 60s linear infinite;
 }
 
 .animate-marquee-left:hover {
