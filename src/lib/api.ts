@@ -35,6 +35,28 @@ export function asBookList(data: Paginated<ApiBook> | ApiBook[]): ApiBook[] {
   return Array.isArray(data) ? data : data.results ?? []
 }
 
+export type PurchaseItem = {
+  order_id: number
+  book_id: string
+  product_type: string
+}
+
+export async function getPurchases(email: string): Promise<{
+  ebooks: PurchaseItem[]
+  audiobooks: PurchaseItem[]
+}> {
+  if (!email) return { ebooks: [], audiobooks: [] }
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/orders/purchases/?email=${encodeURIComponent(email)}`,
+  )
+  if (!res.ok) return { ebooks: [], audiobooks: [] }
+  return res.json()
+}
+
+export function downloadOrderUrl(orderId: number, email: string) {
+  return `${process.env.NEXT_PUBLIC_API_URL}/orders/${orderId}/download/?email=${encodeURIComponent(email)}`
+}
+
 export async function getBooks(params?: {
   featured?: boolean
   category?: string

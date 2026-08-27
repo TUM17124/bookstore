@@ -122,6 +122,22 @@ function SuccessInner() {
           Download your file
         </a>
       )}
+            {downloadUrl && (
+        <>
+          <a
+            href={downloadUrl}
+            className="mt-6 inline-flex rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background"
+          >
+            Read / Download your file
+          </a>
+          <p className="mt-3 text-sm text-foreground/55">
+            You can also open this book later and use{' '}
+            <span className="font-medium text-foreground/80">Read / Download</span> or{' '}
+            <span className="font-medium text-foreground/80">Re-download audio</span>
+            {' '}on the book page (same email).
+          </p>
+        </>
+      )}
 
       <p className="mt-6">
         <Link href="/" className="text-sm underline">

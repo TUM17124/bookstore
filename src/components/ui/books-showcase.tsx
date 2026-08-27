@@ -7,6 +7,8 @@ import { useBookmarks } from '@/components/bookmarks-context';
 import Link from 'next/link';
 import { BookReviews } from '@/components/book-reviews';
 import { createPortal } from 'react-dom';
+import { getPurchases, downloadOrderUrl, getToken } from '@/lib/api';
+import { getStoredUser } from '@/lib/auth-client';
 
 export interface BookCfg {
   id: string;
@@ -120,6 +122,11 @@ export function BooksShowcase({
   const [selectedCfg, setSelectedCfg] = useState<BookCfg | null>(null);
   const [mounted, setMounted] = useState(false);
 
+
+  const [ownedEbookOrderId, setOwnedEbookOrderId] = useState<number | null>(null);
+  const [ownedAudioOrderId, setOwnedAudioOrderId] = useState<number | null>(null);
+  const [buyerEmail, setBuyerEmail] = useState('');
+
   const [buyLoading, setBuyLoading] = useState<'ebook' | 'audiobook' | null>(null);
 
   const [reviewsOpen, setReviewsOpen] = useState(false);
@@ -140,6 +147,35 @@ export function BooksShowcase({
     const id = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(id);
   }, []);
+
+    useEffect(() => {
+    if (!selectedCfg) {
+      setOwnedEbookOrderId(null);
+      setOwnedAudioOrderId(null);
+      return;
+    }
+    const email = (getStoredUser()?.email || sessionStorage.getItem('checkout_email') || '')
+      .trim()
+      .toLowerCase();
+    setBuyerEmail(email);
+    if (!email) {
+      setOwnedEbookOrderId(null);
+      setOwnedAudioOrderId(null);
+      return;
+    }
+    let cancelled = false;
+    getPurchases(email).then((p) => {
+      if (cancelled) return;
+      const id = String(selectedCfg.id);
+      const eb = p.ebooks.find((x) => String(x.book_id) === id);
+      const au = p.audiobooks.find((x) => String(x.book_id) === id);
+      setOwnedEbookOrderId(eb ? eb.order_id : null);
+      setOwnedAudioOrderId(au ? au.order_id : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCfg]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -1916,11 +1952,19 @@ export function BooksShowcase({
               <span>English</span>
             </button>
 
-            <button
+                        <button
               type="button"
-              disabled={!!buyLoading || selectedCfg?.hasEbook === false}
+              disabled={
+                !!buyLoading ||
+                (ownedEbookOrderId == null && selectedCfg?.hasEbook === false)
+              }
               onClick={() => {
-                if (!selectedCfg || buyLoading || selectedCfg.hasEbook === false) return;
+                if (!selectedCfg || buyLoading) return;
+                if (ownedEbookOrderId && buyerEmail) {
+                  window.location.href = downloadOrderUrl(ownedEbookOrderId, buyerEmail);
+                  return;
+                }
+                if (selectedCfg.hasEbook === false) return;
                 setBuyLoading('ebook');
                 const q = new URLSearchParams({
                   bookId: selectedCfg.id,
@@ -1941,8 +1985,8 @@ export function BooksShowcase({
                 </>
               ) : (
                 <span className="relative inline-block">
-                  Buy Now
-                  {selectedCfg?.hasEbook === false && (
+                  {ownedEbookOrderId ? 'Read / Download' : 'Buy Now'}
+                  {!ownedEbookOrderId && selectedCfg?.hasEbook === false && (
                     <span
                       className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500"
                       aria-hidden
@@ -1954,9 +1998,17 @@ export function BooksShowcase({
 
             <button
               type="button"
-              disabled={!!buyLoading || selectedCfg?.hasAudiobook !== true}
+              disabled={
+                !!buyLoading ||
+                (ownedAudioOrderId == null && selectedCfg?.hasAudiobook !== true)
+              }
               onClick={() => {
-                if (!selectedCfg || buyLoading || selectedCfg.hasAudiobook !== true) return;
+                if (!selectedCfg || buyLoading) return;
+                if (ownedAudioOrderId && buyerEmail) {
+                  window.location.href = downloadOrderUrl(ownedAudioOrderId, buyerEmail);
+                  return;
+                }
+                if (selectedCfg.hasAudiobook !== true) return;
                 setBuyLoading('audiobook');
                 const q = new URLSearchParams({
                   bookId: selectedCfg.id,
@@ -1977,8 +2029,8 @@ export function BooksShowcase({
                 </>
               ) : (
                 <span className="relative inline-block">
-                  Buy Audiobook
-                  {selectedCfg?.hasAudiobook !== true && (
+                  {ownedAudioOrderId ? 'Re-download audio' : 'Buy Audiobook'}
+                  {!ownedAudioOrderId && selectedCfg?.hasAudiobook !== true && (
                     <span
                       className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500"
                       aria-hidden
