@@ -130,6 +130,7 @@ export function BooksShowcase({
   const [buyLoading, setBuyLoading] = useState<'ebook' | 'audiobook' | null>(null);
 
   const [reviewsOpen, setReviewsOpen] = useState(false);
+  const [readerOpen, setReaderOpen] = useState(false);
 
     const { isBookmarked, toggleBookmark } = useBookmarks();
 
@@ -1956,13 +1957,26 @@ export function BooksShowcase({
           >
             <button
               type="button"
-              className="inline-flex h-[54px] items-center gap-[10px] rounded-full bg-[var(--bs-cream)] px-[26px] text-[16.5px] font-semibold text-[var(--bs-navy)] transition-[transform,filter] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-105 @max-[760px]:h-12 @max-[760px]:px-5 @max-[760px]:text-[15px]"
+              disabled={!ownedEbookOrderId}
+              onClick={() => {
+                if (!ownedEbookOrderId || !buyerEmail) return;
+                setReaderOpen(true);
+              }}
+              className="relative inline-flex h-[54px] items-center gap-[10px] rounded-full bg-[var(--bs-cream)] px-[26px] text-[16.5px] font-semibold text-[var(--bs-navy)] transition-[transform,filter,opacity] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-105 disabled:pointer-events-none disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-5 @max-[760px]:text-[15px]"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} className="h-5 w-5">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M3 12h18M12 3c2.8 2.6 2.8 15.4 0 18M12 3c-2.8 2.6-2.8 15.4 0 18" />
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z" />
               </svg>
-              <span>English</span>
+              <span className="relative inline-block">
+                Read
+                {!ownedEbookOrderId && (
+                  <span
+                    className="pointer-events-none absolute left-[-8%] right-[-8%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500"
+                    aria-hidden
+                  />
+                )}
+              </span>
             </button>
 
                         <button
@@ -2123,6 +2137,45 @@ export function BooksShowcase({
     </div>,
     document.body,
   )}
+
+        {readerOpen &&
+        ownedEbookOrderId &&
+        buyerEmail &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
+            <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
+              <button
+                type="button"
+                onClick={() => setReaderOpen(false)}
+                aria-label="Close reader"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
+                </svg>
+              </button>
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-[16px] font-bold text-white">
+                  {selectedCfg?.title}
+                </h2>
+                <p className="text-[12px] text-white/50">PDF reader</p>
+              </div>
+              <a
+                href={downloadOrderUrl(ownedEbookOrderId, buyerEmail)}
+                className="rounded-full bg-white px-3 py-1.5 text-[12px] font-semibold text-[#0b1020]"
+              >
+                Download
+              </a>
+            </header>
+            <iframe
+              title="PDF reader"
+              src={`${downloadOrderUrl(ownedEbookOrderId, buyerEmail)}&inline=1`}
+              className="min-h-0 w-full flex-1 border-0 bg-neutral-900"
+            />
+          </div>,
+          document.body,
+        )}
 
     </div>
   );
