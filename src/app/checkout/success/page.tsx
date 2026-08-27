@@ -17,6 +17,8 @@ function SuccessInner() {
   const [email, setEmail] = useState('')
   const [emailInput, setEmailInput] = useState('')
   const [error, setError] = useState('')
+  const [readerOpen, setReaderOpen] = useState(false)
+  const [productType, setProductType] = useState('')
 
   useEffect(() => {
     const fromQuery = (sp.get('email') || '').trim().toLowerCase()
@@ -42,13 +44,13 @@ function SuccessInner() {
 
     ;(async () => {
       try {
-        // Paystack: verify reference → mark order paid on Django
         if (reference) {
           await confirmOrderPayment(orderId, { reference, email })
         }
         const o = await getOrder(orderId, email)
         if (!cancelled) {
           setStatus((o as { status: string }).status)
+          setProductType(String((o as { product_type?: string }).product_type || ''))
         }
       } catch {
         if (!cancelled) {
@@ -75,6 +77,9 @@ function SuccessInner() {
     orderId && email && status === 'paid'
       ? `${API}/orders/${orderId}/download/?email=${encodeURIComponent(email)}`
       : null
+
+  const readUrl = downloadUrl ? `${downloadUrl}&inline=1` : null
+  const canRead = Boolean(readUrl && productType !== 'audiobook')
 
   return (
     <main className="mx-auto max-w-md px-4 py-16 text-center">
@@ -113,21 +118,32 @@ function SuccessInner() {
       )}
 
       {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
-            {downloadUrl && (
-        <>
+
+      {downloadUrl && (
+        <div className="mt-6 flex flex-col items-center gap-3">
+          {canRead && (
+            <button
+              type="button"
+              onClick={() => setReaderOpen(true)}
+              className="inline-flex rounded-full border border-foreground/20 px-6 py-3 text-sm font-semibold"
+            >
+              Read
+            </button>
+          )}
           <a
             href={downloadUrl}
-            className="mt-6 inline-flex rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background"
+            className="inline-flex rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background"
           >
             Download your file
           </a>
-          <p className="mt-3 text-sm text-foreground/55">
+          <p className="text-sm text-foreground/55">
             You can also open this book later and use{' '}
+            <span className="font-medium text-foreground/80">Read</span>,{' '}
             <span className="font-medium text-foreground/80">Download</span> or{' '}
-            <span className="font-medium text-foreground/80">Download audio</span>
-            {' '}on the book page (same email).
+            <span className="font-medium text-foreground/80">Download audio</span>{' '}
+            on the book page (same email).
           </p>
-        </>
+        </div>
       )}
 
       <p className="mt-6">
@@ -135,6 +151,35 @@ function SuccessInner() {
           Back home
         </Link>
       </p>
+
+      {readerOpen && readUrl && (
+        <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
+          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
+            <button
+              type="button"
+              onClick={() => setReaderOpen(false)}
+              aria-label="Close reader"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10"
+            >
+              ×
+            </button>
+            <p className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-white">
+              PDF reader
+            </p>
+            <a
+              href={downloadUrl!}
+              className="rounded-full bg-white px-3 py-1.5 text-[12px] font-semibold text-[#0b1020]"
+            >
+              Download
+            </a>
+          </header>
+          <iframe
+            title="PDF reader"
+            src={readUrl}
+            className="min-h-0 w-full flex-1 border-0 bg-neutral-900"
+          />
+        </div>
+      )}
     </main>
   )
 }
