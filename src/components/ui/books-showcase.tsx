@@ -149,6 +149,12 @@ export function BooksShowcase({
   }, []);
 
     useEffect(() => {
+    const open = uiMode === 'detail' || uiMode === 'opening';
+    document.body.classList.toggle('book-detail-open', open);
+    return () => document.body.classList.remove('book-detail-open');
+  }, [uiMode]);
+
+    useEffect(() => {
     if (!selectedCfg) {
       setOwnedEbookOrderId(null);
       setOwnedAudioOrderId(null);
@@ -1835,16 +1841,13 @@ export function BooksShowcase({
       </button>
 
       {showDetailPanel && (
-                <div
+        <div
           ref={dpRef}
           aria-live="polite"
-          className={`absolute right-[7%] top-[max(5.5rem,12%)] bottom-[max(1rem,6%)] z-[15] w-[min(560px,42%)] max-h-[calc(100%-6.5rem)] overflow-y-auto overflow-x-hidden overscroll-contain pr-1 [-webkit-overflow-scrolling:touch] pointer-events-auto @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-auto @max-[760px]:bottom-[max(5.5rem,8%)] @max-[760px]:w-[min(560px,92cqw)] @max-[760px]:max-h-[46%] @max-[760px]:-translate-x-1/2 @max-[760px]:translate-y-0 ${
-            panelVisible ? 'visible' : 'invisible delay-[500ms]'
-          }`}
+          className={`absolute right-[7%] top-1/2 z-[15] w-[min(560px,42%)] -translate-y-1/2 pointer-events-none @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-auto @max-[760px]:bottom-[3.5%] @max-[760px]:w-[min(560px,92cqw)] @max-[760px]:-translate-x-1/2 @max-[760px]:translate-y-0 ${panelVisible ? 'visible' : 'invisible delay-[500ms]'
+            }`}
         >
-          <h1
-            className={`m-0 max-w-full break-words text-[var(--bs-pink)] text-[clamp(28px,4.2cqw,64px)] font-extrabold leading-[1.05] tracking-[-0.02em] [overflow-wrap:anywhere] @max-[760px]:text-[clamp(24px,7cqw,40px)] ${dpChild(50)}`}
-          >
+          <h1 className={`m-0 text-[var(--bs-pink)] text-[clamp(52px,5.6cqw,92px)] font-extrabold leading-[0.98] tracking-[-0.015em] @max-[760px]:text-[clamp(36px,9.5cqw,54px)] ${dpChild(50)}`}>
             {selectedCfg?.title}
           </h1>
           <p className={`mt-[26px] max-w-[54ch] text-[var(--bs-lav)] text-[clamp(16px,1.25cqw,19px)] leading-[1.65] @max-[760px]:mt-4 @max-[760px]:line-clamp-4 @max-[760px]:text-[15px] ${dpChild(130)}`}>

@@ -156,7 +156,10 @@ export function NotchNavbar({
   return (
     <>
       <header
-        className={cn("fixed top-0 inset-x-0 z-50 h-16 flex px-0", className)}
+       className={cn(
+          "site-navbar fixed top-0 inset-x-0 z-50 h-16 flex px-0 transition-transform duration-300",
+          className,
+        )}
         {...props}
       >
         <div className="flex-1 h-10 bg-zinc-50 dark:bg-black z-20 relative min-w-0">

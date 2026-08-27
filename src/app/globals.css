@@ -142,6 +142,19 @@
   }
 }
 
+body.book-detail-open .site-footer {
+  display: none;
+}
+
+body.book-detail-open .site-navbar {
+  transform: translateY(-120%);
+  pointer-events: none;
+}
+
+body.book-detail-open .site-main-offset {
+  padding-top: 0;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

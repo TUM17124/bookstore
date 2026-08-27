@@ -2,11 +2,11 @@ import type { Metadata } from "next"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { NotchNavbar } from "@/components/ui/notch-navbar"
-import { BookmarksProvider } from '@/components/bookmarks-context';
-import { SiteFooter } from "@/components/site-footer";
+import { BookmarksProvider } from "@/components/bookmarks-context"
+import { SiteFooter } from "@/components/site-footer"
 
 export const metadata: Metadata = {
-  title: "Bookstore",
+  title: "PlugYard",
   description: "Shop books online",
   icons: {
     icon: "/logo.png",
@@ -23,13 +23,11 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-           
           <BookmarksProvider>
-          <NotchNavbar />
-          <div className="pt-20">{children}</div>
-          <SiteFooter />
+            <NotchNavbar />
+            <div className="site-main-offset pt-20">{children}</div>
+            <SiteFooter />
           </BookmarksProvider>
-          
         </ThemeProvider>
       </body>
     </html>
