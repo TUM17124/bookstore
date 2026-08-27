@@ -1886,24 +1886,6 @@ export function BooksShowcase({
   <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-10 bg-gradient-to-r from-background to-transparent" />
   <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-background to-transparent" />
 
-  <div className="flex w-max animate-marquee-left py-3">
-    {/* Repeat so the loop looks seamless */}
-    {[0, 1].map((i) => (
-      <p
-        key={i}
-        className="shrink-0 px-6 text-[13px] font-medium leading-snug text-foreground/75 whitespace-nowrap"
-      >
-        <span className="mr-3 font-semibold text-foreground">
-          Library support fee
-        </span>
-        Public-domain titles are free to read elsewhere. This small amount is a
-        convenience and support fee for PlugYard: hosting, secure checkout, and
-        keeping the library available so more readers can find relevant books.
-        Thank you for supporting the collection.
-        <span className="mx-8 text-foreground/25">·</span>
-      </p>
-    ))}
-  </div>
 </div>
             <div className={`mt-[26px] border-t border-[var(--bs-lav)]/[0.18] @max-[760px]:mt-4 ${dpChild(270)}`} />
 

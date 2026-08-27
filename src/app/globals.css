@@ -126,29 +126,9 @@
   }
 }
 
-.animate-marquee-left {
-  animation: marquee-left 18s linear infinite;
-}
 
-/* Faster — try 10s or 12s */
-.animate-marquee-left-fast {
+.animate-marquee-left {
   animation: marquee-left 10s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-marquee-left,
-  .animate-marquee-left-fast {
-    animation: none;
-  }
-}
-
-@keyframes marquee-left {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
-}
-
-.animate-marquee-left {
-  animation: marquee-left 28s linear infinite;
 }
 
 .animate-marquee-left:hover {
