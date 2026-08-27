@@ -1840,11 +1840,11 @@ export function BooksShowcase({
         &#10005;
       </button>
 
-       {showDetailPanel && (
-        <div
+ {showDetailPanel && (
+                <div
           ref={dpRef}
           aria-live="polite"
-          className={`absolute right-[5%] top-6 bottom-4 z-[15] flex w-[min(520px,40%)] flex-col justify-start pt-0 pointer-events-none @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-auto @max-[760px]:bottom-8 @max-[760px]:w-[min(560px,94cqw)] @max-[760px]:max-h-[48%] @max-[760px]:-translate-x-1/2 @max-[760px]:justify-end ${
+          className={`absolute right-[5%] top-12 bottom-4 z-[15] flex w-[min(520px,40%)] flex-col justify-start pt-2 pointer-events-none @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-auto @max-[760px]:bottom-3 @max-[760px]:w-[min(560px,94cqw)] @max-[760px]:max-h-[48%] @max-[760px]:-translate-x-1/2 @max-[760px]:justify-end ${
             panelVisible ? 'visible' : 'invisible delay-[500ms]'
           }`}
         >
@@ -1875,6 +1875,7 @@ export function BooksShowcase({
             <div className="h-4 w-px bg-[var(--bs-lav)]/[0.28]" />
             <div className="text-[13px] italic text-[#98a4d6]">{selectedCfg?.year}</div>
           </div>
+
           {/* Fast scrolling support notice */}
 <div
   className="relative mt-6 overflow-hidden rounded-2xl border border-foreground/10 bg-foreground/[0.04]"
