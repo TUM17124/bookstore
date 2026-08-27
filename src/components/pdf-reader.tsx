@@ -16,12 +16,11 @@ function markKey(url: string) {
 }
 
 export function PdfReader({ url }: { url: string }) {
-  const hostRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState('Loading…')
-  const [zoom, setZoom] = useState(2.4)
+  const [pages, setPages] = useState<string[]>([])
+  const [fontSize, setFontSize] = useState(28)
   const [page, setPage] = useState(1)
-  const [total, setTotal] = useState(0)
   const [marked, setMarked] = useState(0)
 
   useEffect(() => {
@@ -51,6 +50,7 @@ export function PdfReader({ url }: { url: string }) {
     ;(async () => {
       try {
         setStatus('Loading…')
+        setPages([])
         await loadScript()
         const res = await fetch(url)
         if (!res.ok) throw new Error('download failed')
@@ -58,48 +58,24 @@ export function PdfReader({ url }: { url: string }) {
         if (cancelled) return
 
         const pdf = await window.pdfjsLib!.getDocument({ data }).promise
-        const host = hostRef.current
-        if (!host) return
-        host.innerHTML = ''
-        setTotal(pdf.numPages)
-
-        const cssWidth = Math.min(
-          (host.clientWidth || Math.min(window.innerWidth, 900)) * zoom,
-          2200,
-        )
-        const dpr = Math.min(window.devicePixelRatio || 1, 3)
+        const extracted: string[] = []
 
         for (let i = 1; i <= pdf.numPages; i++) {
           const pdfPage = await pdf.getPage(i)
-          const base = pdfPage.getViewport({ scale: 1 })
-          const scale = (cssWidth / base.width) * dpr
-          const viewport = pdfPage.getViewport({ scale })
-
-          const canvas = document.createElement('canvas')
-          canvas.width = viewport.width
-          canvas.height = viewport.height
-          canvas.dataset.page = String(i)
-          canvas.style.width = `${Math.round((cssWidth / dpr))}px`
-          canvas.style.maxWidth = 'none'
-          canvas.style.height = 'auto'
-          canvas.style.display = 'block'
-          canvas.style.margin = '0 auto 20px'
-          canvas.style.filter = 'contrast(1.55) brightness(0.88)'
-          host.appendChild(canvas)
-
-          await pdfPage.render({
-            canvasContext: canvas.getContext('2d')!,
-            viewport,
-          }).promise
+          const content = await pdfPage.getTextContent()
+          const text = content.items
+            .map((item: { str?: string }) => item.str || '')
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+          extracted.push(text || `Page ${i}`)
           if (cancelled) return
         }
 
+        setPages(extracted)
         setStatus('')
         const saved = Number(localStorage.getItem(markKey(url)) || 0)
-        if (saved > 1) {
-          host.querySelector(`[data-page="${saved}"]`)?.scrollIntoView({ block: 'start' })
-          setPage(saved)
-        }
+        if (saved > 1) setPage(saved)
       } catch {
         if (!cancelled) setStatus('Could not open this book.')
       }
@@ -108,16 +84,24 @@ export function PdfReader({ url }: { url: string }) {
     return () => {
       cancelled = true
     }
-  }, [url, zoom])
+  }, [url])
+
+  useEffect(() => {
+    if (!pages.length) return
+    const saved = Number(localStorage.getItem(markKey(url)) || 0)
+    if (saved > 1) {
+      document.getElementById(`read-page-${saved}`)?.scrollIntoView({ block: 'start' })
+    }
+  }, [pages, url])
 
   function onScroll() {
     const root = scrollRef.current
-    const host = hostRef.current
-    if (!root || !host) return
-    const mid = root.scrollTop + root.clientHeight * 0.35
+    if (!root) return
+    const mid = root.scrollTop + 80
     let current = 1
-    host.querySelectorAll<HTMLCanvasElement>('canvas[data-page]').forEach((c) => {
-      if (c.offsetTop <= mid) current = Number(c.dataset.page || 1)
+    pages.forEach((_, i) => {
+      const el = document.getElementById(`read-page-${i + 1}`)
+      if (el && el.offsetTop <= mid) current = i + 1
     })
     setPage(current)
   }
@@ -132,39 +116,37 @@ export function PdfReader({ url }: { url: string }) {
   }
 
   function goToMark() {
-    hostRef.current?.querySelector(`[data-page="${marked}"]`)?.scrollIntoView({
-      block: 'start',
-    })
+    document.getElementById(`read-page-${marked}`)?.scrollIntoView({ block: 'start' })
     if (marked) setPage(marked)
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-black">
-      <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-white/10 px-2 py-2">
+    <div className="flex min-h-0 flex-1 flex-col bg-[#f4efe4]">
+      <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-black/10 bg-[#efe8d8] px-2 py-2">
         <button
           type="button"
-          onClick={() => setZoom((z) => Math.max(1.4, z - 0.35))}
-          className="rounded-full bg-white/10 px-3 py-1 text-sm font-semibold text-white"
+          onClick={() => setFontSize((n) => Math.max(18, n - 4))}
+          className="rounded-full bg-black/10 px-3 py-1 text-sm font-bold text-black"
         >
           A−
         </button>
-        <span className="min-w-[3.5rem] text-center text-xs text-white/60">
-          {Math.round(zoom * 100)}%
+        <span className="min-w-[3.5rem] text-center text-xs font-semibold text-black/60">
+          {fontSize}px
         </span>
         <button
           type="button"
-          onClick={() => setZoom((z) => Math.min(4.8, z + 0.35))}
-          className="rounded-full bg-white/10 px-3 py-1 text-sm font-semibold text-white"
+          onClick={() => setFontSize((n) => Math.min(56, n + 4))}
+          className="rounded-full bg-black/10 px-3 py-1 text-sm font-bold text-black"
         >
           A+
         </button>
-        <span className="text-xs text-white/60">
-          {page} / {total || '—'}
+        <span className="text-xs font-semibold text-black/60">
+          {page} / {pages.length || '—'}
         </span>
         <button
           type="button"
           onClick={markHere}
-          className="rounded-full bg-pink-400 px-3 py-1 text-sm font-semibold text-zinc-900"
+          className="rounded-full bg-pink-400 px-3 py-1 text-sm font-bold text-zinc-900"
         >
           Mark page {page}
         </button>
@@ -172,7 +154,7 @@ export function PdfReader({ url }: { url: string }) {
           <button
             type="button"
             onClick={goToMark}
-            className="rounded-full bg-white/10 px-3 py-1 text-sm font-semibold text-white"
+            className="rounded-full bg-black/10 px-3 py-1 text-sm font-bold text-black"
           >
             Go to mark ({marked})
           </button>
@@ -184,8 +166,24 @@ export function PdfReader({ url }: { url: string }) {
         onScroll={onScroll}
         className="min-h-0 flex-1 overflow-auto"
       >
-        {status ? <p className="p-6 text-sm text-white/50">{status}</p> : null}
-        <div ref={hostRef} className="px-0 py-3" />
+        {status ? (
+          <p className="p-6 text-sm font-semibold text-black/50">{status}</p>
+        ) : null}
+        <article className="mx-auto max-w-2xl px-4 py-6">
+          {pages.map((text, i) => (
+            <section key={i} id={`read-page-${i + 1}`} className="mb-10">
+              <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-black/40">
+                Page {i + 1}
+              </p>
+              <p
+                className="font-bold leading-snug text-black"
+                style={{ fontSize: `${fontSize}px` }}
+              >
+                {text}
+              </p>
+            </section>
+          ))}
+        </article>
       </div>
     </div>
   )
