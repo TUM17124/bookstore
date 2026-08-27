@@ -27,7 +27,6 @@ export default function RootLayout({
           <BookmarksProvider>
           <NotchNavbar />
           <div className="pt-20">{children}</div>
-          <div className="site-main-offset pt-20">{children}</div>
           <SiteFooter />
           </BookmarksProvider>
           
