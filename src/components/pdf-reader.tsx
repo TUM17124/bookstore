@@ -19,7 +19,7 @@ export function PdfReader({ url }: { url: string }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState('Loading…')
-  const [zoom, setZoom] = useState(1.55)
+  const [zoom, setZoom] = useState(2.4)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [marked, setMarked] = useState(0)
@@ -65,7 +65,7 @@ export function PdfReader({ url }: { url: string }) {
 
         const cssWidth = Math.min(
           (host.clientWidth || Math.min(window.innerWidth, 900)) * zoom,
-          1400,
+          2200,
         )
         const dpr = Math.min(window.devicePixelRatio || 1, 3)
 
@@ -79,10 +79,12 @@ export function PdfReader({ url }: { url: string }) {
           canvas.width = viewport.width
           canvas.height = viewport.height
           canvas.dataset.page = String(i)
-          canvas.style.width = '100%'
+          canvas.style.width = `${Math.round((cssWidth / dpr))}px`
+          canvas.style.maxWidth = 'none'
           canvas.style.height = 'auto'
           canvas.style.display = 'block'
-          canvas.style.marginBottom = '16px'
+          canvas.style.margin = '0 auto 20px'
+          canvas.style.filter = 'contrast(1.55) brightness(0.88)'
           host.appendChild(canvas)
 
           await pdfPage.render({
@@ -93,11 +95,9 @@ export function PdfReader({ url }: { url: string }) {
         }
 
         setStatus('')
-
         const saved = Number(localStorage.getItem(markKey(url)) || 0)
         if (saved > 1) {
-          const el = host.querySelector(`[data-page="${saved}"]`)
-          el?.scrollIntoView({ block: 'start' })
+          host.querySelector(`[data-page="${saved}"]`)?.scrollIntoView({ block: 'start' })
           setPage(saved)
         }
       } catch {
@@ -115,11 +115,9 @@ export function PdfReader({ url }: { url: string }) {
     const host = hostRef.current
     if (!root || !host) return
     const mid = root.scrollTop + root.clientHeight * 0.35
-    const canvases = host.querySelectorAll<HTMLCanvasElement>('canvas[data-page]')
     let current = 1
-    canvases.forEach((c) => {
-      const top = c.offsetTop
-      if (top <= mid) current = Number(c.dataset.page || 1)
+    host.querySelectorAll<HTMLCanvasElement>('canvas[data-page]').forEach((c) => {
+      if (c.offsetTop <= mid) current = Number(c.dataset.page || 1)
     })
     setPage(current)
   }
@@ -134,8 +132,9 @@ export function PdfReader({ url }: { url: string }) {
   }
 
   function goToMark() {
-    const el = hostRef.current?.querySelector(`[data-page="${marked}"]`)
-    el?.scrollIntoView({ block: 'start' })
+    hostRef.current?.querySelector(`[data-page="${marked}"]`)?.scrollIntoView({
+      block: 'start',
+    })
     if (marked) setPage(marked)
   }
 
@@ -144,7 +143,7 @@ export function PdfReader({ url }: { url: string }) {
       <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-white/10 px-2 py-2">
         <button
           type="button"
-          onClick={() => setZoom((z) => Math.max(1, z - 0.2))}
+          onClick={() => setZoom((z) => Math.max(1.4, z - 0.35))}
           className="rounded-full bg-white/10 px-3 py-1 text-sm font-semibold text-white"
         >
           A−
@@ -154,16 +153,14 @@ export function PdfReader({ url }: { url: string }) {
         </span>
         <button
           type="button"
-          onClick={() => setZoom((z) => Math.min(2.6, z + 0.2))}
+          onClick={() => setZoom((z) => Math.min(4.8, z + 0.35))}
           className="rounded-full bg-white/10 px-3 py-1 text-sm font-semibold text-white"
         >
           A+
         </button>
-
         <span className="text-xs text-white/60">
           {page} / {total || '—'}
         </span>
-
         <button
           type="button"
           onClick={markHere}
@@ -182,9 +179,13 @@ export function PdfReader({ url }: { url: string }) {
         )}
       </div>
 
-      <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-auto">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="min-h-0 flex-1 overflow-auto"
+      >
         {status ? <p className="p-6 text-sm text-white/50">{status}</p> : null}
-        <div ref={hostRef} className="mx-auto max-w-5xl px-1 py-3" />
+        <div ref={hostRef} className="px-0 py-3" />
       </div>
     </div>
   )
