@@ -19,7 +19,7 @@ export function PdfReader({ url }: { url: string }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState('Loading…')
   const [pages, setPages] = useState<string[]>([])
-  const [fontSize, setFontSize] = useState(28)
+  const [fontSize, setFontSize] = useState(18)
   const [page, setPage] = useState(1)
   const [marked, setMarked] = useState(0)
 
@@ -125,7 +125,7 @@ export function PdfReader({ url }: { url: string }) {
       <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-black/10 bg-[#efe8d8] px-2 py-2">
         <button
           type="button"
-          onClick={() => setFontSize((n) => Math.max(18, n - 4))}
+          onClick={() => setFontSize((n) => Math.max(8, n - 4))}
           className="rounded-full bg-black/10 px-3 py-1 text-sm font-bold text-black"
         >
           A−
