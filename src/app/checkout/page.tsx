@@ -37,46 +37,46 @@ function CheckoutInner() {
   const loginHref = `/login?next=${encodeURIComponent(checkoutPath)}`
 
   async function onPay(e: React.FormEvent) {
-  e.preventDefault()
-  if (!bookId || !email.trim()) return
-  setBusy(true)
-  setError('')
-  try {
-    const trimmed = email.trim().toLowerCase()
-
-    const res = await createCheckout({
-      book_id: Number(bookId),
-      product_type: type,
-      email: trimmed,
-    })
-
-    if (!res.checkout_url) {
-      setError('No checkout URL returned')
-      setBusy(false)
-      return
-    }
-
-    // Save for success page (guests have no localStorage user)
-    sessionStorage.setItem('checkout_email', trimmed)
-    sessionStorage.setItem('checkout_order_hint', String(res.order_id))
-
-    let url = res.checkout_url
+    e.preventDefault()
+    if (!bookId || !email.trim()) return
+    setBusy(true)
+    setError('')
     try {
-      const u = new URL(url, window.location.origin)
-      if (u.pathname.includes('/checkout/success')) {
-        u.searchParams.set('email', trimmed)
-        url = u.toString()
-      }
-    } catch {
-      // Stripe hosted URL — email stays in sessionStorage only
-    }
+      const trimmed = email.trim().toLowerCase()
 
-    window.location.href = url
-  } catch (err) {
-    setError(err instanceof Error ? err.message : 'Checkout failed')
-    setBusy(false)
+      const res = await createCheckout({
+        book_id: Number(bookId),
+        product_type: type,
+        email: trimmed,
+      })
+
+      if (!res.checkout_url) {
+        setError('No checkout URL returned')
+        setBusy(false)
+        return
+      }
+
+      sessionStorage.setItem('checkout_email', trimmed)
+      sessionStorage.setItem('checkout_order_hint', String(res.order_id))
+
+      let url = res.checkout_url
+      try {
+        const u = new URL(url, window.location.origin)
+        if (u.pathname.includes('/checkout/success')) {
+          u.searchParams.set('email', trimmed)
+          url = u.toString()
+        }
+      } catch {
+        // hosted payment URL
+      }
+
+      window.location.href = url
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Checkout failed')
+      setBusy(false)
+    }
   }
-}
+
   return (
     <main className="mx-auto flex min-h-[70vh] max-w-lg flex-col justify-center px-4 py-12">
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground/40">
@@ -102,9 +102,10 @@ function CheckoutInner() {
           Email address <span className="text-red-500">*</span>
         </label>
         <p className="mt-1 text-[13px] leading-relaxed text-foreground/50">
-          Required for your receipt and a secure link to download your{' '}
-          {productLabel}. We use it only for this order and related support—not
-          for marketing.
+          This email <strong className="font-semibold text-foreground/75">links your payment to this order</strong>.
+          Use it if you need help with a complaint, a failed payment, or a download problem.
+          Sign in later with the <strong className="font-semibold text-foreground/75">same address</strong> to
+          Read / Download or re-download audio without paying again. We do not use it for marketing.
         </p>
         <input
           id="checkout-email"
@@ -117,7 +118,6 @@ function CheckoutInner() {
           className="mt-3 w-full rounded-xl border border-foreground/15 bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-sky-500/30"
         />
 
-        {/* Guest: Create account button + Log in link */}
         {mounted && !loggedIn && (
           <div className="mt-4 space-y-3 rounded-2xl border border-foreground/10 bg-foreground/[0.03] px-4 py-4">
             <div>
@@ -125,26 +125,23 @@ function CheckoutInner() {
                 Guest checkout
               </p>
               <p className="mt-1.5 text-[13px] leading-relaxed text-foreground/60">
-                You can pay with your email only—no account required. We use this
-                address for your receipt, download link, and order support.
+                You can pay with email only. Keep this address—it is how we match
+                your payment if something goes wrong, and how we unlock downloads
+                after you log in.
               </p>
             </div>
 
             <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 px-3 py-3">
               <p className="text-[13px] leading-relaxed text-foreground/70">
-                Optional: create a free account to save bookmarks, leave reviews,
-                and find past downloads later.
+                Optional: create a free account with this same email to save
+                bookmarks, leave reviews, and re-download later.
               </p>
-
-              {/* CREATE ACCOUNT BUTTON */}
               <Link
                 href={signupHref}
                 className="mt-3 inline-flex w-full items-center justify-center rounded-full bg-sky-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-600"
               >
                 Create a free account
               </Link>
-
-              {/* LOG IN LINK */}
               <p className="mt-3 text-center text-[12px] text-foreground/45">
                 Already have an account?{' '}
                 <Link
@@ -160,8 +157,8 @@ function CheckoutInner() {
 
         {mounted && loggedIn && (
           <p className="mt-4 text-[13px] text-foreground/50">
-            You are signed in. This purchase can be linked to your account; the
-            download will still go to the email above.
+            You are signed in. Use your account email here so this payment stays
+            linked for support and re-downloads.
           </p>
         )}
 
