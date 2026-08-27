@@ -44,7 +44,10 @@ export function PdfReader({ url }: { url: string }) {
         if (!host) return
         host.innerHTML = ''
 
-                const cssWidth = host.clientWidth || Math.min(window.innerWidth, 720)
+                const cssWidth = Math.min(
+          (host.clientWidth || Math.min(window.innerWidth, 860)) * 1.18,
+          1000,
+        )
         const dpr = Math.min(window.devicePixelRatio || 1, 3)
 
         for (let i = 1; i <= pdf.numPages; i++) {
@@ -81,10 +84,10 @@ export function PdfReader({ url }: { url: string }) {
     }
   }, [url])
 
-  return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-[#111]">
-      {status ? <p className="p-6 text-sm text-white/60">{status}</p> : null}
-      <div ref={hostRef} className="mx-auto max-w-3xl px-2 py-3" />
+    return (
+    <div className="min-h-0 flex-1 overflow-y-auto bg-black">
+      {status ? <p className="p-6 text-sm text-white/50">{status}</p> : null}
+      <div ref={hostRef} className="mx-auto max-w-4xl px-1 py-2" />
     </div>
   )
 }
