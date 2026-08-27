@@ -95,7 +95,7 @@ function HomeInner() {
 
   if (loading) {
     return (
-      <main className="-mt-20 flex h-[100dvh] items-center justify-center text-sm text-muted-foreground">
+      <main className="flex h-[calc(100dvh-4rem)] items-center justify-center text-sm text-muted-foreground">
         Loading books…
       </main>
     )
@@ -103,7 +103,7 @@ function HomeInner() {
 
   if (books.length === 0) {
     return (
-      <main className="-mt-20 flex h-[100dvh] flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
+      <main className="flex h-[calc(100dvh-4rem)] flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
         <p>
           {error
             ? "Could not load books. Is the API up?"
@@ -123,7 +123,7 @@ function HomeInner() {
   }
 
   return (
-    <main className="-mt-20 h-[100dvh] min-h-0 overflow-hidden">
+    <main className="h-[calc(100dvh-4rem)] min-h-0 overflow-hidden">
       <div className="h-full w-full">
         <BooksShowcase
           books={books}
@@ -148,7 +148,7 @@ export default function Home() {
   return (
     <Suspense
       fallback={
-        <main className="-mt-20 flex h-[100dvh] items-center justify-center text-sm text-muted-foreground">
+        <main className="flex h-[calc(100dvh-4rem)] items-center justify-center text-sm text-muted-foreground">
           Loading…
         </main>
       }
