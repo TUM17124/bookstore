@@ -1855,7 +1855,7 @@ export function BooksShowcase({
           </h1>
 
           <p
-            className={`mt-3 line-clamp-3 max-w-[54ch] text-[var(--bs-lav)] text-[clamp(13px,1.1cqw,16px)] leading-[1.45] @max-[760px]:mt-2 @max-[760px]:line-clamp-2 @max-[760px]:text-[13px] ${dpChild(130)}`}
+            className={`mt-3 line-clamp-5 max-w-[54ch] text-[var(--bs-lav)] text-[clamp(13px,1.1cqw,16px)] leading-[1.45] @max-[760px]:mt-2 @max-[760px]:line-clamp-2 @max-[760px]:text-[13px] ${dpChild(130)}`}
           >
             {selectedCfg?.desc}
           </p>
