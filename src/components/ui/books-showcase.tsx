@@ -1932,18 +1932,14 @@ export function BooksShowcase({
           <div
             className={`pointer-events-auto mt-4 inline-flex max-w-full flex-wrap items-center gap-[10px] rounded-full bg-[#1a2140] p-[10px] shadow-[0_24px_60px_rgba(0,0,0,0.45)] @max-[760px]:mt-3 @max-[760px]:rounded-[28px] ${dpChild(330)}`}
           >
-            {(() => {
+           {(() => {
   const isFree = selectedCfg?.isFree === true
-  const canReadEbook =
-    isFree || !!ownedEbookOrderId
-  const canGetEbook =
-    isFree ||
-    !!ownedEbookOrderId ||
-    selectedCfg?.hasEbook !== false
-  const canGetAudio =
-    (isFree && selectedCfg?.hasAudiobook === true) ||
-    !!ownedAudioOrderId ||
-    selectedCfg?.hasAudiobook === true
+  const hasEbook = selectedCfg?.hasEbook !== false
+  const hasAudio = selectedCfg?.hasAudiobook === true
+
+  const canReadEbook = hasEbook && (isFree || !!ownedEbookOrderId)
+  const canGetEbook = hasEbook && (isFree || !!ownedEbookOrderId || !isFree)
+  const canGetAudio = hasAudio && (isFree || !!ownedAudioOrderId || !isFree)
 
   return (
     <>
@@ -1951,13 +1947,10 @@ export function BooksShowcase({
         type="button"
         disabled={!canReadEbook}
         onClick={() => {
-          if (!selectedCfg) return
-          if (isFree) {
+          if (!selectedCfg || !hasEbook) return
+          if (isFree || (ownedEbookOrderId && buyerEmail)) {
             setReaderOpen(true)
-            return
           }
-          if (!ownedEbookOrderId || !buyerEmail) return
-          setReaderOpen(true)
         }}
         className="relative inline-flex h-[54px] items-center gap-[10px] rounded-full bg-[var(--bs-cream)] px-[26px] text-[16.5px] font-semibold text-[var(--bs-navy)] transition-[transform,filter,opacity] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-105 disabled:pointer-events-none disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-5 @max-[760px]:text-[15px]"
       >
@@ -1978,29 +1971,28 @@ export function BooksShowcase({
 
       <button
         type="button"
-        disabled={!!buyLoading || !canGetEbook}
+        disabled={!!buyLoading || !hasEbook}
         onClick={() => {
-          if (!selectedCfg || buyLoading) return
+          if (!selectedCfg || buyLoading || !hasEbook) return
           if (isFree) {
-            window.location.href = freeBookUrl(selectedCfg.id, "ebook", false)
+            window.location.href = freeBookUrl(selectedCfg.id, 'ebook', false)
             return
           }
           if (ownedEbookOrderId && buyerEmail) {
             window.location.href = downloadOrderUrl(ownedEbookOrderId, buyerEmail)
             return
           }
-          if (selectedCfg.hasEbook === false) return
-          setBuyLoading("ebook")
+          setBuyLoading('ebook')
           const q = new URLSearchParams({
             bookId: selectedCfg.id,
-            type: "ebook",
+            type: 'ebook',
             title: selectedCfg.title,
           })
           window.location.href = `/checkout?${q}`
         }}
         className="relative inline-flex h-[54px] min-w-[120px] items-center justify-center gap-2 rounded-full bg-[var(--bs-pink)] px-6 text-[16.5px] font-semibold text-[var(--bs-navy)] transition-[transform,filter,opacity] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-105 disabled:pointer-events-none disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-5 @max-[760px]:text-[15px]"
       >
-        {buyLoading === "ebook" ? (
+        {buyLoading === 'ebook' ? (
           <>
             <span
               className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--bs-navy)]/25 border-t-[var(--bs-navy)]"
@@ -2010,8 +2002,8 @@ export function BooksShowcase({
           </>
         ) : (
           <span className="relative inline-block">
-            {isFree || ownedEbookOrderId ? "Download" : "Buy Now"}
-            {!isFree && !ownedEbookOrderId && selectedCfg?.hasEbook === false && (
+            {isFree || ownedEbookOrderId ? 'Download' : 'Buy Now'}
+            {!hasEbook && (
               <span
                 className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500"
                 aria-hidden
@@ -2023,32 +2015,28 @@ export function BooksShowcase({
 
       <button
         type="button"
-        disabled={
-          !!buyLoading ||
-          (!isFree && !ownedAudioOrderId && selectedCfg?.hasAudiobook !== true)
-        }
+        disabled={!!buyLoading || !hasAudio}
         onClick={() => {
-          if (!selectedCfg || buyLoading) return
-          if (isFree && selectedCfg.hasAudiobook === true) {
-            window.location.href = freeBookUrl(selectedCfg.id, "audiobook", false)
+          if (!selectedCfg || buyLoading || !hasAudio) return
+          if (isFree) {
+            window.location.href = freeBookUrl(selectedCfg.id, 'audiobook', false)
             return
           }
           if (ownedAudioOrderId && buyerEmail) {
             window.location.href = downloadOrderUrl(ownedAudioOrderId, buyerEmail)
             return
           }
-          if (selectedCfg.hasAudiobook !== true) return
-          setBuyLoading("audiobook")
+          setBuyLoading('audiobook')
           const q = new URLSearchParams({
             bookId: selectedCfg.id,
-            type: "audiobook",
+            type: 'audiobook',
             title: selectedCfg.title,
           })
           window.location.href = `/checkout?${q}`
         }}
         className="relative inline-flex h-[54px] min-w-[140px] items-center justify-center gap-2 rounded-full bg-[#10152c] px-5 text-[16.5px] font-semibold text-white ring-1 ring-[var(--bs-lav)]/25 transition-[transform,filter,opacity] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-110 disabled:pointer-events-none disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-4 @max-[760px]:text-[15px]"
       >
-        {buyLoading === "audiobook" ? (
+        {buyLoading === 'audiobook' ? (
           <>
             <span
               className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/25 border-t-white"
@@ -2058,15 +2046,13 @@ export function BooksShowcase({
           </>
         ) : (
           <span className="relative inline-block">
-            {isFree || ownedAudioOrderId ? "Download audio" : "Buy Audiobook"}
-            {!isFree &&
-              !ownedAudioOrderId &&
-              selectedCfg?.hasAudiobook !== true && (
-                <span
-                  className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500"
-                  aria-hidden
-                />
-              )}
+            {isFree || ownedAudioOrderId ? 'Download audio' : 'Buy Audiobook'}
+            {!hasAudio && (
+              <span
+                className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500"
+                aria-hidden
+              />
+            )}
           </span>
         )}
       </button>
@@ -2146,33 +2132,35 @@ export function BooksShowcase({
 
         
         {readerOpen &&
-        ownedEbookOrderId &&
-        buyerEmail &&
-        typeof document !== 'undefined' &&
-        createPortal(
-          <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
-            <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
-              <button
-                type="button"
-                onClick={() => setReaderOpen(false)}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10"
-              >
-                ×
-              </button>
-              <h2 className="min-w-0 flex-1 truncate text-[16px] font-bold text-white">
-                {selectedCfg?.title}
-              </h2>
-            </header>
-            <PdfReader
-  url={
-    selectedCfg?.isFree
-      ? freeBookUrl(selectedCfg.id, "ebook", true)
-      : `${downloadOrderUrl(ownedEbookOrderId!, buyerEmail!)}&inline=1`
-  }
-/>
-          </div>,
-          document.body,
-        )}
+  selectedCfg &&
+  typeof document !== 'undefined' &&
+  (selectedCfg.isFree
+    ? selectedCfg.hasEbook !== false
+    : !!(ownedEbookOrderId && buyerEmail)) &&
+  createPortal(
+    <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
+        <button
+          type="button"
+          onClick={() => setReaderOpen(false)}
+          className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10"
+        >
+          ×
+        </button>
+        <h2 className="min-w-0 flex-1 truncate text-[16px] font-bold text-white">
+          {selectedCfg.title}
+        </h2>
+      </header>
+      <PdfReader
+        url={
+          selectedCfg.isFree
+            ? freeBookUrl(selectedCfg.id, 'ebook', true)
+            : `${downloadOrderUrl(ownedEbookOrderId!, buyerEmail!)}&inline=1`
+        }
+      />
+    </div>,
+    document.body,
+  )}
     </div>
   );
 }
