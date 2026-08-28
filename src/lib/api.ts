@@ -22,6 +22,9 @@ export type ApiBook = {
   category?: string
   price?: number
   stock?: number
+  hasEbook?: boolean
+  hasAudiobook?: boolean
+  isFree?: boolean
 }
 
 export type Paginated<T> = {
@@ -105,6 +108,16 @@ export async function confirmOrderPayment(
     throw new Error(err.error || "Confirm failed")
   }
   return res.json()
+}
+
+export function freeBookUrl(
+  bookId: string | number,
+  type: "ebook" | "audiobook" = "ebook",
+  inline = false,
+) {
+  const q = new URLSearchParams({ type })
+  if (inline) q.set("inline", "1")
+  return `${API}/books/${bookId}/free/?${q}`
 }
 
 export async function getOrder(orderId: string, email?: string) {

@@ -50,6 +50,7 @@ function apiBookToCfg(b: ApiBook): BookCfg {
     backBg: b.backBg,
     backInk: b.backInk,
     chapters: b.chapters,
+    isFree: !!b.isFree,
   };
 }
 

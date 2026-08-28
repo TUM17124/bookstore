@@ -33,6 +33,7 @@ function toCfg(b: /* ApiBook */ any): BookCfg {
     hasEbook:
       b.hasEbook !== false && b.hasEbook !== undefined ? !!b.hasEbook : true,
     hasAudiobook: !!b.hasAudiobook,
+    isFree: !!b.isFree,
   }
 }
 
