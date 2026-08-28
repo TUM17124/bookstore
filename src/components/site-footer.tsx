@@ -4,8 +4,8 @@ import { BookOpen, Mail } from "lucide-react"
 const policyLinks = [
   { href: "/terms", label: "Terms & Conditions" },
   { href: "/terms-of-use", label: "Terms of Use" },
+   { href: "/privacy", label: "Privacy Policy" },
   { href: "/refund-policy", label: "Refund Policy" },
-  { href: "/privacy", label: "Privacy Policy" },
 ]
 
 const browseLinks = [
