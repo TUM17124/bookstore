@@ -50,14 +50,14 @@ export async function getPurchases(email: string): Promise<{
 }> {
   if (!email) return { ebooks: [], audiobooks: [] }
   const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/orders/purchases/?email=${encodeURIComponent(email)}`,
+    `${API}/orders/purchases/?email=${encodeURIComponent(email)}`,
   )
   if (!res.ok) return { ebooks: [], audiobooks: [] }
   return res.json()
 }
 
 export function downloadOrderUrl(orderId: number, email: string) {
-  return `${process.env.NEXT_PUBLIC_API_URL}/orders/${orderId}/download/?email=${encodeURIComponent(email)}`
+  return `${API}/orders/${orderId}/download/?email=${encodeURIComponent(email)}`
 }
 
 export async function getBooks(params?: {
@@ -66,20 +66,18 @@ export async function getBooks(params?: {
   search?: string
   page?: number
 }): Promise<Paginated<ApiBook> | ApiBook[]> {
-  const API = process.env.NEXT_PUBLIC_API_URL
-  if (!API) throw new Error("NEXT_PUBLIC_API_URL is not set")
+  if (!API) throw new Error('NEXT_PUBLIC_API_URL is not set')
 
   const q = new URLSearchParams()
-  if (params?.featured) q.set("featured", "1")
-  if (params?.category) q.set("category", params.category)
-  if (params?.search) q.set("search", params.search)
-  if (params?.page) q.set("page", String(params.page))
+  if (params?.featured) q.set('featured', '1')
+  if (params?.category) q.set('category', params.category)
+  if (params?.search) q.set('search', params.search)
+  if (params?.page) q.set('page', String(params.page))
 
   const qs = q.toString()
-  const url = `${API}/books/${qs ? `?${qs}` : ""}`
-
-  const res = await fetch(url) // no next: { revalidate }
-  if (!res.ok) throw new Error("Failed to load books")
+  const url = `${API}/books/${qs ? `?${qs}` : ''}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error('Failed to load books')
   return res.json()
 }
 
@@ -99,24 +97,24 @@ export async function confirmOrderPayment(
   payload: { reference?: string; email: string },
 ) {
   const res = await fetch(`${API}/orders/${orderId}/confirm/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.error || "Confirm failed")
+    throw new Error((err as { error?: string }).error || 'Confirm failed')
   }
   return res.json()
 }
 
 export function freeBookUrl(
   bookId: string | number,
-  type: "ebook" | "audiobook" = "ebook",
+  type: 'ebook' | 'audiobook' = 'ebook',
   inline = false,
 ) {
   const q = new URLSearchParams({ type })
-  if (inline) q.set("inline", "1")
+  if (inline) q.set('inline', '1')
   return `${API}/books/${bookId}/free/?${q}`
 }
 
@@ -133,6 +131,10 @@ export function getToken(): string | null {
 export function setTokens(access: string, refresh?: string) {
   localStorage.setItem('access_token', access)
   if (refresh) localStorage.setItem('refresh_token', refresh)
+}
+
+export function setToken(access: string) {
+  setTokens(access)
 }
 
 export function clearTokens() {
@@ -163,17 +165,93 @@ export async function api<T = unknown>(
   return data as T
 }
 
-export async function register(email: string, password: string, name?: string) {
+export async function register(
+  email: string,
+  password: string,
+  name = '',
+  confirmPassword = '',
+) {
   return api('/auth/register/', {
     method: 'POST',
-    body: JSON.stringify({ email, password, name: name || '' }),
+    body: JSON.stringify({
+      email,
+      password,
+      confirm_password: confirmPassword || password,
+      name,
+    }),
   })
+}
+
+export async function verifyEmail(email: string, code: string) {
+  const data = await api<{
+    access?: string
+    refresh?: string
+    user?: { email?: string; name?: string }
+  }>('/auth/verify-email/', {
+    method: 'POST',
+    body: JSON.stringify({ email, code }),
+  })
+  if (data.access) setTokens(data.access, data.refresh)
+  return data
+}
+
+export async function resendCode(
+  email: string,
+  purpose: 'verify' | 'reset' = 'verify',
+) {
+  return api('/auth/resend-code/', {
+    method: 'POST',
+    body: JSON.stringify({ email, purpose }),
+  })
+}
+
+export async function forgotPassword(email: string) {
+  return api('/auth/forgot-password/', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+export async function resetPassword(
+  email: string,
+  code: string,
+  password: string,
+  confirmPassword: string,
+) {
+  const data = await api<{
+    access?: string
+    refresh?: string
+    user?: { email?: string; name?: string }
+  }>('/auth/reset-password/', {
+    method: 'POST',
+    body: JSON.stringify({
+      email,
+      code,
+      password,
+      confirm_password: confirmPassword,
+    }),
+  })
+  if (data.access) setTokens(data.access, data.refresh)
+  return data
+}
+
+export async function googleLogin(credential: string) {
+  const data = await api<{
+    access?: string
+    refresh?: string
+    user?: { email?: string; name?: string }
+  }>('/auth/google/', {
+    method: 'POST',
+    body: JSON.stringify({ credential }),
+  })
+  if (data.access) setTokens(data.access, data.refresh)
+  return data
 }
 
 export async function login(email: string, password: string) {
   const data = await api<{ access: string; refresh: string }>('/auth/login/', {
     method: 'POST',
-    body: JSON.stringify({ username: email, password }),
+    body: JSON.stringify({ username: email, email, password }),
   })
   setTokens(data.access, data.refresh)
   return data
