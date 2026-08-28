@@ -185,12 +185,16 @@ function CheckoutInner() {
         </button>
       </form>
 
-      <p className="mt-6 text-center text-[12px] text-foreground/40">
+            <p className="mt-6 text-center text-[12px] text-foreground/40">
         By continuing you agree to our{' '}
         <Link href="/terms" className="underline hover:text-foreground/70">
           Terms
-        </Link>{' '}
-        and{' '}
+        </Link>
+        ,{' '}
+        <Link href="/privacy" className="underline hover:text-foreground/70">
+          Privacy
+        </Link>
+        {' '}and{' '}
         <Link
           href="/refund-policy"
           className="underline hover:text-foreground/70"
