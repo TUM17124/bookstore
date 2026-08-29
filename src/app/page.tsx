@@ -69,14 +69,11 @@ function HomeInner() {
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
-  const [isPhone, setIsPhone] = useState(false)
   const busy = useRef(false)
   const pageRef = useRef(1)
   const hasMoreRef = useRef(true)
 
-  useEffect(() => {
-    setIsPhone(window.matchMedia("(max-width: 760px)").matches)
-  }, [])
+  
 
   const loadPage = useCallback(
     async (p: number, replace: boolean) => {
@@ -104,7 +101,7 @@ function HomeInner() {
         }
       } finally {
         busy.current = false
-        setLoading(false)
+          if (replace) setLoading(false)
       }
     },
     [q, category, selectedBookId],
@@ -137,11 +134,6 @@ function HomeInner() {
     }
   }, [loading, loadPage, q, category])
 
-  const shelfBooks = isPhone ? books.slice(0, Math.max(3, books.length)) : books
-  // phone: first paint is whatever has arrived; after page 1 that is usually 6–12
-  // we still slice nothing extra once loaded — parent already pages.
-  // Keep a hard first window of 6 only until more than 6 exist:
-  const shown = isPhone ? books.slice(0, Math.max(3, Math.min(books.length, books.length))) : books
 
   if (loading) {
     return (
@@ -179,8 +171,8 @@ function HomeInner() {
     <main className="home-shelf">
       <OfferMarquee />
       <div className="home-shelf-stage">
-        <BooksShowcase
-          books={isPhone ? books.slice(0, Math.max(3, books.length)) : books}
+                <BooksShowcase
+          books={books}
           heroTitle={selectedBookId || q ? "Results" : "Books"}
           navTitle={
             selectedBookId
