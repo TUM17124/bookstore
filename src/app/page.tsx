@@ -67,9 +67,16 @@ function HomeInner() {
   const [books, setBooks] = useState<BookCfg[]>([])
   const [error, setError] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+  const [isPhone, setIsPhone] = useState(false)
   const busy = useRef(false)
   const pageRef = useRef(1)
   const hasMoreRef = useRef(true)
+
+  useEffect(() => {
+    setIsPhone(window.matchMedia("(max-width: 760px)").matches)
+  }, [])
 
   const loadPage = useCallback(
     async (p: number, replace: boolean) => {
@@ -82,6 +89,8 @@ function HomeInner() {
           !Array.isArray(data) && !!(data as Paginated<ApiBook>).next
         hasMoreRef.current = more
         pageRef.current = p
+        setHasMore(more)
+        setPage(p)
         setBooks((prev) => {
           if (replace) return orderWithSelected(list, selectedBookId)
           const seen = new Set(prev.map((b) => b.id))
@@ -95,7 +104,7 @@ function HomeInner() {
         }
       } finally {
         busy.current = false
-        if (replace) setLoading(false)
+        setLoading(false)
       }
     },
     [q, category, selectedBookId],
@@ -104,11 +113,13 @@ function HomeInner() {
   useEffect(() => {
     setLoading(true)
     setError(false)
+    setHasMore(true)
     hasMoreRef.current = true
     pageRef.current = 1
     void loadPage(1, true)
   }, [loadPage])
 
+  // Keep fetching the next pages in the background (phone + desktop)
   useEffect(() => {
     if (loading) return
     let stop = false
@@ -125,6 +136,12 @@ function HomeInner() {
       stop = true
     }
   }, [loading, loadPage, q, category])
+
+  const shelfBooks = isPhone ? books.slice(0, Math.max(3, books.length)) : books
+  // phone: first paint is whatever has arrived; after page 1 that is usually 6–12
+  // we still slice nothing extra once loaded — parent already pages.
+  // Keep a hard first window of 6 only until more than 6 exist:
+  const shown = isPhone ? books.slice(0, Math.max(3, Math.min(books.length, books.length))) : books
 
   if (loading) {
     return (
@@ -163,7 +180,7 @@ function HomeInner() {
       <OfferMarquee />
       <div className="home-shelf-stage">
         <BooksShowcase
-          books={books}
+          books={isPhone ? books.slice(0, Math.max(3, books.length)) : books}
           heroTitle={selectedBookId || q ? "Results" : "Books"}
           navTitle={
             selectedBookId

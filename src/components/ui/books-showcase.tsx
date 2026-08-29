@@ -128,11 +128,6 @@ export function BooksShowcase({
     onNearEndRef.current = onNearEnd;
   }, [onNearEnd]);
 
-    const booksRef = useRef(books);
-  useEffect(() => {
-    booksRef.current = books;
-  }, [books]);
-
   const [uiMode, setUiMode] = useState<'hero' | 'opening' | 'detail' | 'closing'>('hero');
   const [selectedCfg, setSelectedCfg] = useState<BookCfg | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -225,7 +220,6 @@ export function BooksShowcase({
       window.matchMedia('(max-width: 760px)').matches ||
       window.matchMedia('(pointer: coarse)').matches;
     const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
-        const listNow = () => booksRef.current;
 
     class Spring {
       v: number;
@@ -639,9 +633,9 @@ export function BooksShowcase({
     }
 
     // Book construction
-          const VISIBLE = 3;
-    const totalN = () => listNow().length;
-    
+          const N = books.length;
+    const VISIBLE = Math.min(3, N);
+
     const W = 1.42,
       H = 2.14,
       T = 0.34,
@@ -832,7 +826,7 @@ export function BooksShowcase({
         drag: new Spring(0, 160, 16),
       };
 
-            const b: Book = {
+      const b: Book = {
         cfg,
         index,
         root,
@@ -859,10 +853,11 @@ export function BooksShowcase({
         orbXs: new Spring(0, 60, 12),
         exit: null,
       };
-      bookInstances[index] = b;
+      bookInstances.push(b);
       return b;
     }
-            
+            books.forEach(buildBook);
+    const bookByHit = (m: THREE.Object3D) => bookInstances.find((b) => b.hit === m)!;
 
     // Floating leaves (detail view)
     const leaves = {
@@ -1006,19 +1001,6 @@ export function BooksShowcase({
       b.slotScale = slot.s;
     }
 
-
-            function applyMode() {
-      if (state.mode === 'hero' || state.mode === 'closing') {
-        currentWindow.forEach((bi, i) => {
-          const slot = SLOTS.hero[i];
-          const book = bookInstances[bi];
-          if (slot && book) setTargets(book, slot);
-        });
-      } else if (state.selected) {
-        setTargets(state.selected, SLOTS.detail!);
-      }
-    }
-
     const EASE = {
       hold: () => 1,
       outQuad: (t: number) => 1 - (1 - t) * (1 - t),
@@ -1078,7 +1060,7 @@ export function BooksShowcase({
     }
 
     // carousel: which VISIBLE-sized window of `bookInstances` sits in the 3 hero slots 
-           function windowIndices(start: number, total: number, count: number) {
+        function windowIndices(start: number, total: number, count: number) {
       const arr: number[] = [];
       for (let i = 0; i < count; i++) {
         const idx = start + i;
@@ -1086,40 +1068,28 @@ export function BooksShowcase({
       }
       return arr;
     }
-
-    function ensureBook(index: number): Book | undefined {
-      if (index < 0) return undefined;
-      if (bookInstances[index]) return bookInstances[index];
-      const cfg = listNow()[index];
-      if (!cfg) return undefined;
-      const b = buildBook(cfg, index);
-      bookInstances[index] = b;
-      b.root.visible = false;
-      return b;
-    }
-
-    const firstN = Math.min(VISIBLE, listNow().length);
-    for (let i = 0; i < firstN; i++) ensureBook(i);
-
-    const bookByHit = (m: THREE.Object3D) =>
-      bookInstances.find((b) => b && b.hit === m)!;
-    
-        let carouselStart = 0;
-    let currentWindow: number[] = windowIndices(0, totalN(), Math.min(VISIBLE, totalN()));
+    let carouselStart = 0;
+    let currentWindow: number[] = windowIndices(0, N, VISIBLE);
     let carouselBusy = false;
 
     function rebuildHitMeshes() {
       hitMeshes.length = 0;
-      currentWindow.forEach((bi) => {
-        const b = bookInstances[bi];
-        if (b) hitMeshes.push(b.hit);
-      });
+      currentWindow.forEach((bi) => hitMeshes.push(bookInstances[bi].hit));
     }
 
-    function shiftCarousel(dir: 1 | -1) {
-      if (carouselBusy || state.mode !== 'hero') return;
-      const N = totalN();
-      if (N <= VISIBLE) return;
+    function applyMode() {
+      if (state.mode === 'hero' || state.mode === 'closing') {
+        currentWindow.forEach((bi, i) => {
+          const slot = SLOTS.hero[i];
+          if (slot) setTargets(bookInstances[bi], slot);
+        });
+      } else if (state.selected) {
+        setTargets(state.selected, SLOTS.detail!);
+      }
+    }
+
+     function shiftCarousel(dir: 1 | -1) {
+      if (carouselBusy || state.mode !== 'hero' || N <= VISIBLE) return;
 
       const nextStart = carouselStart + dir;
       if (nextStart < 0) return;
@@ -1131,30 +1101,27 @@ export function BooksShowcase({
       carouselBusy = true;
       const outgoing = currentWindow;
       carouselStart = nextStart;
-
-      nextStart + VISIBLE - 1; // incoming last index
-      for (let i = 0; i < VISIBLE; i++) ensureBook(carouselStart + i);
-
       const incoming = windowIndices(carouselStart, N, VISIBLE);
+
       const toHide = outgoing.filter((bi) => !incoming.includes(bi));
 
+      // Only push away the books that are actually leaving the screen
       toHide.forEach((bi) => {
         const oldIdx = outgoing.indexOf(bi);
         const slot = SLOTS.hero[oldIdx];
         const b = bookInstances[bi];
-        if (slot && b) b.springs.px.t = slot.p[0] - dir * 6.5;
+        if (slot) b.springs.px.t = slot.p[0] - dir * 6.5;
       });
-      setT(() => toHide.forEach((bi) => {
-        if (bookInstances[bi]) bookInstances[bi].root.visible = false;
-      }), 650);
+      setT(() => toHide.forEach((bi) => { bookInstances[bi].root.visible = false; }), 650);
 
       incoming.forEach((bi, i) => {
         const slot = SLOTS.hero[i];
+        if (!slot) return;
         const b = bookInstances[bi];
-        if (!slot || !b) return;
         const alreadyOnScreen = outgoing.includes(bi);
         b.root.visible = true;
         if (!alreadyOnScreen) {
+          // New books fly in from the opposite side
           b.springs.px.set(slot.p[0] + dir * 6.5);
           b.springs.py.set(slot.p[1]);
           b.springs.pz.set(slot.p[2]);
@@ -1168,6 +1135,9 @@ export function BooksShowcase({
 
       currentWindow = incoming;
       rebuildHitMeshes();
+      if (N >= 3 && carouselStart + VISIBLE >= N - 1) {
+        onNearEndRef.current?.();
+      }
       setT(() => { carouselBusy = false; }, 700);
     }
     shiftCarouselRef.current = shiftCarousel;
@@ -1617,8 +1587,8 @@ export function BooksShowcase({
       }
       canvas.style.cursor = cur;
 
-            bookInstances.forEach((b) => { if (b) screenPos(b); });
-      bookInstances.forEach((b) => { if (b) tickBook(b, dt, t); });
+      bookInstances.forEach((b) => screenPos(b));
+      bookInstances.forEach((b) => tickBook(b, dt, t));
       leaves.update(dt, t);
 
       parX.t = RM ? 0 : ptr.ndcX * 0.02;
@@ -1669,10 +1639,9 @@ export function BooksShowcase({
     }
 
     relayout();
-        currentWindow.forEach((bi, i) => {
+    currentWindow.forEach((bi, i) => {
       const b = bookInstances[bi];
       const slot = SLOTS.hero[i];
-      if (!b || !slot) return;
       const s = b.springs;
       s.px.set(slot.p[0]);
       s.py.set(slot.p[1] - 3.9);
@@ -1684,14 +1653,12 @@ export function BooksShowcase({
       b.slotScale = slot.s;
       setT(() => setTargets(b, slot), 240 + i * 150);
     });
-        bookInstances.forEach((b, idx) => {
-      if (!b) return;
+    bookInstances.forEach((b, idx) => {
       if (!currentWindow.includes(idx)) b.root.visible = false;
     });
     rebuildHitMeshes();
     camTo('hero');
     animate();
-
 
     const visibilityObserver = new IntersectionObserver(
       ([entry]) => {
@@ -1774,7 +1741,7 @@ export function BooksShowcase({
       scene.environment = null;
       renderer.dispose();
     };
-     }, [books.length > 0, showDetailPanel]);
+  }, [books, showDetailPanel]);
 
   const themeVars = {
     '--bs-navy': themeColors?.navy ?? '#141a32',
