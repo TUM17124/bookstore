@@ -633,7 +633,7 @@ export function BooksShowcase({
     }
 
     // Book construction
-       const N = IS_PHONE ? Math.min(books.length, 6) : books.length;
+          const N = books.length;
     const VISIBLE = Math.min(3, N);
 
     const W = 1.42,
@@ -856,7 +856,7 @@ export function BooksShowcase({
       bookInstances.push(b);
       return b;
     }
-        books.slice(0, N).forEach(buildBook);
+            books.forEach(buildBook);
     const bookByHit = (m: THREE.Object3D) => bookInstances.find((b) => b.hit === m)!;
 
     // Floating leaves (detail view)
@@ -1647,7 +1647,6 @@ export function BooksShowcase({
       if (!currentWindow.includes(idx)) b.root.visible = false;
     });
     rebuildHitMeshes();
-        if (N >= 3 && N <= VISIBLE + 1) onNearEndRef.current?.();
     camTo('hero');
     animate();
 
