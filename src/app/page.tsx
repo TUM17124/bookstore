@@ -70,8 +70,9 @@ function HomeInner() {
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const [isPhone, setIsPhone] = useState(false)
-  const [phoneVisible, setPhoneVisible] = useState(4)
   const busy = useRef(false)
+  const pageRef = useRef(1)
+  const hasMoreRef = useRef(true)
 
   useEffect(() => {
     setIsPhone(window.matchMedia("(max-width: 760px)").matches)
@@ -86,6 +87,8 @@ function HomeInner() {
         const list = asBookList(data).map(toCfg)
         const more =
           !Array.isArray(data) && !!(data as Paginated<ApiBook>).next
+        hasMoreRef.current = more
+        pageRef.current = p
         setHasMore(more)
         setPage(p)
         setBooks((prev) => {
@@ -111,27 +114,34 @@ function HomeInner() {
     setLoading(true)
     setError(false)
     setHasMore(true)
-    setPhoneVisible(4)
+    hasMoreRef.current = true
+    pageRef.current = 1
     void loadPage(1, true)
   }, [loadPage])
 
-  const onNearEnd = useCallback(() => {
-    if (busy.current) return
+  // Keep fetching the next pages in the background (phone + desktop)
+  useEffect(() => {
+    if (loading) return
+    let stop = false
 
-    if (isPhone) {
-      setPhoneVisible((n) => {
-        const next = n + 1
-        if (next >= books.length && hasMore) void loadPage(page + 1, false)
-        return next
-      })
-      return
+    async function pump() {
+      while (!stop && hasMoreRef.current) {
+        await loadPage(pageRef.current + 1, false)
+        await new Promise((r) => setTimeout(r, 400))
+      }
     }
 
-    if (!hasMore) return
-    void loadPage(page + 1, false)
-  }, [isPhone, books.length, hasMore, page, loadPage])
+    void pump()
+    return () => {
+      stop = true
+    }
+  }, [loading, loadPage, q, category])
 
-  const shelfBooks = isPhone ? books.slice(0, phoneVisible) : books
+  const shelfBooks = isPhone ? books.slice(0, Math.max(3, books.length)) : books
+  // phone: first paint is whatever has arrived; after page 1 that is usually 6–12
+  // we still slice nothing extra once loaded — parent already pages.
+  // Keep a hard first window of 6 only until more than 6 exist:
+  const shown = isPhone ? books.slice(0, Math.max(3, Math.min(books.length, books.length))) : books
 
   if (loading) {
     return (
@@ -170,8 +180,7 @@ function HomeInner() {
       <OfferMarquee />
       <div className="home-shelf-stage">
         <BooksShowcase
-          books={shelfBooks}
-          onNearEnd={onNearEnd}
+          books={isPhone ? books.slice(0, Math.max(6, books.length)) : books}
           heroTitle={selectedBookId || q ? "Results" : "Books"}
           navTitle={
             selectedBookId

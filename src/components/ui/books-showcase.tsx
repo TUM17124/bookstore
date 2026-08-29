@@ -1060,9 +1060,12 @@ export function BooksShowcase({
     }
 
     // carousel: which VISIBLE-sized window of `bookInstances` sits in the 3 hero slots 
-    function windowIndices(start: number, total: number, count: number) {
+        function windowIndices(start: number, total: number, count: number) {
       const arr: number[] = [];
-      for (let i = 0; i < count; i++) arr.push((start + i) % total);
+      for (let i = 0; i < count; i++) {
+        const idx = start + i;
+        if (idx >= 0 && idx < total) arr.push(idx);
+      }
       return arr;
     }
     let carouselStart = 0;
@@ -1085,12 +1088,19 @@ export function BooksShowcase({
       }
     }
 
-    function shiftCarousel(dir: 1 | -1) {
+     function shiftCarousel(dir: 1 | -1) {
       if (carouselBusy || state.mode !== 'hero' || N <= VISIBLE) return;
+
+      const nextStart = carouselStart + dir;
+      if (nextStart < 0) return;
+      if (nextStart + VISIBLE > N) {
+        onNearEndRef.current?.();
+        return;
+      }
+
       carouselBusy = true;
       const outgoing = currentWindow;
-      // Shift by 1 instead of shifting the entire visible window
-      carouselStart = (((carouselStart + dir) % N) + N) % N;
+      carouselStart = nextStart;
       const incoming = windowIndices(carouselStart, N, VISIBLE);
 
       const toHide = outgoing.filter((bi) => !incoming.includes(bi));
