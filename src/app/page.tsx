@@ -69,11 +69,12 @@ function HomeInner() {
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
+  const [isPhone, setIsPhone] = useState(false)
   const busy = useRef(false)
 
-  const isPhone =
-  typeof window !== 'undefined' &&
-  window.matchMedia('(max-width: 760px)').matches
+  useEffect(() => {
+    setIsPhone(window.matchMedia("(max-width: 760px)").matches)
+  }, [])
 
   const loadPage = useCallback(
     async (p: number, replace: boolean) => {
@@ -113,9 +114,12 @@ function HomeInner() {
   }, [loadPage])
 
   const onNearEnd = useCallback(() => {
+    if (isPhone) return
     if (!hasMore || busy.current) return
     void loadPage(page + 1, false)
-  }, [hasMore, page, loadPage])
+  }, [isPhone, hasMore, page, loadPage])
+
+  const shelfBooks = isPhone ? books.slice(0, 6) : books
 
   if (loading) {
     return (
@@ -154,8 +158,8 @@ function HomeInner() {
       <OfferMarquee />
       <div className="home-shelf-stage">
         <BooksShowcase
-          books={books}
-          onNearEnd={onNearEnd}
+          books={shelfBooks}
+          onNearEnd={isPhone ? undefined : onNearEnd}
           heroTitle={selectedBookId || q ? "Results" : "Books"}
           navTitle={
             selectedBookId
