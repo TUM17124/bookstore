@@ -97,7 +97,7 @@ function HomeInner() {
 
   if (loading) {
     return (
-      <main className="flex h-[calc(100dvh-4rem)] items-center justify-center text-sm text-muted-foreground">
+      <main className="flex min-h-[calc(100dvh-4rem)] items-center justify-center text-sm text-muted-foreground">
         Loading books…
       </main>
     )
@@ -105,7 +105,7 @@ function HomeInner() {
 
   if (books.length === 0) {
     return (
-      <main className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden">
+      <main className="flex min-h-[calc(100dvh-4rem)] flex-col">
         <OfferMarquee />
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
           <p>
@@ -128,9 +128,9 @@ function HomeInner() {
   }
 
   return (
-    <main className="flex h-[calc(100dvh-4rem)] min-h-0 flex-col overflow-hidden">
+    <main className="flex min-h-[calc(100dvh-4rem)] flex-col overflow-x-hidden overflow-y-auto md:h-[calc(100dvh-4rem)] md:overflow-hidden">
       <OfferMarquee />
-      <div className="min-h-0 flex-1">
+      <div className="h-[calc(100dvh-6.5rem)] w-full shrink-0 md:h-auto md:min-h-0 md:flex-1">
         <BooksShowcase
           books={books}
           heroTitle={selectedBookId || q ? "Results" : "Books"}
@@ -154,7 +154,7 @@ export default function Home() {
   return (
     <Suspense
       fallback={
-        <main className="flex h-[calc(100dvh-4rem)] items-center justify-center text-sm text-muted-foreground">
+        <main className="flex min-h-[calc(100dvh-4rem)] items-center justify-center text-sm text-muted-foreground">
           Loading…
         </main>
       }
