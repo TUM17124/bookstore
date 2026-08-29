@@ -71,6 +71,10 @@ function HomeInner() {
   const [hasMore, setHasMore] = useState(true)
   const busy = useRef(false)
 
+  const isPhone =
+  typeof window !== 'undefined' &&
+  window.matchMedia('(max-width: 760px)').matches
+
   const loadPage = useCallback(
     async (p: number, replace: boolean) => {
       if (busy.current) return
