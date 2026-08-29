@@ -169,12 +169,33 @@
   }
 }
 
+/* Phone + book open: use the whole screen */
 @media (max-width: 767px) {
   html,
   body {
-    overflow: auto !important;
-    height: auto !important;
-    overscroll-behavior: auto;
+    overflow: auto;
+    height: auto;
+  }
+
+  body.book-detail-open {
+    overflow: hidden;
+    height: 100dvh;
+  }
+
+  body.book-detail-open .site-nav,
+  body.book-detail-open .site-footer {
+    display: none !important;
+  }
+
+  body.book-detail-open .site-main-offset {
+    padding-top: 0 !important;
+  }
+
+  body.book-detail-open .home-shelf,
+  body.book-detail-open .home-shelf-stage {
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    overflow: hidden;
   }
 }
 

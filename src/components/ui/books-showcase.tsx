@@ -1845,27 +1845,22 @@ export function BooksShowcase({
       </button>
 
              {showDetailPanel && (
-                        <div
+                <div
           ref={dpRef}
           aria-live="polite"
-          className={`absolute right-[5%] top-6 bottom-4 z-[15] flex w-[min(520px,40%)] flex-col justify-start pt-0 pointer-events-none
-            @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-auto @max-[760px]:bottom-2
-            @max-[760px]:w-[min(560px,94cqw)] @max-[760px]:max-h-[58%] @max-[760px]:-translate-x-1/2
-            @max-[760px]:justify-end @max-[760px]:overflow-y-auto @max-[760px]:pointer-events-auto
+          className={`absolute right-[5%] top-8 bottom-4 z-[15] flex w-[min(520px,40%)] flex-col justify-start pt-0 pointer-events-none
+            @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-42 @max-[760px]:bottom-4
+            @max-[760px]:w-[min(560px,92cqw)] @max-[760px]:max-h-none @max-[760px]:-translate-x-1/2 @max-[760px]:translate-y-0
             ${panelVisible ? 'visible' : 'invisible delay-[500ms]'}`}
         >
-                    <h1
-            className={`m-0 mb-1 line-clamp-2 max-w-full break-words text-[var(--bs-pink)] text-[clamp(22px,3.2cqw,42px)] font-extrabold leading-[1.12] tracking-[-0.02em] [overflow-wrap:anywhere]
-              @max-[760px]:mb-1 @max-[760px]:line-clamp-2 @max-[760px]:text-[18px] @max-[760px]:leading-tight
-              ${dpChild(50)}`}
+          <h1
+            className={`m-0 mb-2 line-clamp-2 max-w-full break-words text-[var(--bs-pink)] text-[clamp(22px,3.2cqw,42px)] font-extrabold leading-[1.12] tracking-[-0.02em] [overflow-wrap:anywhere] @max-[760px]:text-[clamp(20px,6cqw,32px)] ${dpChild(50)}`}
           >
             {selectedCfg?.title}
           </h1>
 
-                    <p
-            className={`mt-0 line-clamp-4 max-w-[54ch] text-[var(--bs-lav)] text-[clamp(13px,1.1cqw,16px)] leading-[1.45]
-              @max-[760px]:line-clamp-2 @max-[760px]:text-[12px] @max-[760px]:leading-snug
-              ${dpChild(130)}`}
+          <p
+            className={`mt-0 line-clamp-4 max-w-[54ch] text-[var(--bs-lav)] text-[clamp(13px,1.1cqw,16px)] leading-[1.45] @max-[760px]:line-clamp-3 @max-[760px]:text-[13px] ${dpChild(130)}`}
           >
             {selectedCfg?.desc}
           </p>
