@@ -76,6 +76,7 @@ export interface BooksShowcaseProps {
   };
   className?: string;
   onBookSelect?: (book: BookCfg | null) => void;
+  onNearEnd?: () => void;
 }
 
 function ChevronLeft() {
@@ -108,6 +109,7 @@ export function BooksShowcase({
   themeColors,
   className,
   onBookSelect,
+  onNearEnd,
 }: BooksShowcaseProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -121,9 +123,17 @@ export function BooksShowcase({
     onBookSelectRef.current = onBookSelect;
   }, [onBookSelect]);
 
+    const onNearEndRef = useRef(onNearEnd);
+  useEffect(() => {
+    onNearEndRef.current = onNearEnd;
+  }, [onNearEnd]);
+
   const [uiMode, setUiMode] = useState<'hero' | 'opening' | 'detail' | 'closing'>('hero');
   const [selectedCfg, setSelectedCfg] = useState<BookCfg | null>(null);
   const [mounted, setMounted] = useState(false);
+
+  // index of the selected book within `books`, or -1 when none.
+  const selected = selectedCfg ? books.findIndex((b) => String(b.id) === String(selectedCfg.id)) : -1;
 
 
   const [ownedEbookOrderId, setOwnedEbookOrderId] = useState<number | null>(null);
@@ -158,6 +168,7 @@ export function BooksShowcase({
     return () => document.body.classList.remove('book-detail-open');
   }, [uiMode]);
 
+      
     useEffect(() => {
     if (!selectedCfg) {
       setOwnedEbookOrderId(null);
@@ -1110,6 +1121,9 @@ export function BooksShowcase({
 
       currentWindow = incoming;
       rebuildHitMeshes();
+      if (N >= 3 && carouselStart + VISIBLE >= N - 1) {
+        onNearEndRef.current?.();
+      }
       setT(() => { carouselBusy = false; }, 700);
     }
     shiftCarouselRef.current = shiftCarousel;
@@ -1629,6 +1643,7 @@ export function BooksShowcase({
       if (!currentWindow.includes(idx)) b.root.visible = false;
     });
     rebuildHitMeshes();
+        if (N >= 3 && N <= VISIBLE + 1) onNearEndRef.current?.();
     camTo('hero');
     animate();
 

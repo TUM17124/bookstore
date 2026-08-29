@@ -21,6 +21,8 @@ export type ApiBook = {
   chapters?: string[]
   category?: string
   price?: number
+  ebook_price?: number
+  audiobook_price?: number
   stock?: number
   hasEbook?: boolean
   hasAudiobook?: boolean

@@ -1,12 +1,12 @@
 "use client"
 
-import { Suspense, useCallback, useEffect, useState } from "react"
+import { Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { BooksShowcase, type BookCfg } from "@/components/ui/books-showcase"
-import { getBooks, asBookList } from "@/lib/api"
+import { getBooks, asBookList, type Paginated, type ApiBook } from "@/lib/api"
 import { OfferMarquee } from "@/components/offer-marquee"
 
-function toCfg(b: /* ApiBook */ any): BookCfg {
+function toCfg(b: ApiBook): BookCfg {
   return {
     id: String(b.id),
     title: b.title,
@@ -42,28 +42,24 @@ function orderWithSelected(
   selectedBookId: string,
 ): BookCfg[] {
   if (!selectedBookId) return fetchedBooks
-
   const selectedIndex = fetchedBooks.findIndex(
     (book) => String(book.id) === selectedBookId,
   )
-
   if (selectedIndex === -1) return fetchedBooks
-
   const selectedBook = fetchedBooks[selectedIndex]
-  const remainingBooks = fetchedBooks.filter(
-    (_, index) => index !== selectedIndex,
-  )
-
-  if (remainingBooks.length === 0) {
-    return [selectedBook]
-  }
-
+  const remainingBooks = fetchedBooks.filter((_, i) => i !== selectedIndex)
+  if (remainingBooks.length === 0) return [selectedBook]
   return [remainingBooks[0], selectedBook, ...remainingBooks.slice(1)]
+}
+
+function queryFor(q: string, category: string) {
+  if (q) return { search: q }
+  if (category) return { category }
+  return { featured: true }
 }
 
 function HomeInner() {
   const sp = useSearchParams()
-
   const q = (sp.get("q") || "").trim()
   const category = (sp.get("category") || "").trim()
   const selectedBookId = (sp.get("book") || "").trim()
@@ -71,33 +67,51 @@ function HomeInner() {
   const [books, setBooks] = useState<BookCfg[]>([])
   const [error, setError] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+  const busy = useRef(false)
 
-  const load = useCallback(() => {
-    setLoading(true)
-    setError(false)
-
-    getBooks(
-      q
-        ? { search: q, page: 1 }
-        : category
-          ? { category, page: 1 }
-          : { featured: true, page: 1 },
-    )
-      .then((data) => {
-        const fetchedBooks = asBookList(data).map(toCfg)
-        setBooks(orderWithSelected(fetchedBooks, selectedBookId))
-      })
-      .catch((e) => {
+  const loadPage = useCallback(
+    async (p: number, replace: boolean) => {
+      if (busy.current) return
+      busy.current = true
+      try {
+        const data = await getBooks({ ...queryFor(q, category), page: p })
+        const list = asBookList(data).map(toCfg)
+        const more =
+          !Array.isArray(data) && !!(data as Paginated<ApiBook>).next
+        setHasMore(more)
+        setPage(p)
+        setBooks((prev) => {
+          if (replace) return orderWithSelected(list, selectedBookId)
+          const seen = new Set(prev.map((b) => b.id))
+          return [...prev, ...list.filter((b) => !seen.has(b.id))]
+        })
+      } catch (e) {
         console.error(e)
-        setBooks([])
-        setError(true)
-      })
-      .finally(() => setLoading(false))
-  }, [q, category, selectedBookId])
+        if (replace) {
+          setBooks([])
+          setError(true)
+        }
+      } finally {
+        busy.current = false
+        setLoading(false)
+      }
+    },
+    [q, category, selectedBookId],
+  )
 
   useEffect(() => {
-    load()
-  }, [load])
+    setLoading(true)
+    setError(false)
+    setHasMore(true)
+    void loadPage(1, true)
+  }, [loadPage])
+
+  const onNearEnd = useCallback(() => {
+    if (!hasMore || busy.current) return
+    void loadPage(page + 1, false)
+  }, [hasMore, page, loadPage])
 
   if (loading) {
     return (
@@ -137,6 +151,7 @@ function HomeInner() {
       <div className="home-shelf-stage">
         <BooksShowcase
           books={books}
+          onNearEnd={onNearEnd}
           heroTitle={selectedBookId || q ? "Results" : "Books"}
           navTitle={
             selectedBookId
