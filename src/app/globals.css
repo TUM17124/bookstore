@@ -199,6 +199,22 @@
   }
 }
 
+@media (max-width: 767px) {
+  body.book-detail-open .site-nav,
+  body.book-detail-open .site-nav header,
+  body.book-detail-open .site-nav nav {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  body.book-detail-open .book-close-btn {
+    top: calc(10px + env(safe-area-inset-top)) !important;
+    left: 10px;
+    z-index: 80 !important;
+  }
+}
+
 
 @layer base {
   * {
