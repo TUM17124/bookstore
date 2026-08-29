@@ -135,6 +135,49 @@
   animation-play-state: paused;
 }
 
+
+.home-shelf {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - 4rem);
+}
+
+.home-shelf-stage {
+  height: 72dvh;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.home-shelf-stage canvas {
+  touch-action: pan-y;
+}
+
+@media (min-width: 768px) {
+  .home-shelf {
+    height: calc(100dvh - 4rem);
+    overflow: hidden;
+  }
+
+  .home-shelf-stage {
+    height: auto;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .home-shelf-stage canvas {
+    touch-action: none;
+  }
+}
+
+@media (max-width: 767px) {
+  html,
+  body {
+    overflow: auto !important;
+    height: auto !important;
+    overscroll-behavior: auto;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

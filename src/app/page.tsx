@@ -127,10 +127,10 @@ function HomeInner() {
     )
   }
 
-  return (
-    <main className="flex min-h-[calc(100dvh-4rem)] flex-col overflow-x-hidden overflow-y-auto md:h-[calc(100dvh-4rem)] md:overflow-hidden">
+    return (
+    <main className="home-shelf">
       <OfferMarquee />
-      <div className="h-[calc(100dvh-6.5rem)] w-full shrink-0 md:h-auto md:min-h-0 md:flex-1">
+      <div className="home-shelf-stage">
         <BooksShowcase
           books={books}
           heroTitle={selectedBookId || q ? "Results" : "Books"}
