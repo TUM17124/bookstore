@@ -875,9 +875,12 @@ export function BooksShowcase({
       return b;
     }
 
-    const firstN = Math.min(VISIBLE, listNow().length);
-    for (let i = 0; i < firstN; i++) ensureBook(i);
-
+        const firstN = Math.min(VISIBLE, listNow().length);
+    for (let i = 0; i < firstN; i++) {
+      const b = ensureBook(i);
+      if (b) b.root.visible = true;
+    }
+    
     const bookByHit = (m: THREE.Object3D) =>
       bookInstances.find((b) => b && b.hit === m)!;
     // Floating leaves (detail view)
