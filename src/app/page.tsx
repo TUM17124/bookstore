@@ -67,14 +67,9 @@ function HomeInner() {
   const [books, setBooks] = useState<BookCfg[]>([])
   const [error, setError] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [isPhone, setIsPhone] = useState(false)
   const busy = useRef(false)
   const pageRef = useRef(1)
   const hasMoreRef = useRef(true)
-
-  useEffect(() => {
-    setIsPhone(window.matchMedia("(max-width: 760px)").matches)
-  }, [])
 
   const loadPage = useCallback(
     async (p: number, replace: boolean) => {
@@ -131,9 +126,6 @@ function HomeInner() {
     }
   }, [loading, loadPage, q, category])
 
-  // Phone: first 3 in the 3D shelf (fast). Desktop: full list.
-  const shelfBooks = isPhone ? books.slice(0, 3) : books
-
   if (loading) {
     return (
       <main className="flex min-h-[calc(100dvh-4rem)] items-center justify-center text-sm text-muted-foreground">
@@ -171,7 +163,7 @@ function HomeInner() {
       <OfferMarquee />
       <div className="home-shelf-stage">
         <BooksShowcase
-          books={shelfBooks}
+          books={books}
           heroTitle={selectedBookId || q ? "Results" : "Books"}
           navTitle={
             selectedBookId
