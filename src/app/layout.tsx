@@ -93,8 +93,10 @@ export default function RootLayout({
     <html lang="en-KE" suppressHydrationWarning>
       <body className="antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <BookmarksProvider>
-            <NotchNavbar />
+                    <BookmarksProvider>
+            <div className="site-nav">
+              <NotchNavbar />
+            </div>
             <div className="site-main-offset pt-20">{children}</div>
             <SiteFooter />
           </BookmarksProvider>
