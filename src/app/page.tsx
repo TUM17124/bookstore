@@ -77,7 +77,11 @@ function HomeInner() {
     setError(false)
 
     getBooks(
-      q ? { search: q } : category ? { category } : { featured: true },
+      q
+        ? { search: q, page: 1 }
+        : category
+          ? { category, page: 1 }
+          : { featured: true, page: 1 },
     )
       .then((data) => {
         const fetchedBooks = asBookList(data).map(toCfg)
@@ -127,7 +131,7 @@ function HomeInner() {
     )
   }
 
-    return (
+  return (
     <main className="home-shelf">
       <OfferMarquee />
       <div className="home-shelf-stage">
