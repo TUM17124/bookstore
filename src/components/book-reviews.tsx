@@ -55,8 +55,8 @@ function Stars({
           disabled={!interactive || disabled}
           onClick={() => onPick?.(n)}
           className={`text-2xl leading-none transition ${
-            n <= value ? 'text-amber-400' : 'text-foreground/20'
-          } ${interactive && !disabled ? 'hover:scale-110 cursor-pointer' : 'cursor-default'}`}
+            n <= value ? 'text-[#f591ac]' : 'text-foreground/20'
+          } ${interactive && !disabled ? 'cursor-pointer hover:scale-110' : 'cursor-default'}`}
           aria-label={`${n} stars`}
         >
           ★
@@ -66,7 +66,13 @@ function Stars({
   );
 }
 
-function Avatar({ user, size = 'md' }: { user: Partial<User>; size?: 'sm' | 'md' }) {
+function Avatar({
+  user,
+  size = 'md',
+}: {
+  user: Partial<User>;
+  size?: 'sm' | 'md';
+}) {
   const s = size === 'sm' ? 'h-8 w-8 text-xs' : 'h-10 w-10 text-sm';
   const label = (user.name || user.email || '?').slice(0, 1).toUpperCase();
   if (user.image) {
@@ -77,7 +83,7 @@ function Avatar({ user, size = 'md' }: { user: Partial<User>; size?: 'sm' | 'md'
   }
   return (
     <div
-      className={`${s} flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500/30 to-fuchsia-500/30 font-bold ring-1 ring-foreground/10`}
+      className={`${s} flex shrink-0 items-center justify-center rounded-full bg-[#141a32] font-bold text-[#fdfbf4] ring-1 ring-foreground/10 dark:bg-[#1a2140]`}
     >
       {label}
     </div>
@@ -91,7 +97,6 @@ export function BookReviews({
   bookId: string;
   onClose?: () => void;
 }) {
-  const loggedIn = typeof window !== 'undefined' && !!getToken();
   const [average, setAverage] = useState(0);
   const [count, setCount] = useState(0);
   const [myRating, setMyRating] = useState<number | null>(null);
@@ -195,7 +200,11 @@ export function BookReviews({
     const kids = tree.byParent.get(c.id) || [];
 
     return (
-      <div className={depth ? 'ml-4 border-l border-foreground/10 pl-4 sm:ml-6 sm:pl-5' : ''}>
+      <div
+        className={
+          depth ? 'ml-4 border-l border-foreground/10 pl-4 sm:ml-6 sm:pl-5' : ''
+        }
+      >
         <article className="group rounded-2xl px-1 py-3 transition hover:bg-foreground/[0.03] sm:px-2">
           <div className="flex gap-3">
             <Avatar user={c.user} />
@@ -221,7 +230,7 @@ export function BookReviews({
                     setReplyTo(c);
                     setError('');
                   }}
-                  className="mt-2 text-[13px] font-medium text-sky-500 hover:underline"
+                  className="mt-2 text-[13px] font-medium text-[#f591ac] hover:underline"
                 >
                   Reply
                 </button>
@@ -237,24 +246,24 @@ export function BookReviews({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col bg-background text-foreground">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-lg px-4 pb-4 pt-2 sm:max-w-xl">
-          <section className="mb-6 rounded-3xl border border-foreground/10 bg-gradient-to-b from-foreground/[0.04] to-transparent p-5 shadow-sm">
-            <p className="text-center text-[13px] font-medium uppercase tracking-[0.2em] text-foreground/45">
+          <section className="mb-6 rounded-3xl border border-foreground/10 bg-[#141a32] p-5 text-[#fdfbf4] shadow-sm dark:bg-[#10152c]">
+            <p className="text-center text-[13px] font-medium uppercase tracking-[0.2em] text-[#c9d0ee]/70">
               Community score
             </p>
-            <p className="mt-2 text-center text-4xl font-bold tracking-tight">
+            <p className="mt-2 text-center text-4xl font-bold tracking-tight text-[#fdfbf4]">
               {count > 0 ? Number(average).toFixed(1) : '—'}
-              <span className="text-lg font-medium text-foreground/40"> / 5</span>
+              <span className="text-lg font-medium text-[#c9d0ee]/50"> / 5</span>
             </p>
-            <p className="mt-1 text-center text-sm text-foreground/50">
+            <p className="mt-1 text-center text-sm text-[#c9d0ee]/70">
               {count > 0
                 ? `${count} rating${count === 1 ? '' : 's'}`
                 : 'Be the first to rate'}
             </p>
             <div className="mt-4 flex flex-col items-center gap-2">
-              <p className="text-[13px] text-foreground/50">Your rating</p>
+              <p className="text-[13px] text-[#c9d0ee]/70">Your rating</p>
               <Stars
                 value={myRating ?? 0}
                 interactive={auth}
@@ -262,15 +271,18 @@ export function BookReviews({
                 onPick={rate}
               />
               {!auth && (
-                <p className="text-[13px] text-foreground/50">
-                  <Link href="/login" className="font-semibold text-sky-500 hover:underline">
+                <p className="text-[13px] text-[#c9d0ee]/70">
+                  <Link
+                    href="/login"
+                    className="font-semibold text-[#f591ac] hover:underline"
+                  >
                     Log in
                   </Link>{' '}
                   to rate and join the discussion
                 </p>
               )}
               {auth && myRating == null && (
-                <p className="mt-1 rounded-full bg-amber-500/10 px-3 py-1 text-[12px] font-medium text-amber-600 dark:text-amber-400">
+                <p className="mt-1 rounded-full bg-[#f591ac]/15 px-3 py-1 text-[12px] font-medium text-[#f591ac]">
                   Rate the book to unlock comments
                 </p>
               )}
@@ -283,7 +295,7 @@ export function BookReviews({
             </p>
           )}
 
-          <h3 className="mb-2 px-1 text-[13px] font-semibold uppercase tracking-wider text-foreground/45">
+          <h3 className="mb-2 px-1 text-[13px] font-semibold uppercase tracking-[0.18em] text-foreground/40">
             Discussion
           </h3>
 
@@ -306,8 +318,8 @@ export function BookReviews({
       <div className="shrink-0 border-t border-foreground/10 bg-background/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-md">
         <div className="mx-auto w-full max-w-lg px-3 py-2 sm:max-w-xl">
           {replyTo && (
-            <div className="mb-2 flex items-center justify-between rounded-xl bg-sky-500/10 px-3 py-1.5 text-[13px]">
-              <span className="truncate text-sky-600 dark:text-sky-400">
+            <div className="mb-2 flex items-center justify-between rounded-xl bg-[#f591ac]/10 px-3 py-1.5 text-[13px]">
+              <span className="truncate text-foreground/80">
                 Replying to{' '}
                 <strong>{replyTo.user.name || replyTo.user.email || 'user'}</strong>
               </span>
@@ -323,19 +335,22 @@ export function BookReviews({
 
           {!auth ? (
             <p className="py-2 text-center text-[14px] text-foreground/55">
-              <Link href="/login" className="font-semibold text-sky-500 hover:underline">
+              <Link
+                href="/login"
+                className="font-semibold text-[#f591ac] hover:underline"
+              >
                 Log in
               </Link>{' '}
               to comment
             </p>
           ) : !canComment ? (
-            <p className="py-2 text-center text-[14px] text-amber-600 dark:text-amber-400">
+            <p className="py-2 text-center text-[14px] text-[#f591ac]">
               Select a star rating above to comment
             </p>
           ) : (
             <form onSubmit={submitComment} className="flex items-end gap-2">
               <Avatar user={{ name: 'You', email: null }} />
-              <div className="min-w-0 flex-1 rounded-2xl border border-foreground/10 bg-foreground/[0.04] px-3 py-2 focus-within:ring-2 focus-within:ring-sky-500/30">
+              <div className="min-w-0 flex-1 rounded-2xl border border-foreground/10 bg-foreground/[0.04] px-3 py-2 focus-within:ring-2 focus-within:ring-[#f591ac]/30">
                 <textarea
                   value={text}
                   onChange={(e) => setText(e.target.value)}
@@ -353,7 +368,7 @@ export function BookReviews({
               <button
                 type="submit"
                 disabled={busy || !text.trim()}
-                className="mb-0.5 shrink-0 rounded-full bg-sky-500 px-4 py-2 text-[14px] font-bold text-white shadow-sm hover:bg-sky-600 disabled:opacity-40"
+                className="mb-0.5 shrink-0 rounded-full bg-[#141a32] px-4 py-2 text-[14px] font-bold text-[#fdfbf4] shadow-sm hover:brightness-110 disabled:opacity-40 dark:bg-[#f591ac] dark:text-[#141a32]"
               >
                 {replyTo ? 'Reply' : 'Post'}
               </button>
