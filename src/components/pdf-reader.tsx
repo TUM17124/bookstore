@@ -6,7 +6,7 @@ declare global {
   interface Window {
     pdfjsLib?: {
       GlobalWorkerOptions: { workerSrc: string }
-      getDocument: (opts: { data: ArrayBuffer }) => { promise: Promise<any> }
+      getDocument: (opts: Record<string, unknown>) => { promise: Promise<any> }
     }
   }
 }
@@ -15,21 +15,61 @@ function markKey(url: string) {
   return `plugyard-read-mark:${url.split('?')[0]}`
 }
 
+const AHEAD = 2
+
 export function PdfReader({ url }: { url: string }) {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [status, setStatus] = useState('Loading…')
-  const [pages, setPages] = useState<string[]>([])
-  const [fontSize, setFontSize] = useState(8)
+  const pdfRef = useRef<any>(null)
+  const loadingPage = useRef<Set<number>>(new Set())
+
+  const [status, setStatus] = useState('Opening…')
+  const [total, setTotal] = useState(0)
+  const [pages, setPages] = useState<Record<number, string>>({})
+  const [fontSize, setFontSize] = useState(18)
   const [page, setPage] = useState(1)
   const [marked, setMarked] = useState(0)
+  const [resumeAt, setResumeAt] = useState(0)
 
   useEffect(() => {
     try {
-      setMarked(Number(localStorage.getItem(markKey(url)) || 0))
+      const saved = Number(localStorage.getItem(markKey(url)) || 0)
+      setMarked(saved)
+      if (saved > 1) setResumeAt(saved)
     } catch {
       setMarked(0)
     }
   }, [url])
+
+  async function extractPage(n: number) {
+    const pdf = pdfRef.current
+    if (!pdf || n < 1 || n > pdf.numPages) return
+    if (pages[n] || loadingPage.current.has(n)) return
+    loadingPage.current.add(n)
+    try {
+      const pdfPage = await pdf.getPage(n)
+      const content = await pdfPage.getTextContent()
+      const text = content.items
+        .map((item: { str?: string }) => item.str || '')
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      setPages((prev) => ({ ...prev, [n]: text || `Page ${n}` }))
+    } catch {
+      setPages((prev) => ({ ...prev, [n]: `Page ${n} could not be read.` }))
+    } finally {
+      loadingPage.current.delete(n)
+    }
+  }
+
+  async function bufferAround(center: number, count = AHEAD) {
+    const pdf = pdfRef.current
+    if (!pdf) return
+    const start = Math.max(1, center)
+    const end = Math.min(pdf.numPages, center + count)
+    for (let i = start; i <= end; i++) {
+      await extractPage(i)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -49,33 +89,34 @@ export function PdfReader({ url }: { url: string }) {
 
     ;(async () => {
       try {
-        setStatus('Loading…')
-        setPages([])
+        setStatus('Opening…')
+        setPages({})
         await loadScript()
-        const res = await fetch(url)
-        if (!res.ok) throw new Error('download failed')
-        const data = await res.arrayBuffer()
         if (cancelled) return
 
-        const pdf = await window.pdfjsLib!.getDocument({ data }).promise
-        const extracted: string[] = []
+        const pdf = await window.pdfjsLib!.getDocument({
+          url,
+          disableStream: false,
+          disableAutoFetch: true,
+        }).promise
+        if (cancelled) return
 
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const pdfPage = await pdf.getPage(i)
-          const content = await pdfPage.getTextContent()
-          const text = content.items
-            .map((item: { str?: string }) => item.str || '')
-            .join(' ')
-            .replace(/\s+/g, ' ')
-            .trim()
-          extracted.push(text || `Page ${i}`)
-          if (cancelled) return
-        }
+        pdfRef.current = pdf
+        setTotal(pdf.numPages)
 
-        setPages(extracted)
-        setStatus('')
         const saved = Number(localStorage.getItem(markKey(url)) || 0)
-        if (saved > 1) setPage(saved)
+        const startAt = saved > 1 && saved <= pdf.numPages ? saved : 1
+        setPage(startAt)
+        if (startAt > 1) setResumeAt(startAt)
+
+        await bufferAround(startAt, AHEAD)
+        setStatus('')
+
+        requestAnimationFrame(() => {
+          document
+            .getElementById(`read-page-${startAt}`)
+            ?.scrollIntoView({ block: 'start' })
+        })
       } catch {
         if (!cancelled) setStatus('Could not open this book.')
       }
@@ -83,27 +124,27 @@ export function PdfReader({ url }: { url: string }) {
 
     return () => {
       cancelled = true
+      pdfRef.current = null
     }
   }, [url])
 
-  useEffect(() => {
-    if (!pages.length) return
-    const saved = Number(localStorage.getItem(markKey(url)) || 0)
-    if (saved > 1) {
-      document.getElementById(`read-page-${saved}`)?.scrollIntoView({ block: 'start' })
-    }
-  }, [pages, url])
-
   function onScroll() {
     const root = scrollRef.current
-    if (!root) return
+    if (!root || !total) return
     const mid = root.scrollTop + 80
-    let current = 1
-    pages.forEach((_, i) => {
-      const el = document.getElementById(`read-page-${i + 1}`)
-      if (el && el.offsetTop <= mid) current = i + 1
-    })
+    let current = page
+    for (let i = 1; i <= total; i++) {
+      const el = document.getElementById(`read-page-${i}`)
+      if (el && el.offsetTop <= mid) current = i
+    }
     setPage(current)
+    void bufferAround(current, AHEAD)
+    try {
+      localStorage.setItem(markKey(url), String(current))
+      setMarked(current)
+    } catch {
+      // ignore
+    }
   }
 
   function markHere() {
@@ -115,17 +156,21 @@ export function PdfReader({ url }: { url: string }) {
     }
   }
 
-  function goToMark() {
+  async function goToMark() {
+    if (!marked) return
+    await bufferAround(marked, AHEAD)
+    setPage(marked)
     document.getElementById(`read-page-${marked}`)?.scrollIntoView({ block: 'start' })
-    if (marked) setPage(marked)
   }
+
+  const numbers = Array.from({ length: total }, (_, i) => i + 1)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#f4efe4]">
       <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-black/10 bg-[#efe8d8] px-2 py-2">
         <button
           type="button"
-          onClick={() => setFontSize((n) => Math.max(8, n - 4))}
+          onClick={() => setFontSize((n) => Math.max(12, n - 2))}
           className="rounded-full bg-black/10 px-3 py-1 text-sm font-bold text-black"
         >
           A−
@@ -135,25 +180,25 @@ export function PdfReader({ url }: { url: string }) {
         </span>
         <button
           type="button"
-          onClick={() => setFontSize((n) => Math.min(56, n + 4))}
+          onClick={() => setFontSize((n) => Math.min(40, n + 2))}
           className="rounded-full bg-black/10 px-3 py-1 text-sm font-bold text-black"
         >
           A+
         </button>
         <span className="text-xs font-semibold text-black/60">
-          {page} / {pages.length || '—'}
+          {page} / {total || '—'}
         </span>
         <button
           type="button"
           onClick={markHere}
-          className="rounded-full bg-pink-400 px-3 py-1 text-sm font-bold text-zinc-900"
+          className="rounded-full bg-[#f591ac] px-3 py-1 text-sm font-bold text-[#141a32]"
         >
           Mark page {page}
         </button>
         {marked > 0 && (
           <button
             type="button"
-            onClick={goToMark}
+            onClick={() => void goToMark()}
             className="rounded-full bg-black/10 px-3 py-1 text-sm font-bold text-black"
           >
             Go to mark ({marked})
@@ -169,17 +214,28 @@ export function PdfReader({ url }: { url: string }) {
         {status ? (
           <p className="p-6 text-sm font-semibold text-black/50">{status}</p>
         ) : null}
+
+        {resumeAt > 1 ? (
+          <p className="px-4 pt-4 text-center text-[13px] font-semibold text-[#c45b78]">
+            Continuing from page {resumeAt}
+          </p>
+        ) : null}
+
+        <p className="px-4 pt-2 text-center text-[12px] text-black/45">
+          Your place is saved on this device. Only a few pages load at a time.
+        </p>
+
         <article className="mx-auto max-w-2xl px-4 py-6">
-          {pages.map((text, i) => (
-            <section key={i} id={`read-page-${i + 1}`} className="mb-10">
+          {numbers.map((n) => (
+            <section key={n} id={`read-page-${n}`} className="mb-10 min-h-[8rem]">
               <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-black/40">
-                Page {i + 1}
+                Page {n}
               </p>
               <p
-                className="font-bold leading-snug text-black"
+                className="font-semibold leading-relaxed text-black"
                 style={{ fontSize: `${fontSize}px` }}
               >
-                {text}
+                {pages[n] || (n <= page + AHEAD ? 'Loading page…' : '')}
               </p>
             </section>
           ))}

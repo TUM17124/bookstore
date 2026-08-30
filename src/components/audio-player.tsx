@@ -35,6 +35,7 @@ export function AudioPlayer({
   const sleepRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSave = useRef(0)
   const restored = useRef(false)
+  const tries = useRef(0)
 
   const [status, setStatus] = useState('Buffering…')
   const [ready, setReady] = useState(false)
@@ -63,18 +64,35 @@ export function AudioPlayer({
 
   function applySavedPosition(audio: HTMLAudioElement) {
     if (restored.current) return
-    try {
-      const saved = Number(localStorage.getItem(posKey(title)) || 0)
-      if (!Number.isFinite(saved) || saved < 3) return
-      const length = audio.duration
-      if (Number.isFinite(length) && length > 0 && saved >= length - 3) return
-      audio.currentTime = saved
-      setT(saved)
-      setResumeAt(saved)
+    const saved = Number(localStorage.getItem(posKey(title)) || 0)
+    if (!Number.isFinite(saved) || saved < 3) {
       restored.current = true
-    } catch {
-      // ignore
+      return
     }
+    const length = audio.duration
+    if (Number.isFinite(length) && length > 0 && saved >= length - 3) {
+      restored.current = true
+      return
+    }
+
+    const attempt = () => {
+      if (restored.current || tries.current > 24) return
+      tries.current += 1
+      try {
+        audio.currentTime = saved
+      } catch {
+        // not seekable yet
+      }
+      if (Math.abs(audio.currentTime - saved) <= 1.5) {
+        restored.current = true
+        setT(audio.currentTime)
+        setResumeAt(saved)
+        return
+      }
+      window.setTimeout(attempt, 300)
+    }
+    setResumeAt(saved)
+    attempt()
   }
 
   function readBuffer(audio: HTMLAudioElement) {
@@ -90,10 +108,10 @@ export function AudioPlayer({
   useEffect(() => {
     let cancelled = false
     restored.current = false
+    tries.current = 0
     const audio = new Audio()
     audioRef.current = audio
     audio.preload = 'auto'
-    audio.crossOrigin = 'anonymous'
     audio.volume = vol
     audio.src = url
 
@@ -109,6 +127,7 @@ export function AudioPlayer({
     }
     const onTime = () => {
       setT(audio.currentTime)
+      setDur(Number.isFinite(audio.duration) ? audio.duration : 0)
       readBuffer(audio)
       const now = Date.now()
       if (now - lastSave.current > 1500) {
@@ -143,7 +162,7 @@ export function AudioPlayer({
     audio.addEventListener('progress', onProgress)
     audio.addEventListener('waiting', onWaiting)
     audio.addEventListener('canplay', onCanPlay)
-    audio.addEventListener('canplaythrough', onCanPlay)
+    audio.addEventListener('loadeddata', onCanPlay)
     audio.addEventListener('timeupdate', onTime)
     audio.addEventListener('loadedmetadata', onMeta)
     audio.addEventListener('play', onPlay)
@@ -164,7 +183,7 @@ export function AudioPlayer({
       audio.removeEventListener('progress', onProgress)
       audio.removeEventListener('waiting', onWaiting)
       audio.removeEventListener('canplay', onCanPlay)
-      audio.removeEventListener('canplaythrough', onCanPlay)
+      audio.removeEventListener('loadeddata', onCanPlay)
       audio.removeEventListener('timeupdate', onTime)
       audio.removeEventListener('loadedmetadata', onMeta)
       audio.removeEventListener('play', onPlay)
@@ -221,7 +240,15 @@ export function AudioPlayer({
   function skip(sec: number) {
     const a = audioRef.current
     if (!a) return
-    a.currentTime = Math.max(0, Math.min(a.duration || a.currentTime + sec, a.currentTime + sec))
+    const next = Math.max(0, a.currentTime + sec)
+    const cap =
+      Number.isFinite(a.duration) && a.duration > 0 ? a.duration : next
+    try {
+      a.currentTime = Math.min(cap, next)
+      setT(a.currentTime)
+    } catch {
+      setStatus('Buffering…')
+    }
   }
 
   const bufPct = dur > 0 ? Math.min(100, (buffered / dur) * 100) : 0
@@ -260,9 +287,8 @@ export function AudioPlayer({
             ) : null}
 
             <p className="max-w-md text-center text-[12px] leading-relaxed text-white/45">
-              Your place is saved on this device. Close the player or leave the
-              page — when you come back to this title, playback continues from
-              where you stopped.
+              Your place is saved on this device. When you open this title again,
+              playback jumps to where you stopped.
             </p>
 
             <div className="w-full max-w-md">
@@ -275,12 +301,18 @@ export function AudioPlayer({
               <input
                 type="range"
                 min={0}
-                max={dur || Math.max(t, 1)}
+                max={dur || Math.max(t + 30, 30)}
                 step={0.1}
                 value={t}
                 onChange={(e) => {
                   const a = audioRef.current
-                  if (a) a.currentTime = Number(e.target.value)
+                  if (!a) return
+                  try {
+                    a.currentTime = Number(e.target.value)
+                    setT(a.currentTime)
+                  } catch {
+                    setStatus('Buffering…')
+                  }
                 }}
                 className="mt-2 w-full accent-[#f591ac]"
               />
