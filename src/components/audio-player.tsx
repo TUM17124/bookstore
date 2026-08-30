@@ -9,8 +9,8 @@ function fmt(sec: number) {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-function posKey(title: string, url: string) {
-  return `plugyard-audio-pos:${title}:${url.split('?')[0]}`
+function posKey(title: string) {
+  return `plugyard-audio-pos:${title.trim().toLowerCase()}`
 }
 
 const SLEEP_OPTS = [
@@ -34,6 +34,7 @@ export function AudioPlayer({
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const sleepRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSave = useRef(0)
+  const restored = useRef(false)
 
   const [status, setStatus] = useState('Buffering…')
   const [ready, setReady] = useState(false)
@@ -45,14 +46,32 @@ export function AudioPlayer({
   const [vol, setVol] = useState(1)
   const [sleepMin, setSleepMin] = useState(0)
   const [sleepLeft, setSleepLeft] = useState(0)
+  const [resumeAt, setResumeAt] = useState(0)
 
   function savePos(sec: number, length: number) {
     try {
       if (length > 0 && sec >= length - 3) {
-        localStorage.removeItem(posKey(title, url))
+        localStorage.removeItem(posKey(title))
         return
       }
-      localStorage.setItem(posKey(title, url), String(Math.floor(sec)))
+      if (sec < 2) return
+      localStorage.setItem(posKey(title), String(Math.floor(sec)))
+    } catch {
+      // ignore
+    }
+  }
+
+  function applySavedPosition(audio: HTMLAudioElement) {
+    if (restored.current) return
+    try {
+      const saved = Number(localStorage.getItem(posKey(title)) || 0)
+      if (!Number.isFinite(saved) || saved < 3) return
+      const length = audio.duration
+      if (Number.isFinite(length) && length > 0 && saved >= length - 3) return
+      audio.currentTime = saved
+      setT(saved)
+      setResumeAt(saved)
+      restored.current = true
     } catch {
       // ignore
     }
@@ -70,9 +89,11 @@ export function AudioPlayer({
 
   useEffect(() => {
     let cancelled = false
+    restored.current = false
     const audio = new Audio()
     audioRef.current = audio
     audio.preload = 'auto'
+    audio.crossOrigin = 'anonymous'
     audio.volume = vol
     audio.src = url
 
@@ -82,6 +103,7 @@ export function AudioPlayer({
     }
     const onCanPlay = () => {
       if (cancelled) return
+      applySavedPosition(audio)
       setStatus('')
       setReady(true)
     }
@@ -89,22 +111,14 @@ export function AudioPlayer({
       setT(audio.currentTime)
       readBuffer(audio)
       const now = Date.now()
-      if (now - lastSave.current > 2000) {
+      if (now - lastSave.current > 1500) {
         lastSave.current = now
         savePos(audio.currentTime, audio.duration || 0)
       }
     }
     const onMeta = () => {
-      setDur(audio.duration || 0)
-      try {
-        const saved = Number(localStorage.getItem(posKey(title, url)) || 0)
-        if (saved > 3 && saved < (audio.duration || 0) - 3) {
-          audio.currentTime = saved
-          setT(saved)
-        }
-      } catch {
-        // ignore
-      }
+      setDur(Number.isFinite(audio.duration) ? audio.duration : 0)
+      applySavedPosition(audio)
     }
     const onPlay = () => {
       setPlaying(true)
@@ -116,7 +130,11 @@ export function AudioPlayer({
     }
     const onEnd = () => {
       setPlaying(false)
-      savePos(0, 0)
+      try {
+        localStorage.removeItem(posKey(title))
+      } catch {
+        // ignore
+      }
     }
     const onErr = () => {
       if (!cancelled) setStatus('Could not load this audiobook.')
@@ -132,6 +150,10 @@ export function AudioPlayer({
     audio.addEventListener('pause', onPause)
     audio.addEventListener('ended', onEnd)
     audio.addEventListener('error', onErr)
+
+    const onHide = () => savePos(audio.currentTime, audio.duration || 0)
+    window.addEventListener('pagehide', onHide)
+    document.addEventListener('visibilitychange', onHide)
 
     return () => {
       cancelled = true
@@ -149,6 +171,8 @@ export function AudioPlayer({
       audio.removeEventListener('pause', onPause)
       audio.removeEventListener('ended', onEnd)
       audio.removeEventListener('error', onErr)
+      window.removeEventListener('pagehide', onHide)
+      document.removeEventListener('visibilitychange', onHide)
       if (sleepRef.current) clearTimeout(sleepRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -197,7 +221,7 @@ export function AudioPlayer({
   function skip(sec: number) {
     const a = audioRef.current
     if (!a) return
-    a.currentTime = Math.max(0, Math.min(a.duration || 0, a.currentTime + sec))
+    a.currentTime = Math.max(0, Math.min(a.duration || a.currentTime + sec, a.currentTime + sec))
   }
 
   const bufPct = dur > 0 ? Math.min(100, (buffered / dur) * 100) : 0
@@ -229,6 +253,18 @@ export function AudioPlayer({
               ♪
             </div>
 
+            {resumeAt > 0 ? (
+              <p className="max-w-md text-center text-[13px] text-[#f591ac]">
+                Continuing from {fmt(resumeAt)}
+              </p>
+            ) : null}
+
+            <p className="max-w-md text-center text-[12px] leading-relaxed text-white/45">
+              Your place is saved on this device. Close the player or leave the
+              page — when you come back to this title, playback continues from
+              where you stopped.
+            </p>
+
             <div className="w-full max-w-md">
               <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/10">
                 <div
@@ -239,7 +275,7 @@ export function AudioPlayer({
               <input
                 type="range"
                 min={0}
-                max={dur || 0}
+                max={dur || Math.max(t, 1)}
                 step={0.1}
                 value={t}
                 onChange={(e) => {
@@ -250,7 +286,7 @@ export function AudioPlayer({
               />
               <div className="mt-1 flex justify-between text-[12px] text-white/45">
                 <span>{fmt(t)}</span>
-                <span>{fmt(dur)}</span>
+                <span>{dur ? fmt(dur) : '—'}</span>
               </div>
             </div>
 
