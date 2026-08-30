@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom';
 import { getPurchases, downloadOrderUrl, getToken, freeBookUrl } from '@/lib/api';
 import { getStoredUser } from '@/lib/auth-client';
 import { PdfReader } from '@/components/pdf-reader'
+import { AudioPlayer } from '@/components/audio-player'
 
 export interface BookCfg {
   id: string;
@@ -150,6 +151,8 @@ export function BooksShowcase({
 
   const [reviewsOpen, setReviewsOpen] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
+
+    const [playerOpen, setPlayerOpen] = useState(false)
 
     const { isBookmarked, toggleBookmark } = useBookmarks();
 
@@ -2072,17 +2075,14 @@ export function BooksShowcase({
         )}
       </button>
 
-      <button
+            <button
         type="button"
         disabled={!!buyLoading || !hasAudio}
         onClick={() => {
           if (!selectedCfg || buyLoading || !hasAudio) return
-          if (isFree) {
-            window.location.href = freeBookUrl(selectedCfg.id, 'audiobook', false)
-            return
-          }
-          if (ownedAudioOrderId && buyerEmail) {
-            window.location.href = downloadOrderUrl(ownedAudioOrderId, buyerEmail)
+          const canListen = isFree || !!ownedAudioOrderId
+          if (canListen) {
+            setPlayerOpen(true)
             return
           }
           setBuyLoading('audiobook')
@@ -2093,19 +2093,17 @@ export function BooksShowcase({
           })
           window.location.href = `/checkout?${q}`
         }}
-        className="relative inline-flex h-[54px] min-w-[140px] items-center justify-center gap-2 rounded-full bg-[#10152c] px-5 text-[16.5px] font-semibold text-white ring-1 ring-[var(--bs-lav)]/25 transition-[transform,filter,opacity] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-110 disabled:pointer-events-none disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-4 @max-[760px]:text-[15px]"
+        className="relative inline-flex h-[54px] min-w-[140px] items-center justify-center gap-2 rounded-full bg-[#10152c] px-5 text-[16.5px] font-semibold text-white ring-1 ring-[var(--bs-lav)]/25 transition hover:scale-[1.04] disabled:pointer-events-none disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-4 @max-[760px]:text-[15px]"
       >
         {buyLoading === 'audiobook' ? (
-          <>
-            <span
-              className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/25 border-t-white"
-              aria-hidden
-            />
-            …
-          </>
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
         ) : (
           <span className="relative inline-block">
-            {isFree || ownedAudioOrderId ? 'Download audio' : 'Buy Audiobook'}
+            {!hasAudio
+              ? 'No audio'
+              : isFree || ownedAudioOrderId
+                ? 'Listen'
+                : 'Buy to listen'}
             {!hasAudio && (
               <span
                 className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500"
@@ -2220,6 +2218,28 @@ export function BooksShowcase({
     </div>,
     document.body,
   )}
+  
+          {playerOpen &&
+          selectedCfg &&
+          typeof document !== 'undefined' &&
+          selectedCfg.hasAudiobook === true &&
+          (selectedCfg.isFree || !!(ownedAudioOrderId && buyerEmail)) &&
+          createPortal(
+            <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
+              <AudioPlayer
+                title={selectedCfg.title}
+                url={
+                  selectedCfg.isFree
+                    ? freeBookUrl(selectedCfg.id, 'audiobook', true)
+                    : `${downloadOrderUrl(ownedAudioOrderId!, buyerEmail!)}&inline=1`
+                }
+                onClose={() => setPlayerOpen(false)}
+              />
+            </div>,
+            document.body,
+          )}
+
+
     </div>
   );
 }
