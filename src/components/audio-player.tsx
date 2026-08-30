@@ -9,6 +9,10 @@ function fmt(sec: number) {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
+function posKey(title: string, url: string) {
+  return `plugyard-audio-pos:${title}:${url.split('?')[0]}`
+}
+
 const SLEEP_OPTS = [
   { label: 'Off', min: 0 },
   { label: '5 min', min: 5 },
@@ -28,74 +32,137 @@ export function AudioPlayer({
   onClose: () => void
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const blobUrlRef = useRef<string | null>(null)
   const sleepRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastSave = useRef(0)
 
-  const [status, setStatus] = useState('Downloading audio…')
+  const [status, setStatus] = useState('Buffering…')
   const [ready, setReady] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [t, setT] = useState(0)
   const [dur, setDur] = useState(0)
+  const [buffered, setBuffered] = useState(0)
   const [rate, setRate] = useState(1)
+  const [vol, setVol] = useState(1)
   const [sleepMin, setSleepMin] = useState(0)
   const [sleepLeft, setSleepLeft] = useState(0)
+
+  function savePos(sec: number, length: number) {
+    try {
+      if (length > 0 && sec >= length - 3) {
+        localStorage.removeItem(posKey(title, url))
+        return
+      }
+      localStorage.setItem(posKey(title, url), String(Math.floor(sec)))
+    } catch {
+      // ignore
+    }
+  }
+
+  function readBuffer(audio: HTMLAudioElement) {
+    try {
+      if (audio.buffered.length) {
+        setBuffered(audio.buffered.end(audio.buffered.length - 1))
+      }
+    } catch {
+      // ignore
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
     const audio = new Audio()
     audioRef.current = audio
+    audio.preload = 'auto'
+    audio.volume = vol
+    audio.src = url
 
-    ;(async () => {
-      try {
-        const res = await fetch(url)
-        if (!res.ok) throw new Error('download failed')
-        const blob = await res.blob()
-        if (cancelled) return
-        const obj = URL.createObjectURL(blob)
-        blobUrlRef.current = obj
-        audio.src = obj
-        audio.preload = 'auto'
-        setStatus('')
-        setReady(true)
-      } catch {
-        if (!cancelled) setStatus('Could not load this audiobook.')
+    const onProgress = () => readBuffer(audio)
+    const onWaiting = () => {
+      if (!cancelled) setStatus('Buffering…')
+    }
+    const onCanPlay = () => {
+      if (cancelled) return
+      setStatus('')
+      setReady(true)
+    }
+    const onTime = () => {
+      setT(audio.currentTime)
+      readBuffer(audio)
+      const now = Date.now()
+      if (now - lastSave.current > 2000) {
+        lastSave.current = now
+        savePos(audio.currentTime, audio.duration || 0)
       }
-    })()
+    }
+    const onMeta = () => {
+      setDur(audio.duration || 0)
+      try {
+        const saved = Number(localStorage.getItem(posKey(title, url)) || 0)
+        if (saved > 3 && saved < (audio.duration || 0) - 3) {
+          audio.currentTime = saved
+          setT(saved)
+        }
+      } catch {
+        // ignore
+      }
+    }
+    const onPlay = () => {
+      setPlaying(true)
+      setStatus('')
+    }
+    const onPause = () => {
+      setPlaying(false)
+      savePos(audio.currentTime, audio.duration || 0)
+    }
+    const onEnd = () => {
+      setPlaying(false)
+      savePos(0, 0)
+    }
+    const onErr = () => {
+      if (!cancelled) setStatus('Could not load this audiobook.')
+    }
 
-    const onTime = () => setT(audio.currentTime)
-    const onMeta = () => setDur(audio.duration || 0)
-    const onPlay = () => setPlaying(true)
-    const onPause = () => setPlaying(false)
-    const onEnd = () => setPlaying(false)
-
+    audio.addEventListener('progress', onProgress)
+    audio.addEventListener('waiting', onWaiting)
+    audio.addEventListener('canplay', onCanPlay)
+    audio.addEventListener('canplaythrough', onCanPlay)
     audio.addEventListener('timeupdate', onTime)
     audio.addEventListener('loadedmetadata', onMeta)
     audio.addEventListener('play', onPlay)
     audio.addEventListener('pause', onPause)
     audio.addEventListener('ended', onEnd)
+    audio.addEventListener('error', onErr)
 
     return () => {
       cancelled = true
+      savePos(audio.currentTime, audio.duration || 0)
       audio.pause()
       audio.removeAttribute('src')
       audio.load()
+      audio.removeEventListener('progress', onProgress)
+      audio.removeEventListener('waiting', onWaiting)
+      audio.removeEventListener('canplay', onCanPlay)
+      audio.removeEventListener('canplaythrough', onCanPlay)
       audio.removeEventListener('timeupdate', onTime)
       audio.removeEventListener('loadedmetadata', onMeta)
       audio.removeEventListener('play', onPlay)
       audio.removeEventListener('pause', onPause)
       audio.removeEventListener('ended', onEnd)
-      if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current)
-        blobUrlRef.current = null
-      }
+      audio.removeEventListener('error', onErr)
       if (sleepRef.current) clearTimeout(sleepRef.current)
     }
-  }, [url])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, title])
 
   useEffect(() => {
     const a = audioRef.current
     if (a) a.playbackRate = rate
   }, [rate])
+
+  useEffect(() => {
+    const a = audioRef.current
+    if (a) a.volume = vol
+  }, [vol])
 
   useEffect(() => {
     if (sleepRef.current) clearTimeout(sleepRef.current)
@@ -130,8 +197,10 @@ export function AudioPlayer({
   function skip(sec: number) {
     const a = audioRef.current
     if (!a) return
-    a.currentTime = Math.max(0, Math.min((a.duration || 0), a.currentTime + sec))
+    a.currentTime = Math.max(0, Math.min(a.duration || 0, a.currentTime + sec))
   }
+
+  const bufPct = dur > 0 ? Math.min(100, (buffered / dur) * 100) : 0
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#0b1020] text-[#fdfbf4]">
@@ -147,16 +216,26 @@ export function AudioPlayer({
         <h2 className="min-w-0 flex-1 truncate text-[16px] font-bold">{title}</h2>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-6">
-        {status ? (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-7 px-6">
+        {status && !ready ? (
           <p className="text-sm text-white/50">{status}</p>
         ) : (
           <>
+            {status && ready ? (
+              <p className="text-[13px] text-[#f591ac]">{status}</p>
+            ) : null}
+
             <div className="flex h-28 w-28 items-center justify-center rounded-3xl bg-[#141a32] text-4xl text-[#f591ac] ring-1 ring-white/10">
               ♪
             </div>
 
             <div className="w-full max-w-md">
+              <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="absolute inset-y-0 left-0 bg-white/25"
+                  style={{ width: `${bufPct}%` }}
+                />
+              </div>
               <input
                 type="range"
                 min={0}
@@ -167,7 +246,7 @@ export function AudioPlayer({
                   const a = audioRef.current
                   if (a) a.currentTime = Number(e.target.value)
                 }}
-                className="w-full accent-[#f591ac]"
+                className="mt-2 w-full accent-[#f591ac]"
               />
               <div className="mt-1 flex justify-between text-[12px] text-white/45">
                 <span>{fmt(t)}</span>
@@ -197,6 +276,21 @@ export function AudioPlayer({
               >
                 +15
               </button>
+            </div>
+
+            <div className="w-full max-w-md">
+              <p className="mb-1 text-center text-[12px] uppercase tracking-wider text-white/40">
+                Volume {Math.round(vol * 100)}%
+              </p>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={vol}
+                onChange={(e) => setVol(Number(e.target.value))}
+                className="w-full accent-[#f591ac]"
+              />
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-2">
