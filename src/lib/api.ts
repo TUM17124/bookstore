@@ -263,14 +263,17 @@ export function logout() {
   clearTokens()
 }
 
-export async function fetchBookmarks() {
-  return api<
-    Array<{
-      id: number
-      book: ApiBook
-      created_at: string
-    }>
-  >('/bookmarks/')
+export type BookmarkRow = {
+  id: number
+  book: ApiBook
+  created_at?: string
+}
+
+export async function fetchBookmarks(page = 1): Promise<
+  Paginated<BookmarkRow> | BookmarkRow[]
+> {
+  const q = page > 1 ? `?page=${page}` : ''
+  return api(`/bookmarks/${q}`)
 }
 
 export async function addBookmarkApi(bookId: string | number) {

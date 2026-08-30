@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import type { BookCfg } from '@/components/ui/books-showcase';
@@ -15,6 +16,8 @@ import {
   addBookmarkApi,
   removeBookmarkApi,
   type ApiBook,
+  type Paginated,
+  type BookmarkRow,
 } from '@/lib/api';
 
 type BookmarksContextValue = {
@@ -29,6 +32,12 @@ type BookmarksContextValue = {
 
 const BookmarksContext = createContext<BookmarksContextValue | null>(null);
 const STORAGE_KEY = 'bookstore-bookmarks';
+
+function asBookmarkList(
+  data: Paginated<BookmarkRow> | BookmarkRow[],
+): BookmarkRow[] {
+  return Array.isArray(data) ? data : data.results ?? [];
+}
 
 function apiBookToCfg(b: ApiBook): BookCfg {
   return {
@@ -51,6 +60,9 @@ function apiBookToCfg(b: ApiBook): BookCfg {
     backInk: b.backInk,
     chapters: b.chapters,
     isFree: !!b.isFree,
+    hasEbook: b.hasEbook !== false,
+    hasAudiobook: !!b.hasAudiobook,
+    price: b.price != null ? Number(b.price) : undefined,
   };
 }
 
@@ -93,7 +105,6 @@ function clearLocalBookmarks() {
   }
 }
 
-/** Push every local bookmark to the API, then clear local storage */
 async function mergeLocalIntoServer(): Promise<void> {
   const local = readLocalBookmarks();
   if (!local.length || !getToken()) return;
@@ -102,7 +113,6 @@ async function mergeLocalIntoServer(): Promise<void> {
     try {
       await addBookmarkApi(book.id);
     } catch (e) {
-      // already exists or invalid id — continue
       console.warn('merge bookmark', book.id, e);
     }
   }
@@ -114,25 +124,65 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
+  const busy = useRef(false);
+  const pageRef = useRef(1);
+  const hasMoreRef = useRef(true);
+  const pumpStop = useRef(false);
+
+  const loadPage = useCallback(async (p: number, replace: boolean) => {
+    if (!getToken()) {
+      if (replace) setBookmarks(readLocalBookmarks());
+      hasMoreRef.current = false;
+      return;
+    }
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      const data = await fetchBookmarks(p);
+      const rows = asBookmarkList(data);
+      const more = !Array.isArray(data) && !!(data as Paginated<BookmarkRow>).next;
+      hasMoreRef.current = more;
+      pageRef.current = p;
+      const mapped = rows.map((r) => apiBookToCfg(r.book));
+      setBookmarks((prev) => {
+        if (replace) return mapped;
+        const seen = new Set(prev.map((b) => b.id));
+        return [...prev, ...mapped.filter((b) => !seen.has(b.id))];
+      });
+    } catch (e) {
+      console.error('Failed to load bookmarks', e);
+      if (replace) setBookmarks([]);
+      hasMoreRef.current = false;
+    } finally {
+      busy.current = false;
+    }
+  }, []);
+
   const refreshBookmarks = useCallback(async () => {
+    pumpStop.current = true;
+    pageRef.current = 1;
+    hasMoreRef.current = true;
+
     if (!getToken()) {
       setBookmarks(readLocalBookmarks());
+      hasMoreRef.current = false;
       return;
     }
 
     setLoading(true);
     try {
-      // Merge guest list into account once per login session load
       await mergeLocalIntoServer();
-      const rows = await fetchBookmarks();
-      setBookmarks(rows.map((r) => apiBookToCfg(r.book)));
-    } catch (e) {
-      console.error('Failed to load bookmarks', e);
-      setBookmarks([]);
+      await loadPage(1, true);
     } finally {
       setLoading(false);
     }
-  }, []);
+
+    pumpStop.current = false;
+    while (!pumpStop.current && hasMoreRef.current) {
+      await loadPage(pageRef.current + 1, false);
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  }, [loadPage]);
 
   useEffect(() => {
     void refreshBookmarks().finally(() => setHydrated(true));
@@ -143,12 +193,12 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener('auth-changed', onAuth);
     window.addEventListener('storage', onAuth);
     return () => {
+      pumpStop.current = true;
       window.removeEventListener('auth-changed', onAuth);
       window.removeEventListener('storage', onAuth);
     };
   }, [refreshBookmarks]);
 
-  // Guests only: keep localStorage in sync
   useEffect(() => {
     if (!hydrated) return;
     if (getToken()) return;
@@ -174,58 +224,37 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
 
       try {
         await addBookmarkApi(book.id);
-        await refreshBookmarks();
+        setBookmarks((prev) => {
+          if (prev.some((b) => b.id === clean.id)) return prev;
+          return [...prev, clean];
+        });
       } catch (e) {
         console.error(e);
         alert(e instanceof Error ? e.message : 'Could not save bookmark');
       }
     },
-    [refreshBookmarks],
+    [],
   );
 
-  const removeBookmark = useCallback(
-    async (id: string) => {
-      if (!getToken()) {
-        setBookmarks((prev) => prev.filter((b) => b.id !== id));
-        return;
-      }
-      try {
-        await removeBookmarkApi(id);
-        await refreshBookmarks();
-      } catch (e) {
-        console.error(e);
-      }
-    },
-    [refreshBookmarks],
-  );
+  const removeBookmark = useCallback(async (id: string) => {
+    if (!getToken()) {
+      setBookmarks((prev) => prev.filter((b) => b.id !== id));
+      return;
+    }
+    try {
+      await removeBookmarkApi(id);
+      setBookmarks((prev) => prev.filter((b) => b.id !== id));
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
 
   const toggleBookmark = useCallback(
     async (book: BookCfg) => {
-      const clean = toSerializable(book);
-
-      if (!getToken()) {
-        setBookmarks((prev) => {
-          if (prev.some((b) => b.id === clean.id)) {
-            return prev.filter((b) => b.id !== clean.id);
-          }
-          return [...prev, clean];
-        });
-        return;
-      }
-
-      try {
-        if (isBookmarked(book.id)) {
-          await removeBookmarkApi(book.id);
-        } else {
-          await addBookmarkApi(book.id);
-        }
-        await refreshBookmarks();
-      } catch (e) {
-        console.error(e);
-        alert(e instanceof Error ? e.message : 'Could not update bookmark');
-      }
+      if (isBookmarked(book.id)) await removeBookmark(book.id);
+      else await addBookmark(book);
     },
-    [isBookmarked, refreshBookmarks],
+    [isBookmarked, addBookmark, removeBookmark],
   );
 
   const value = useMemo(
