@@ -70,6 +70,7 @@ export function AudioPlayer({
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const sleepEndRef = useRef(0)
   const sleepMinRef = useRef(0)
+  const lastSleepMinRef = useRef(15)
   const lastSave = useRef(0)
   const restored = useRef(false)
   const tries = useRef(0)
@@ -105,6 +106,7 @@ export function AudioPlayer({
 
   function startSleep(minutes: number) {
     sleepMinRef.current = minutes
+    if (minutes > 0) lastSleepMinRef.current = minutes
     setSleepMin(minutes)
     if (!minutes) {
       sleepEndRef.current = 0
@@ -113,6 +115,13 @@ export function AudioPlayer({
     }
     sleepEndRef.current = Date.now() + minutes * 60 * 1000
     setSleepTick((n) => n + 1)
+  }
+
+  function restartSleep() {
+    const minutes = sleepMinRef.current || lastSleepMinRef.current
+    if (!minutes) return
+    startSleep(minutes)
+    setShakeMsg(`Timer reset · ${minutes} min`)
   }
 
   function saveLocal(sec: number, length: number) {
@@ -307,6 +316,7 @@ export function AudioPlayer({
         audioRef.current?.pause()
         sleepMinRef.current = 0
         setSleepMin(0)
+        setShakeMsg('Timer ended. Reset or shake to start it again.')
       }
     }
     tick()
@@ -332,15 +342,11 @@ export function AudioPlayer({
       const now = Date.now()
       if (now - lastShake.current < 1500) return
       lastShake.current = now
-      const minutes = sleepMinRef.current
-      if (minutes > 0) {
-        startSleep(minutes)
-        setShakeMsg(`Timer reset · ${minutes} min`)
-        try {
-          navigator.vibrate?.(80)
-        } catch {
-          // ignore
-        }
+      restartSleep()
+      try {
+        navigator.vibrate?.(80)
+      } catch {
+        // ignore
       }
     }
     window.addEventListener('devicemotion', onMotion, { passive: true })
@@ -359,7 +365,7 @@ export function AudioPlayer({
           return
         }
       }
-      setShakeMsg('Shake is armed. Set a timer, then shake hard once.')
+      setShakeMsg('Shake is armed. Shake to start or reset the last timer.')
     } catch {
       setShakeMsg('This browser cannot read a shake. Use Reset timer.')
     }
@@ -569,13 +575,8 @@ export function AudioPlayer({
                 </button>
                 <button
                   type="button"
-                  disabled={!sleepMin}
-                  onClick={() => {
-                    if (!sleepMin) return
-                    startSleep(sleepMin)
-                    setShakeMsg(`Timer reset · ${sleepMin} min`)
-                  }}
-                  className="rounded-full bg-[#f591ac] px-3 py-2 text-[12px] font-bold text-[#141a32] disabled:opacity-40"
+                  onClick={restartSleep}
+                  className="rounded-full bg-[#f591ac] px-3 py-2 text-[12px] font-bold text-[#141a32]"
                 >
                   Reset timer
                 </button>
@@ -585,7 +586,7 @@ export function AudioPlayer({
                 <p className="mb-2 text-center text-[12px] text-[#f591ac]">{shakeMsg}</p>
               ) : (
                 <p className="mb-2 text-center text-[11px] text-white/35">
-                  Use Reset timer if shake is blocked by your browser.
+                  After the timer ends, Reset or shake starts the last length again.
                 </p>
               )}
 
