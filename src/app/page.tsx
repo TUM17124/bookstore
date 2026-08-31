@@ -67,17 +67,15 @@ function HomeInner() {
   const [books, setBooks] = useState<BookCfg[]>([])
   const [error, setError] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(true)
+
   const busy = useRef(false)
   const pageRef = useRef(1)
   const hasMoreRef = useRef(true)
 
-  
-
   const loadPage = useCallback(
     async (p: number, replace: boolean) => {
       if (busy.current) return
+      if (!replace && !hasMoreRef.current) return
       busy.current = true
       try {
         const data = await getBooks({ ...queryFor(q, category), page: p })
@@ -86,8 +84,6 @@ function HomeInner() {
           !Array.isArray(data) && !!(data as Paginated<ApiBook>).next
         hasMoreRef.current = more
         pageRef.current = p
-        setHasMore(more)
-        setPage(p)
         setBooks((prev) => {
           if (replace) return orderWithSelected(list, selectedBookId)
           const seen = new Set(prev.map((b) => b.id))
@@ -101,7 +97,7 @@ function HomeInner() {
         }
       } finally {
         busy.current = false
-          if (replace) setLoading(false)
+        if (replace) setLoading(false)
       }
     },
     [q, category, selectedBookId],
@@ -110,30 +106,15 @@ function HomeInner() {
   useEffect(() => {
     setLoading(true)
     setError(false)
-    setHasMore(true)
     hasMoreRef.current = true
     pageRef.current = 1
     void loadPage(1, true)
   }, [loadPage])
 
-  // Keep fetching the next pages in the background (phone + desktop)
-  useEffect(() => {
-    if (loading) return
-    let stop = false
-
-    async function pump() {
-      while (!stop && hasMoreRef.current) {
-        await loadPage(pageRef.current + 1, false)
-        await new Promise((r) => setTimeout(r, 400))
-      }
-    }
-
-    void pump()
-    return () => {
-      stop = true
-    }
-  }, [loading, loadPage, q, category])
-
+  const onNearEnd = useCallback(() => {
+    if (busy.current || !hasMoreRef.current) return
+    void loadPage(pageRef.current + 1, false)
+  }, [loadPage])
 
   if (loading) {
     return (
@@ -171,8 +152,9 @@ function HomeInner() {
     <main className="home-shelf">
       <OfferMarquee />
       <div className="home-shelf-stage">
-                <BooksShowcase
+        <BooksShowcase
           books={books}
+          onNearEnd={onNearEnd}
           heroTitle={selectedBookId || q ? "Results" : "Books"}
           navTitle={
             selectedBookId

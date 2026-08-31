@@ -1163,9 +1163,9 @@ export function BooksShowcase({
         setTargets(b, slot);
       });
 
-      currentWindow = incoming;
+           currentWindow = incoming;
       rebuildHitMeshes();
-      if (N >= 3 && carouselStart + VISIBLE >= N - 1) {
+      if (N > 0 && carouselStart + VISIBLE >= Math.ceil(N * 0.7)) {
         onNearEndRef.current?.();
       }
       setT(() => { carouselBusy = false; }, 700);
