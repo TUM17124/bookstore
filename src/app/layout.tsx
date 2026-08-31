@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { NotchNavbar } from "@/components/ui/notch-navbar"
 import { BookmarksProvider } from "@/components/bookmarks-context"
 import { SiteFooter } from "@/components/site-footer"
+import { PwaRegister } from "@/components/pwa-register"
 
 const SITE = "https://plugyard.com"
 
@@ -79,7 +80,6 @@ export const metadata: Metadata = {
     canonical: SITE,
   },
   verification: {
-    // Paste the code Google Search Console gives you (content= value only)
     google: "G5QylOyQKIG9YdPoVnVJAABBv2hONBE7kGmMH7XpdCQ",
   },
 }
@@ -93,7 +93,8 @@ export default function RootLayout({
     <html lang="en-KE" suppressHydrationWarning>
       <body className="antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-                    <BookmarksProvider>
+          <BookmarksProvider>
+            <PwaRegister />
             <div className="site-nav">
               <NotchNavbar />
             </div>

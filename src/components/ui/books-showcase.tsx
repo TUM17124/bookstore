@@ -2227,14 +2227,15 @@ export function BooksShowcase({
           createPortal(
             <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
               <AudioPlayer
-                title={selectedCfg.title}
-                url={
-                  selectedCfg.isFree
-                    ? freeBookUrl(selectedCfg.id, 'audiobook', true)
-                    : `${downloadOrderUrl(ownedAudioOrderId!, buyerEmail!)}&inline=1`
-                }
-                onClose={() => setPlayerOpen(false)}
-              />
+  title={selectedCfg.title}
+  bookId={selectedCfg.id}
+  url={
+    selectedCfg.isFree
+      ? freeBookUrl(selectedCfg.id, 'audiobook', true)
+      : `${downloadOrderUrl(ownedAudioOrderId!, buyerEmail!)}&inline=1`
+  }
+  onClose={() => setPlayerOpen(false)}
+/>
             </div>,
             document.body,
           )}

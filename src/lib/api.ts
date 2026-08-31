@@ -263,6 +263,44 @@ export function logout() {
   clearTokens()
 }
 
+export async function getAudioProgress(bookId: string) {
+  return api<{ position: number; duration: number }>(
+    `/books/${bookId}/audio-progress/`,
+  )
+}
+
+export async function saveAudioProgress(
+  bookId: string,
+  position: number,
+  duration: number,
+) {
+  return api(`/books/${bookId}/audio-progress/`, {
+    method: 'POST',
+    body: JSON.stringify({ position, duration }),
+  })
+}
+
+export async function getAudioNotes(bookId: string) {
+  return api<Array<{ id: number; position: number; note: string }>>(
+    `/books/${bookId}/audio-notes/`,
+  )
+}
+
+export async function addAudioNote(
+  bookId: string,
+  position: number,
+  note: string,
+) {
+  return api(`/books/${bookId}/audio-notes/`, {
+    method: 'POST',
+    body: JSON.stringify({ position, note }),
+  })
+}
+
+export async function deleteAudioNote(id: number) {
+  return api(`/audio-notes/${id}/`, { method: 'DELETE' })
+}
+
 export type BookmarkRow = {
   id: number
   book: ApiBook
