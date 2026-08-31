@@ -26,6 +26,10 @@ function pauseKey(title: string) {
   return `plugyard-audio-paused-at:${title.trim().toLowerCase()}`
 }
 
+function offlineKey(bookId: string) {
+  return `plugyard-audio-offline:${bookId}`
+}
+
 const SLEEP_OPTS = [
   { label: 'Off', min: 0 },
   { label: '5 min', min: 5 },
@@ -37,6 +41,20 @@ const SLEEP_OPTS = [
 
 const ROLLBACK_AFTER_MS = 2 * 60 * 1000
 const ROLLBACK_SEC = 15
+
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('plugyard-audio', 1)
+    req.onupgradeneeded = () => {
+      const db = req.result
+      if (!db.objectStoreNames.contains('files')) {
+        db.createObjectStore('files')
+      }
+    }
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
 
 export function AudioPlayer({
   title,
@@ -50,10 +68,11 @@ export function AudioPlayer({
   onClose: () => void
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const sleepRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sleepEndRef = useRef(0)
   const lastSave = useRef(0)
   const restored = useRef(false)
   const tries = useRef(0)
+  const lastShake = useRef(0)
   const loggedIn = !!getToken()
 
   const [status, setStatus] = useState('Buffering…')
@@ -66,10 +85,14 @@ export function AudioPlayer({
   const [vol, setVol] = useState(1)
   const [sleepMin, setSleepMin] = useState(0)
   const [sleepLeft, setSleepLeft] = useState(0)
+  const [sleepTick, setSleepTick] = useState(0)
   const [resumeAt, setResumeAt] = useState(0)
   const [noteText, setNoteText] = useState('')
   const [notes, setNotes] = useState<Array<{ id: number; position: number; note: string }>>([])
+  const [savingNote, setSavingNote] = useState(false)
+  const [offlineBusy, setOfflineBusy] = useState(false)
   const [offlineMsg, setOfflineMsg] = useState('')
+  const [shakeMsg, setShakeMsg] = useState('')
 
   const nextPath =
     typeof window !== 'undefined'
@@ -77,6 +100,17 @@ export function AudioPlayer({
       : '/'
   const loginHref = `/login?next=${encodeURIComponent(nextPath)}`
   const signupHref = `/signup?next=${encodeURIComponent(nextPath)}`
+
+  function startSleep(minutes: number) {
+    setSleepMin(minutes)
+    if (!minutes) {
+      sleepEndRef.current = 0
+      setSleepLeft(0)
+      return
+    }
+    sleepEndRef.current = Date.now() + minutes * 60 * 1000
+    setSleepTick((n) => n + 1)
+  }
 
   function saveLocal(sec: number, length: number) {
     try {
@@ -143,6 +177,7 @@ export function AudioPlayer({
     audioRef.current = audio
     audio.preload = 'auto'
     audio.volume = vol
+    audio.crossOrigin = 'anonymous'
     audio.src = url
 
     const startRestore = async () => {
@@ -183,13 +218,6 @@ export function AudioPlayer({
         void saveCloud(audio.currentTime, audio.duration || 0)
       }
     }
-    const onMeta = () => {
-      setDur(Number.isFinite(audio.duration) ? audio.duration : 0)
-    }
-    const onPlay = () => {
-      setPlaying(true)
-      setStatus('')
-    }
     const onPause = () => {
       setPlaying(false)
       try {
@@ -200,28 +228,31 @@ export function AudioPlayer({
       saveLocal(audio.currentTime, audio.duration || 0)
       void saveCloud(audio.currentTime, audio.duration || 0)
     }
-    const onEnd = () => {
-      setPlaying(false)
-      try {
-        localStorage.removeItem(posKey(title))
-      } catch {
-        // ignore
-      }
-    }
-    const onErr = () => {
-      if (!cancelled) setStatus('Could not load this audiobook.')
-    }
 
     audio.addEventListener('progress', onProgress)
     audio.addEventListener('waiting', onWaiting)
     audio.addEventListener('canplay', onCanPlay)
     audio.addEventListener('loadeddata', onCanPlay)
     audio.addEventListener('timeupdate', onTime)
-    audio.addEventListener('loadedmetadata', onMeta)
-    audio.addEventListener('play', onPlay)
+    audio.addEventListener('loadedmetadata', () => {
+      setDur(Number.isFinite(audio.duration) ? audio.duration : 0)
+    })
+    audio.addEventListener('play', () => {
+      setPlaying(true)
+      setStatus('')
+    })
     audio.addEventListener('pause', onPause)
-    audio.addEventListener('ended', onEnd)
-    audio.addEventListener('error', onErr)
+    audio.addEventListener('ended', () => {
+      setPlaying(false)
+      try {
+        localStorage.removeItem(posKey(title))
+      } catch {
+        // ignore
+      }
+    })
+    audio.addEventListener('error', () => {
+      if (!cancelled) setStatus('Could not load this audiobook.')
+    })
 
     const onHide = () => {
       saveLocal(audio.currentTime, audio.duration || 0)
@@ -245,19 +276,8 @@ export function AudioPlayer({
       audio.pause()
       audio.removeAttribute('src')
       audio.load()
-      audio.removeEventListener('progress', onProgress)
-      audio.removeEventListener('waiting', onWaiting)
-      audio.removeEventListener('canplay', onCanPlay)
-      audio.removeEventListener('loadeddata', onCanPlay)
-      audio.removeEventListener('timeupdate', onTime)
-      audio.removeEventListener('loadedmetadata', onMeta)
-      audio.removeEventListener('play', onPlay)
-      audio.removeEventListener('pause', onPause)
-      audio.removeEventListener('ended', onEnd)
-      audio.removeEventListener('error', onErr)
       window.removeEventListener('pagehide', onHide)
       document.removeEventListener('visibilitychange', onHide)
-      if (sleepRef.current) clearTimeout(sleepRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, title, bookId])
@@ -273,38 +293,59 @@ export function AudioPlayer({
   }, [vol])
 
   useEffect(() => {
-    if (sleepRef.current) clearTimeout(sleepRef.current)
-    if (!sleepMin) {
+    if (!sleepMin || !sleepEndRef.current) {
       setSleepLeft(0)
       return
     }
-    const end = Date.now() + sleepMin * 60 * 1000
     const tick = () => {
-      const left = Math.max(0, Math.ceil((end - Date.now()) / 1000))
+      const left = Math.max(0, Math.ceil((sleepEndRef.current - Date.now()) / 1000))
       setSleepLeft(left)
       if (left <= 0) {
         audioRef.current?.pause()
         setSleepMin(0)
-        return
       }
-      sleepRef.current = setTimeout(tick, 1000)
     }
     tick()
-    return () => {
-      if (sleepRef.current) clearTimeout(sleepRef.current)
-    }
-  }, [sleepMin])
+    const id = window.setInterval(tick, 1000)
+    return () => window.clearInterval(id)
+  }, [sleepMin, sleepTick])
 
   useEffect(() => {
-    const onShake = (e: DeviceMotionEvent) => {
-      const acc = e.accelerationIncludingGravity
-      if (!acc) return
-      const mag = Math.sqrt((acc.x || 0) ** 2 + (acc.y || 0) ** 2 + (acc.z || 0) ** 2)
-      if (mag > 22 && sleepMin > 0) setSleepMin(sleepMin)
+    const onMotion = (e: DeviceMotionEvent) => {
+      const a = e.acceleration
+      const g = e.accelerationIncludingGravity
+      const x = a?.x ?? g?.x ?? 0
+      const y = a?.y ?? g?.y ?? 0
+      const z = a?.z ?? g?.z ?? 0
+      const mag = Math.sqrt(x * x + y * y + z * z)
+      if (mag < 18) return
+      const now = Date.now()
+      if (now - lastShake.current < 1200) return
+      lastShake.current = now
+      if (sleepMin > 0) {
+        startSleep(sleepMin)
+        setShakeMsg(`Sleep timer reset · ${sleepMin} min`)
+      }
     }
-    window.addEventListener('devicemotion', onShake)
-    return () => window.removeEventListener('devicemotion', onShake)
+    window.addEventListener('devicemotion', onMotion)
+    return () => window.removeEventListener('devicemotion', onMotion)
   }, [sleepMin])
+
+  async function enableShake() {
+    const anyMotion = DeviceMotionEvent as unknown as {
+      requestPermission?: () => Promise<string>
+    }
+    try {
+      if (typeof anyMotion.requestPermission === 'function') {
+        const res = await anyMotion.requestPermission()
+        setShakeMsg(res === 'granted' ? 'Shake is on. Shake to reset sleep.' : 'Shake permission denied.')
+        return
+      }
+      setShakeMsg('Shake is on. Set a sleep timer, then shake.')
+    } catch {
+      setShakeMsg('This browser does not allow shake control.')
+    }
+  }
 
   function toggle() {
     const a = audioRef.current
@@ -328,32 +369,42 @@ export function AudioPlayer({
 
   async function markMoment() {
     const a = audioRef.current
-    if (!a || !loggedIn) return
-    const row = await addAudioNote(bookId, a.currentTime, noteText.trim())
-    setNotes((prev) => [...prev, row as { id: number; position: number; note: string }])
-    setNoteText('')
+    if (!a || !loggedIn || savingNote) return
+    setSavingNote(true)
+    try {
+      const row = await addAudioNote(bookId, a.currentTime, noteText.trim())
+      setNotes((prev) => [...prev, row as { id: number; position: number; note: string }])
+      setNoteText('')
+    } catch {
+      setShakeMsg('Could not save note. Try again.')
+    }
+    setSavingNote(false)
   }
 
   async function saveOffline() {
+    if (offlineBusy) return
+    setOfflineBusy(true)
+    setOfflineMsg('Saving offline…')
     try {
-      const res = await fetch(url)
+      const res = await fetch(url, { mode: 'cors' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const buf = await res.arrayBuffer()
-      const raw = new Uint8Array(buf)
-      const key = new TextEncoder().encode((getToken() || title).slice(0, 16).padEnd(16, '0'))
-      const out = new Uint8Array(raw.length)
-      for (let i = 0; i < raw.length; i++) out[i] = raw[i] ^ key[i % key.length]
-      const dbReq = indexedDB.open('plugyard-audio', 1)
-      dbReq.onupgradeneeded = () => {
-        dbReq.result.createObjectStore('files')
-      }
-      dbReq.onsuccess = () => {
-        const tx = dbReq.result.transaction('files', 'readwrite')
-        tx.objectStore('files').put(out.buffer, `audio:${bookId}`)
-        setOfflineMsg('Saved on this device. Play needs the same login.')
-      }
-    } catch {
-      setOfflineMsg('Could not save offline.')
+      const db = await openDb()
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('files', 'readwrite')
+        const req = tx.objectStore('files').put(buf, offlineKey(bookId))
+        req.onsuccess = () => resolve()
+        req.onerror = () => reject(req.error)
+      })
+      setOfflineMsg('Saved on this device.')
+    } catch (err) {
+      setOfflineMsg(
+        err instanceof Error
+          ? `Could not save offline (${err.message}). The audio host must allow this site.`
+          : 'Could not save offline.',
+      )
     }
+    setOfflineBusy(false)
   }
 
   const span = dur || Math.max(t + 30, 30)
@@ -406,14 +457,8 @@ export function AudioPlayer({
             <div className="w-full max-w-md">
               <div className="relative h-2 w-full">
                 <div className="absolute inset-0 overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className="absolute inset-y-0 left-0 bg-white/30"
-                    style={{ width: `${bufPct}%` }}
-                  />
-                  <div
-                    className="absolute inset-y-0 left-0 bg-[#f591ac]"
-                    style={{ width: `${playPct}%` }}
-                  />
+                  <div className="absolute inset-y-0 left-0 bg-white/30" style={{ width: `${bufPct}%` }} />
+                  <div className="absolute inset-y-0 left-0 bg-[#f591ac]" style={{ width: `${playPct}%` }} />
                 </div>
                 <input
                   type="range"
@@ -491,15 +536,20 @@ export function AudioPlayer({
                 Sleep timer
                 {sleepLeft > 0 ? ` · ${fmt(sleepLeft)}` : ''}
               </p>
-              <p className="mb-2 text-center text-[11px] text-white/35">
-                Shake the phone to restart the timer.
-              </p>
+              <button
+                type="button"
+                onClick={() => void enableShake()}
+                className="mb-2 w-full rounded-full bg-white/10 px-3 py-2 text-[12px] font-semibold"
+              >
+                Enable shake to reset timer
+              </button>
+              {shakeMsg ? <p className="mb-2 text-center text-[12px] text-[#f591ac]">{shakeMsg}</p> : null}
               <div className="flex flex-wrap justify-center gap-2">
                 {SLEEP_OPTS.map((o) => (
                   <button
                     key={o.min}
                     type="button"
-                    onClick={() => setSleepMin(o.min)}
+                    onClick={() => startSleep(o.min)}
                     className={`rounded-full px-3 py-1 text-[13px] font-semibold ${
                       sleepMin === o.min ? 'bg-[#f591ac] text-[#141a32]' : 'bg-white/10 text-white'
                     }`}
@@ -522,24 +572,22 @@ export function AudioPlayer({
                       onChange={(e) => setNoteText(e.target.value)}
                       placeholder="Optional note"
                       maxLength={280}
-                      className="min-w-0 flex-1 rounded-full bg-white/10 px-3 py-2 text-sm outline-none"
+                      disabled={savingNote}
+                      className="min-w-0 flex-1 rounded-full bg-white/10 px-3 py-2 text-sm outline-none disabled:opacity-50"
                     />
                     <button
                       type="button"
+                      disabled={savingNote}
                       onClick={() => void markMoment()}
-                      className="rounded-full bg-[#f591ac] px-3 py-2 text-sm font-bold text-[#141a32]"
+                      className="rounded-full bg-[#f591ac] px-3 py-2 text-sm font-bold text-[#141a32] disabled:opacity-60"
                     >
-                      Save
+                      {savingNote ? 'Saving…' : 'Save'}
                     </button>
                   </div>
                   <ul className="mt-3 space-y-2">
                     {notes.map((n) => (
                       <li key={n.id} className="flex items-center gap-2 text-sm">
-                        <button
-                          type="button"
-                          onClick={() => skip(n.position - t)}
-                          className="text-[#f591ac]"
-                        >
+                        <button type="button" onClick={() => skip(n.position - t)} className="text-[#f591ac]">
                           {fmt(n.position)}
                         </button>
                         <span className="min-w-0 flex-1 truncate text-white/70">{n.note}</span>
@@ -569,10 +617,11 @@ export function AudioPlayer({
 
             <button
               type="button"
+              disabled={offlineBusy}
               onClick={() => void saveOffline()}
-              className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold"
+              className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold disabled:opacity-60"
             >
-              Save offline on this device
+              {offlineBusy ? 'Saving offline…' : 'Save offline on this device'}
             </button>
             {offlineMsg ? <p className="text-center text-[12px] text-white/50">{offlineMsg}</p> : null}
           </>
