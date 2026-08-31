@@ -69,6 +69,7 @@ export function AudioPlayer({
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const sleepEndRef = useRef(0)
+  const sleepMinRef = useRef(0)
   const lastSave = useRef(0)
   const restored = useRef(false)
   const tries = useRef(0)
@@ -103,6 +104,7 @@ export function AudioPlayer({
   const signupHref = `/signup?next=${encodeURIComponent(nextPath)}`
 
   function startSleep(minutes: number) {
+    sleepMinRef.current = minutes
     setSleepMin(minutes)
     if (!minutes) {
       sleepEndRef.current = 0
@@ -303,6 +305,7 @@ export function AudioPlayer({
       setSleepLeft(left)
       if (left <= 0) {
         audioRef.current?.pause()
+        sleepMinRef.current = 0
         setSleepMin(0)
       }
     }
@@ -312,51 +315,55 @@ export function AudioPlayer({
   }, [sleepMin, sleepTick])
 
   useEffect(() => {
-  const onMotion = (e: DeviceMotionEvent) => {
-    const g = e.accelerationIncludingGravity
-    const a = e.acceleration
-    const x = (a?.x ?? g?.x ?? 0)
-    const y = (a?.y ?? g?.y ?? 0)
-    const z = (a?.z ?? g?.z ?? 0)
-    const mag = Math.sqrt(x * x + y * y + z * z)
-    const delta = Math.abs(mag - lastMag.current)
-    lastMag.current = mag
-    // Still phone ≈ 9.8. A shake is a sudden jump, not a high number.
-    if (delta < 8) return
-    const now = Date.now()
-    if (now - lastShake.current < 1500) return
-    lastShake.current = now
-    if (sleepMin > 0) {
-      startSleep(sleepMin)
-      setShakeMsg(`Timer reset · ${sleepMin} min`)
-      try {
-        navigator.vibrate?.(80)
-      } catch {
-        // ignore
-      }
-    }
-  }
-  window.addEventListener('devicemotion', onMotion, { passive: true })
-  return () => window.removeEventListener('devicemotion', onMotion)
-}, [sleepMin])
-
-async function enableShake() {
-  try {
-    const DM = DeviceMotionEvent as unknown as {
-      requestPermission?: () => Promise<string>
-    }
-    if (typeof DM.requestPermission === 'function') {
-      const res = await DM.requestPermission()
-      if (res !== 'granted') {
-        setShakeMsg('Allow Motion & Orientation for this site, then try again.')
+    const onMotion = (e: DeviceMotionEvent) => {
+      const g = e.accelerationIncludingGravity
+      const a = e.acceleration
+      const x = a?.x ?? g?.x ?? 0
+      const y = a?.y ?? g?.y ?? 0
+      const z = a?.z ?? g?.z ?? 0
+      const mag = Math.sqrt(x * x + y * y + z * z)
+      if (!lastMag.current) {
+        lastMag.current = mag
         return
       }
+      const delta = Math.abs(mag - lastMag.current)
+      lastMag.current = mag
+      if (delta < 8) return
+      const now = Date.now()
+      if (now - lastShake.current < 1500) return
+      lastShake.current = now
+      const minutes = sleepMinRef.current
+      if (minutes > 0) {
+        startSleep(minutes)
+        setShakeMsg(`Timer reset · ${minutes} min`)
+        try {
+          navigator.vibrate?.(80)
+        } catch {
+          // ignore
+        }
+      }
     }
-    setShakeMsg('Shake is armed. Set a timer, then shake hard once.')
-  } catch {
-    setShakeMsg('This browser cannot read a shake. Use Reset timer.')
+    window.addEventListener('devicemotion', onMotion, { passive: true })
+    return () => window.removeEventListener('devicemotion', onMotion)
+  }, [])
+
+  async function enableShake() {
+    try {
+      const DM = DeviceMotionEvent as unknown as {
+        requestPermission?: () => Promise<string>
+      }
+      if (typeof DM.requestPermission === 'function') {
+        const res = await DM.requestPermission()
+        if (res !== 'granted') {
+          setShakeMsg('Allow Motion & Orientation for this site, then try again.')
+          return
+        }
+      }
+      setShakeMsg('Shake is armed. Set a timer, then shake hard once.')
+    } catch {
+      setShakeMsg('This browser cannot read a shake. Use Reset timer.')
+    }
   }
-}
 
   function toggle() {
     const a = audioRef.current
@@ -441,6 +448,10 @@ async function enableShake() {
           <p className="text-sm text-white/50">{status}</p>
         ) : (
           <>
+            <div className="flex h-28 w-28 items-center justify-center rounded-3xl bg-[#141a32] text-4xl text-[#f591ac] ring-1 ring-white/10">
+              ♪
+            </div>
+
             {resumeAt > 0 ? (
               <p className="text-center text-[13px] text-[#f591ac]">
                 Continuing from {fmt(resumeAt)}
@@ -543,56 +554,56 @@ async function enableShake() {
             </div>
 
             <div className="w-full max-w-md">
-  <p className="mb-2 text-center text-[12px] uppercase tracking-wider text-white/40">
-    Sleep timer
-    {sleepLeft > 0 ? ` · ${fmt(sleepLeft)}` : ''}
-  </p>
+              <p className="mb-2 text-center text-[12px] uppercase tracking-wider text-white/40">
+                Sleep timer
+                {sleepLeft > 0 ? ` · ${fmt(sleepLeft)}` : ''}
+              </p>
 
-  <div className="mb-2 grid grid-cols-2 gap-2">
-    <button
-      type="button"
-      onClick={() => void enableShake()}
-      className="rounded-full bg-white/10 px-3 py-2 text-[12px] font-semibold"
-    >
-      Enable shake
-    </button>
-    <button
-      type="button"
-      disabled={!sleepMin}
-      onClick={() => {
-        if (!sleepMin) return
-        startSleep(sleepMin)
-        setShakeMsg(`Timer reset · ${sleepMin} min`)
-      }}
-      className="rounded-full bg-[#f591ac] px-3 py-2 text-[12px] font-bold text-[#141a32] disabled:opacity-40"
-    >
-      Reset timer
-    </button>
-  </div>
+              <div className="mb-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void enableShake()}
+                  className="rounded-full bg-white/10 px-3 py-2 text-[12px] font-semibold"
+                >
+                  Enable shake
+                </button>
+                <button
+                  type="button"
+                  disabled={!sleepMin}
+                  onClick={() => {
+                    if (!sleepMin) return
+                    startSleep(sleepMin)
+                    setShakeMsg(`Timer reset · ${sleepMin} min`)
+                  }}
+                  className="rounded-full bg-[#f591ac] px-3 py-2 text-[12px] font-bold text-[#141a32] disabled:opacity-40"
+                >
+                  Reset timer
+                </button>
+              </div>
 
-  {shakeMsg ? (
-    <p className="mb-2 text-center text-[12px] text-[#f591ac]">{shakeMsg}</p>
-  ) : (
-    <p className="mb-2 text-center text-[11px] text-white/35">
-      iPhone: tap Enable shake and allow Motion. Then set 5/15/30 min and shake once.
-    </p>
-  )}
+              {shakeMsg ? (
+                <p className="mb-2 text-center text-[12px] text-[#f591ac]">{shakeMsg}</p>
+              ) : (
+                <p className="mb-2 text-center text-[11px] text-white/35">
+                  Use Reset timer if shake is blocked by your browser.
+                </p>
+              )}
 
-  <div className="flex flex-wrap justify-center gap-2">
-    {SLEEP_OPTS.map((o) => (
-      <button
-        key={o.min}
-        type="button"
-        onClick={() => startSleep(o.min)}
-        className={`rounded-full px-3 py-1 text-[13px] font-semibold ${
-          sleepMin === o.min ? 'bg-[#f591ac] text-[#141a32]' : 'bg-white/10 text-white'
-        }`}
-      >
-        {o.label}
-      </button>
-    ))}
-  </div>
-</div>
+              <div className="flex flex-wrap justify-center gap-2">
+                {SLEEP_OPTS.map((o) => (
+                  <button
+                    key={o.min}
+                    type="button"
+                    onClick={() => startSleep(o.min)}
+                    className={`rounded-full px-3 py-1 text-[13px] font-semibold ${
+                      sleepMin === o.min ? 'bg-[#f591ac] text-[#141a32]' : 'bg-white/10 text-white'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <div className="w-full max-w-md rounded-2xl border border-white/10 p-3">
               <p className="mb-2 text-[12px] uppercase tracking-wider text-white/40">
