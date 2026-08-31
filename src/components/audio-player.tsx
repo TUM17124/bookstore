@@ -73,6 +73,7 @@ export function AudioPlayer({
   const restored = useRef(false)
   const tries = useRef(0)
   const lastShake = useRef(0)
+  const lastMag = useRef(0)
   const loggedIn = !!getToken()
 
   const [status, setStatus] = useState('Buffering…')
@@ -311,41 +312,51 @@ export function AudioPlayer({
   }, [sleepMin, sleepTick])
 
   useEffect(() => {
-    const onMotion = (e: DeviceMotionEvent) => {
-      const a = e.acceleration
-      const g = e.accelerationIncludingGravity
-      const x = a?.x ?? g?.x ?? 0
-      const y = a?.y ?? g?.y ?? 0
-      const z = a?.z ?? g?.z ?? 0
-      const mag = Math.sqrt(x * x + y * y + z * z)
-      if (mag < 18) return
-      const now = Date.now()
-      if (now - lastShake.current < 1200) return
-      lastShake.current = now
-      if (sleepMin > 0) {
-        startSleep(sleepMin)
-        setShakeMsg(`Sleep timer reset · ${sleepMin} min`)
+  const onMotion = (e: DeviceMotionEvent) => {
+    const g = e.accelerationIncludingGravity
+    const a = e.acceleration
+    const x = (a?.x ?? g?.x ?? 0)
+    const y = (a?.y ?? g?.y ?? 0)
+    const z = (a?.z ?? g?.z ?? 0)
+    const mag = Math.sqrt(x * x + y * y + z * z)
+    const delta = Math.abs(mag - lastMag.current)
+    lastMag.current = mag
+    // Still phone ≈ 9.8. A shake is a sudden jump, not a high number.
+    if (delta < 8) return
+    const now = Date.now()
+    if (now - lastShake.current < 1500) return
+    lastShake.current = now
+    if (sleepMin > 0) {
+      startSleep(sleepMin)
+      setShakeMsg(`Timer reset · ${sleepMin} min`)
+      try {
+        navigator.vibrate?.(80)
+      } catch {
+        // ignore
       }
-    }
-    window.addEventListener('devicemotion', onMotion)
-    return () => window.removeEventListener('devicemotion', onMotion)
-  }, [sleepMin])
-
-  async function enableShake() {
-    const anyMotion = DeviceMotionEvent as unknown as {
-      requestPermission?: () => Promise<string>
-    }
-    try {
-      if (typeof anyMotion.requestPermission === 'function') {
-        const res = await anyMotion.requestPermission()
-        setShakeMsg(res === 'granted' ? 'Shake is on. Shake to reset sleep.' : 'Shake permission denied.')
-        return
-      }
-      setShakeMsg('Shake is on. Set a sleep timer, then shake.')
-    } catch {
-      setShakeMsg('This browser does not allow shake control.')
     }
   }
+  window.addEventListener('devicemotion', onMotion, { passive: true })
+  return () => window.removeEventListener('devicemotion', onMotion)
+}, [sleepMin])
+
+async function enableShake() {
+  try {
+    const DM = DeviceMotionEvent as unknown as {
+      requestPermission?: () => Promise<string>
+    }
+    if (typeof DM.requestPermission === 'function') {
+      const res = await DM.requestPermission()
+      if (res !== 'granted') {
+        setShakeMsg('Allow Motion & Orientation for this site, then try again.')
+        return
+      }
+    }
+    setShakeMsg('Shake is armed. Set a timer, then shake hard once.')
+  } catch {
+    setShakeMsg('This browser cannot read a shake. Use Reset timer.')
+  }
+}
 
   function toggle() {
     const a = audioRef.current
@@ -532,33 +543,56 @@ export function AudioPlayer({
             </div>
 
             <div className="w-full max-w-md">
-              <p className="mb-2 text-center text-[12px] uppercase tracking-wider text-white/40">
-                Sleep timer
-                {sleepLeft > 0 ? ` · ${fmt(sleepLeft)}` : ''}
-              </p>
-              <button
-                type="button"
-                onClick={() => void enableShake()}
-                className="mb-2 w-full rounded-full bg-white/10 px-3 py-2 text-[12px] font-semibold"
-              >
-                Enable shake to reset timer
-              </button>
-              {shakeMsg ? <p className="mb-2 text-center text-[12px] text-[#f591ac]">{shakeMsg}</p> : null}
-              <div className="flex flex-wrap justify-center gap-2">
-                {SLEEP_OPTS.map((o) => (
-                  <button
-                    key={o.min}
-                    type="button"
-                    onClick={() => startSleep(o.min)}
-                    className={`rounded-full px-3 py-1 text-[13px] font-semibold ${
-                      sleepMin === o.min ? 'bg-[#f591ac] text-[#141a32]' : 'bg-white/10 text-white'
-                    }`}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+  <p className="mb-2 text-center text-[12px] uppercase tracking-wider text-white/40">
+    Sleep timer
+    {sleepLeft > 0 ? ` · ${fmt(sleepLeft)}` : ''}
+  </p>
+
+  <div className="mb-2 grid grid-cols-2 gap-2">
+    <button
+      type="button"
+      onClick={() => void enableShake()}
+      className="rounded-full bg-white/10 px-3 py-2 text-[12px] font-semibold"
+    >
+      Enable shake
+    </button>
+    <button
+      type="button"
+      disabled={!sleepMin}
+      onClick={() => {
+        if (!sleepMin) return
+        startSleep(sleepMin)
+        setShakeMsg(`Timer reset · ${sleepMin} min`)
+      }}
+      className="rounded-full bg-[#f591ac] px-3 py-2 text-[12px] font-bold text-[#141a32] disabled:opacity-40"
+    >
+      Reset timer
+    </button>
+  </div>
+
+  {shakeMsg ? (
+    <p className="mb-2 text-center text-[12px] text-[#f591ac]">{shakeMsg}</p>
+  ) : (
+    <p className="mb-2 text-center text-[11px] text-white/35">
+      iPhone: tap Enable shake and allow Motion. Then set 5/15/30 min and shake once.
+    </p>
+  )}
+
+  <div className="flex flex-wrap justify-center gap-2">
+    {SLEEP_OPTS.map((o) => (
+      <button
+        key={o.min}
+        type="button"
+        onClick={() => startSleep(o.min)}
+        className={`rounded-full px-3 py-1 text-[13px] font-semibold ${
+          sleepMin === o.min ? 'bg-[#f591ac] text-[#141a32]' : 'bg-white/10 text-white'
+        }`}
+      >
+        {o.label}
+      </button>
+    ))}
+  </div>
+</div>
 
             <div className="w-full max-w-md rounded-2xl border border-white/10 p-3">
               <p className="mb-2 text-[12px] uppercase tracking-wider text-white/40">
