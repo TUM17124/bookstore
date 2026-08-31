@@ -42,6 +42,40 @@ const SLEEP_OPTS = [
 const ROLLBACK_AFTER_MS = 2 * 60 * 1000
 const ROLLBACK_SEC = 15
 
+function IconPlay() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-7 w-7 fill-current" aria-hidden>
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  )
+}
+
+function IconPause() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-7 w-7 fill-current" aria-hidden>
+      <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
+    </svg>
+  )
+}
+
+function IconBack15() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6 fill-none stroke-current" strokeWidth="1.8" aria-hidden>
+      <path d="M11 5L5 12l6 7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M19 5L13 12l6 7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function IconFwd15() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6 fill-none stroke-current" strokeWidth="1.8" aria-hidden>
+      <path d="M5 5l6 7-6 7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M13 5l6 7-6 7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open('plugyard-audio', 1)
@@ -121,6 +155,8 @@ export function AudioPlayer({
     const minutes = sleepMinRef.current || lastSleepMinRef.current
     if (!minutes) return
     startSleep(minutes)
+    const a = audioRef.current
+    if (a) void a.play()
     setShakeMsg(`Timer reset · ${minutes} min`)
   }
 
@@ -316,7 +352,7 @@ export function AudioPlayer({
         audioRef.current?.pause()
         sleepMinRef.current = 0
         setSleepMin(0)
-        setShakeMsg('Timer ended. Reset or shake to start it again.')
+        setShakeMsg('Timer ended. Reset or shake to play again.')
       }
     }
     tick()
@@ -365,7 +401,7 @@ export function AudioPlayer({
           return
         }
       }
-      setShakeMsg('Shake is armed. Shake to start or reset the last timer.')
+      setShakeMsg('Shake is armed. Shake to play and reset the timer.')
     } catch {
       setShakeMsg('This browser cannot read a shake. Use Reset timer.')
     }
@@ -513,21 +549,33 @@ export function AudioPlayer({
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
-              <button type="button" onClick={() => skip(-15)} className="rounded-full bg-white/10 px-3 py-2 text-sm font-semibold">
-                −15
+            <div className="flex items-center gap-5">
+              <button
+                type="button"
+                onClick={() => skip(-15)}
+                aria-label="Back 15 seconds"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white"
+              >
+                <IconBack15 />
               </button>
               <button
                 type="button"
                 onClick={toggle}
-                className="flex h-16 w-16 items-center justify-center rounded-full bg-[#f591ac] text-lg font-bold text-[#141a32]"
+                aria-label={playing ? 'Pause' : 'Play'}
+                className="flex h-16 w-16 items-center justify-center rounded-full bg-[#f591ac] text-[#141a32]"
               >
-                {playing ? 'Pause' : 'Play'}
+                {playing ? <IconPause /> : <IconPlay />}
               </button>
-              <button type="button" onClick={() => skip(15)} className="rounded-full bg-white/10 px-3 py-2 text-sm font-semibold">
-                +15
+              <button
+                type="button"
+                onClick={() => skip(15)}
+                aria-label="Forward 15 seconds"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white"
+              >
+                <IconFwd15 />
               </button>
             </div>
+            <p className="text-[11px] text-white/35">−15s · play/pause · +15s</p>
 
             <div className="w-full max-w-md">
               <p className="mb-1 text-center text-[12px] uppercase tracking-wider text-white/40">
@@ -586,7 +634,7 @@ export function AudioPlayer({
                 <p className="mb-2 text-center text-[12px] text-[#f591ac]">{shakeMsg}</p>
               ) : (
                 <p className="mb-2 text-center text-[11px] text-white/35">
-                  After the timer ends, Reset or shake starts the last length again.
+                  When the timer ends, Reset or shake starts it again and resumes play.
                 </p>
               )}
 
