@@ -251,7 +251,9 @@ export function AudioPlayer({
     }
   }
 
-  const bufPct = dur > 0 ? Math.min(100, (buffered / dur) * 100) : 0
+  const span = dur || Math.max(t + 30, 30)
+  const bufPct = Math.min(100, (buffered / span) * 100)
+  const playPct = Math.min(100, (t / span) * 100)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#0b1020] text-[#fdfbf4]">
@@ -292,31 +294,38 @@ export function AudioPlayer({
             </p>
 
             <div className="w-full max-w-md">
-              <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/10">
-                <div
-                  className="absolute inset-y-0 left-0 bg-white/25"
-                  style={{ width: `${bufPct}%` }}
+              <div className="relative h-2 w-full">
+                <div className="absolute inset-0 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="absolute inset-y-0 left-0 bg-white/30"
+                    style={{ width: `${bufPct}%` }}
+                  />
+                  <div
+                    className="absolute inset-y-0 left-0 bg-[#f591ac]"
+                    style={{ width: `${playPct}%` }}
+                  />
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={span}
+                  step={0.1}
+                  value={t}
+                  aria-label="Playback position"
+                  onChange={(e) => {
+                    const a = audioRef.current
+                    if (!a) return
+                    try {
+                      a.currentTime = Number(e.target.value)
+                      setT(a.currentTime)
+                    } catch {
+                      setStatus('Buffering…')
+                    }
+                  }}
+                  className="absolute inset-0 z-10 m-0 h-2 w-full cursor-pointer appearance-none bg-transparent accent-[#f591ac]"
                 />
               </div>
-              <input
-                type="range"
-                min={0}
-                max={dur || Math.max(t + 30, 30)}
-                step={0.1}
-                value={t}
-                onChange={(e) => {
-                  const a = audioRef.current
-                  if (!a) return
-                  try {
-                    a.currentTime = Number(e.target.value)
-                    setT(a.currentTime)
-                  } catch {
-                    setStatus('Buffering…')
-                  }
-                }}
-                className="mt-2 w-full accent-[#f591ac]"
-              />
-              <div className="mt-1 flex justify-between text-[12px] text-white/45">
+              <div className="mt-2 flex justify-between text-[12px] text-white/45">
                 <span>{fmt(t)}</span>
                 <span>{dur ? fmt(dur) : '—'}</span>
               </div>
