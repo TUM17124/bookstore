@@ -140,21 +140,24 @@ export function AudioPlayer({
 
   function startSleep(minutes: number) {
     sleepMinRef.current = minutes
-    if (minutes > 0) lastSleepMinRef.current = minutes
     setSleepMin(minutes)
-    if (!minutes) {
+    if (minutes <= 0) {
+      lastSleepMinRef.current = 0
       sleepEndRef.current = 0
       setSleepLeft(0)
+      setShakeMsg('Timer off. Shake will not start it.')
       return
     }
+    lastSleepMinRef.current = minutes
     sleepEndRef.current = Date.now() + minutes * 60 * 1000
     setSleepTick((n) => n + 1)
+    setShakeMsg('')
   }
 
   function restartSleep() {
     const minutes = sleepMinRef.current || lastSleepMinRef.current
     if (!minutes) {
-      setShakeMsg('Set a sleep time first. Shake does nothing until then.')
+      setShakeMsg('Timer is off. Pick a sleep time first.')
       return
     }
     startSleep(minutes)
@@ -354,8 +357,9 @@ export function AudioPlayer({
       if (left <= 0) {
         audioRef.current?.pause()
         sleepMinRef.current = 0
+        lastSleepMinRef.current = 0
         setSleepMin(0)
-        setShakeMsg('Timer ended. Reset or shake to play again.')
+        setShakeMsg('Timer ended. Pick a time again to use shake.')
       }
     }
     tick()
@@ -411,7 +415,7 @@ export function AudioPlayer({
         setShakeMsg('Shake is ready, but pick a sleep time first.')
         return
       }
-      setShakeMsg('Shake is armed. Shake only resets a timer you already set.')
+      setShakeMsg('Shake is armed. Off turns shake off too.')
     } catch {
       setShakeMsg('This browser cannot read a shake. Use Reset timer.')
     }
@@ -501,7 +505,7 @@ export function AudioPlayer({
           <p className="text-sm text-white/50">{status}</p>
         ) : (
           <>
-            <div className="flex h-28 w-28 items-center justify-center rounded-3xl bg-[#141a32] text-4xl text-[#f591ac] ring-1 ring-white/10">
+            <div className="flex h-52 w-52 items-center justify-center rounded-[2.25rem] bg-[#141a32] text-8xl text-[#f591ac] ring-1 ring-white/10">
               ♪
             </div>
 
@@ -561,28 +565,13 @@ export function AudioPlayer({
             </div>
 
             <div className="flex items-center gap-5">
-              <button
-                type="button"
-                onClick={() => skip(-15)}
-                aria-label="Back 15 seconds"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white"
-              >
+              <button type="button" onClick={() => skip(-15)} aria-label="Back 15 seconds" className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white">
                 <IconBack15 />
               </button>
-              <button
-                type="button"
-                onClick={toggle}
-                aria-label={playing ? 'Pause' : 'Play'}
-                className="flex h-16 w-16 items-center justify-center rounded-full bg-[#f591ac] text-[#141a32]"
-              >
+              <button type="button" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'} className="flex h-16 w-16 items-center justify-center rounded-full bg-[#f591ac] text-[#141a32]">
                 {playing ? <IconPause /> : <IconPlay />}
               </button>
-              <button
-                type="button"
-                onClick={() => skip(15)}
-                aria-label="Forward 15 seconds"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white"
-              >
+              <button type="button" onClick={() => skip(15)} aria-label="Forward 15 seconds" className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white">
                 <IconFwd15 />
               </button>
             </div>
@@ -592,15 +581,7 @@ export function AudioPlayer({
               <p className="mb-1 text-center text-[12px] uppercase tracking-wider text-white/40">
                 Volume {Math.round(vol * 100)}%
               </p>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={vol}
-                onChange={(e) => setVol(Number(e.target.value))}
-                className="w-full accent-[#f591ac]"
-              />
+              <input type="range" min={0} max={1} step={0.05} value={vol} onChange={(e) => setVol(Number(e.target.value))} className="w-full accent-[#f591ac]" />
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-2">
@@ -625,11 +606,7 @@ export function AudioPlayer({
               </p>
 
               <div className="mb-2 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => void enableShake()}
-                  className="rounded-full bg-white/10 px-3 py-2 text-[12px] font-semibold"
-                >
+                <button type="button" onClick={() => void enableShake()} className="rounded-full bg-white/10 px-3 py-2 text-[12px] font-semibold">
                   Enable shake
                 </button>
                 <button
@@ -646,7 +623,7 @@ export function AudioPlayer({
                 <p className="mb-2 text-center text-[12px] text-[#f591ac]">{shakeMsg}</p>
               ) : (
                 <p className="mb-2 text-center text-[11px] text-white/35">
-                  Shake only works after you pick 5 / 15 / 30 / 45 / 60 min.
+                  Shake only works while a timer is on. Off disables shake.
                 </p>
               )}
 
@@ -667,9 +644,7 @@ export function AudioPlayer({
             </div>
 
             <div className="w-full max-w-md rounded-2xl border border-white/10 p-3">
-              <p className="mb-2 text-[12px] uppercase tracking-wider text-white/40">
-                Bookmark this moment
-              </p>
+              <p className="mb-2 text-[12px] uppercase tracking-wider text-white/40">Bookmark this moment</p>
               {loggedIn ? (
                 <>
                   <div className="flex gap-2">
