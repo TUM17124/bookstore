@@ -104,7 +104,7 @@ export function AudioPlayer({
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const sleepEndRef = useRef(0)
   const sleepMinRef = useRef(0)
-  const lastSleepMinRef = useRef(15)
+  const lastSleepMinRef = useRef(0)
   const lastSave = useRef(0)
   const restored = useRef(false)
   const tries = useRef(0)
@@ -153,7 +153,10 @@ export function AudioPlayer({
 
   function restartSleep() {
     const minutes = sleepMinRef.current || lastSleepMinRef.current
-    if (!minutes) return
+    if (!minutes) {
+      setShakeMsg('Set a sleep time first. Shake does nothing until then.')
+      return
+    }
     startSleep(minutes)
     const a = audioRef.current
     if (a) void a.play()
@@ -362,6 +365,9 @@ export function AudioPlayer({
 
   useEffect(() => {
     const onMotion = (e: DeviceMotionEvent) => {
+      const minutes = sleepMinRef.current || lastSleepMinRef.current
+      if (!minutes) return
+
       const g = e.accelerationIncludingGravity
       const a = e.acceleration
       const x = a?.x ?? g?.x ?? 0
@@ -401,7 +407,11 @@ export function AudioPlayer({
           return
         }
       }
-      setShakeMsg('Shake is armed. Shake to play and reset the timer.')
+      if (!(sleepMinRef.current || lastSleepMinRef.current)) {
+        setShakeMsg('Shake is ready, but pick a sleep time first.')
+        return
+      }
+      setShakeMsg('Shake is armed. Shake only resets a timer you already set.')
     } catch {
       setShakeMsg('This browser cannot read a shake. Use Reset timer.')
     }
@@ -470,6 +480,7 @@ export function AudioPlayer({
   const span = dur || Math.max(t + 30, 30)
   const bufPct = Math.min(100, (buffered / span) * 100)
   const playPct = Math.min(100, (t / span) * 100)
+  const hasSleepChoice = sleepMin > 0 || lastSleepMinRef.current > 0
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#0b1020] text-[#fdfbf4]">
@@ -624,7 +635,8 @@ export function AudioPlayer({
                 <button
                   type="button"
                   onClick={restartSleep}
-                  className="rounded-full bg-[#f591ac] px-3 py-2 text-[12px] font-bold text-[#141a32]"
+                  disabled={!hasSleepChoice}
+                  className="rounded-full bg-[#f591ac] px-3 py-2 text-[12px] font-bold text-[#141a32] disabled:opacity-40"
                 >
                   Reset timer
                 </button>
@@ -634,7 +646,7 @@ export function AudioPlayer({
                 <p className="mb-2 text-center text-[12px] text-[#f591ac]">{shakeMsg}</p>
               ) : (
                 <p className="mb-2 text-center text-[11px] text-white/35">
-                  When the timer ends, Reset or shake starts it again and resumes play.
+                  Shake only works after you pick 5 / 15 / 30 / 45 / 60 min.
                 </p>
               )}
 
