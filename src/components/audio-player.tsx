@@ -346,7 +346,7 @@ export function AudioPlayer({
     if (a) a.volume = vol
   }, [vol])
 
-  useEffect(() => {
+    useEffect(() => {
     if (!sleepMin || !sleepEndRef.current) {
       setSleepLeft(0)
       return
@@ -357,9 +357,8 @@ export function AudioPlayer({
       if (left <= 0) {
         audioRef.current?.pause()
         sleepMinRef.current = 0
-        lastSleepMinRef.current = 0
         setSleepMin(0)
-        setShakeMsg('Timer ended. Pick a time again to use shake.')
+        setShakeMsg('Timer ended. Shake or Reset to play and start it again.')
       }
     }
     tick()
@@ -505,9 +504,9 @@ export function AudioPlayer({
           <p className="text-sm text-white/50">{status}</p>
         ) : (
           <>
-            <div className="flex h-52 w-52 items-center justify-center rounded-[2.25rem] bg-[#141a32] text-8xl text-[#f591ac] ring-1 ring-white/10">
-              ♪
-            </div>
+            <div className="flex h-72 w-72 items-center justify-center rounded-[2.5rem] bg-[#141a32] text-[7.5rem] leading-none text-[#f591ac] ring-1 ring-white/10">
+  ♪
+</div>
 
             {resumeAt > 0 ? (
               <p className="text-center text-[13px] text-[#f591ac]">
