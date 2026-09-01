@@ -2209,12 +2209,13 @@ export function BooksShowcase({
         </h2>
       </header>
       <PdfReader
-        url={
-          selectedCfg.isFree
-            ? freeBookUrl(selectedCfg.id, 'ebook', true)
-            : `${downloadOrderUrl(ownedEbookOrderId!, buyerEmail!)}&inline=1`
-        }
-      />
+  bookId={selectedCfg.id}
+  url={
+    selectedCfg.isFree
+      ? freeBookUrl(selectedCfg.id, 'ebook', true)
+      : `${downloadOrderUrl(ownedEbookOrderId!, buyerEmail!)}&inline=1`
+  }
+/>
     </div>,
     document.body,
   )}

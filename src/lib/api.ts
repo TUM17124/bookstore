@@ -301,6 +301,17 @@ export async function deleteAudioNote(id: number) {
   return api(`/audio-notes/${id}/`, { method: 'DELETE' })
 }
 
+export async function getPdfProgress(bookId: string) {
+  return api<{ page: number }>(`/books/${bookId}/pdf-progress/`)
+}
+
+export async function savePdfProgress(bookId: string, page: number) {
+  return api(`/books/${bookId}/pdf-progress/`, {
+    method: 'PUT',
+    body: JSON.stringify({ page }),
+  })
+}
+
 export type BookmarkRow = {
   id: number
   book: ApiBook
