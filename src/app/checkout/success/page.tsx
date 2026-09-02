@@ -9,10 +9,19 @@ import { PdfReader } from '@/components/pdf-reader'
 
 const API = process.env.NEXT_PUBLIC_API_URL!
 
+function readStoredBook() {
+  if (typeof window === 'undefined') return { id: '', title: '' }
+  return {
+    id: (sessionStorage.getItem('checkout_book_id') || '').trim(),
+    title: (sessionStorage.getItem('checkout_book_title') || '').trim(),
+  }
+}
+
 function SuccessInner() {
   const sp = useSearchParams()
   const orderId = sp.get('order') || ''
   const reference = (sp.get('reference') || '').trim()
+  const bookFromQuery = (sp.get('bookId') || sp.get('book') || '').trim()
 
   const [status, setStatus] = useState('loading')
   const [email, setEmail] = useState('')
@@ -20,7 +29,7 @@ function SuccessInner() {
   const [error, setError] = useState('')
   const [readerOpen, setReaderOpen] = useState(false)
   const [productType, setProductType] = useState('')
-  const [bookId, setBookId] = useState('')
+  const [bookId, setBookId] = useState(bookFromQuery)
   const [bookTitle, setBookTitle] = useState('')
   const [purchases, setPurchases] = useState<{
     ebooks: PurchaseItem[]
@@ -37,7 +46,11 @@ function SuccessInner() {
     const resolved = fromQuery || fromSession || fromUser
     setEmail(resolved)
     setEmailInput(resolved)
-  }, [sp])
+
+    const stored = readStoredBook()
+    setBookId((prev) => prev || bookFromQuery || stored.id)
+    setBookTitle((prev) => prev || stored.title)
+  }, [sp, bookFromQuery])
 
   useEffect(() => {
     if (!orderId || !email) {
@@ -60,16 +73,24 @@ function SuccessInner() {
           book_id?: string | number
           title?: string
           book_title?: string
+          book?: { id?: string | number; title?: string }
         }
         if (cancelled) return
         setStatus(o.status)
         setProductType(String(o.product_type || ''))
-        setBookId(String(o.book_id || ''))
-        setBookTitle(String(o.book_title || o.title || ''))
+        const stored = readStoredBook()
+        setBookId(
+          String(o.book?.id || o.book_id || bookFromQuery || stored.id || ''),
+        )
+        setBookTitle(
+          String(o.book?.title || o.book_title || o.title || stored.title || ''),
+        )
         const list = await getPurchases(email)
         if (!cancelled) setPurchases(list)
       } catch {
         if (!cancelled) {
+          const stored = readStoredBook()
+          setBookId((prev) => prev || bookFromQuery || stored.id)
           setStatus('error')
           setError('Could not verify this order with that email.')
         }
@@ -79,7 +100,7 @@ function SuccessInner() {
     return () => {
       cancelled = true
     }
-  }, [orderId, email, reference])
+  }, [orderId, email, reference, bookFromQuery])
 
   function applyEmail(e: React.FormEvent) {
     e.preventDefault()
@@ -173,7 +194,10 @@ function SuccessInner() {
                 key={`${p.kind}-${p.order_id}`}
                 className="flex items-center justify-between rounded-xl border border-foreground/10 px-3 py-2 text-sm"
               >
-                <Link href={`/?book=${p.book_id}`} className="min-w-0 truncate font-medium hover:underline">
+                <Link
+                  href={`/?book=${p.book_id}`}
+                  className="min-w-0 truncate font-medium hover:underline"
+                >
                   {p.kind} · book #{p.book_id}
                 </Link>
                 <a
@@ -193,10 +217,10 @@ function SuccessInner() {
         </section>
       )}
 
-            <p className="mt-8">
+      <p className="mt-8">
         <Link
           href={backHref}
-          className="text-sm font-semibold underline"
+          className="inline-flex rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background"
         >
           {bookId ? 'Back to the book' : 'Back home'}
         </Link>
