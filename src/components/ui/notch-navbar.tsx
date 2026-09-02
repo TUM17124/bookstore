@@ -225,6 +225,8 @@ export function NotchNavbar({
                     )}
                   </Link>
 
+                  <NavLink href="/purchases" icon={BookOpen} label="My purchases" />
+
                   <ThemeToggle />
                   {authDesktop}
                 </div>
@@ -268,6 +270,7 @@ export function NotchNavbar({
                     </span>
                   )}
                 </Link>
+                <NavLink href="/purchases" icon={BookOpen} label="My purchases" />
                 <MobileThemeToggle />
               </div>
             </div>

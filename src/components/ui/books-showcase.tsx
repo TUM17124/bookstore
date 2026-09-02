@@ -164,6 +164,32 @@ export function BooksShowcase({
     toggleBookmark(selectedCfg);
   };
 
+  const [downloadMenu, setDownloadMenu] = useState(false)
+
+async function shareBook() {
+  if (!selectedCfg) return
+  const shareUrl = `${window.location.origin}/?book=${encodeURIComponent(selectedCfg.id)}`
+  const data = {
+    title: selectedCfg.title,
+    text: `Read ${selectedCfg.title} on PlugYard`,
+    url: shareUrl,
+  }
+  try {
+    if (navigator.share) {
+      await navigator.share(data)
+      return
+    }
+  } catch {
+    // user cancelled
+  }
+  try {
+    await navigator.clipboard.writeText(shareUrl)
+    alert('Link copied')
+  } catch {
+    window.prompt('Copy this link', shareUrl)
+  }
+}
+
   // hero-word entrance: flip to `mounted` one frame after first paint so the
   // opacity/translate transition below actually has something to animate from.
   useEffect(() => {
@@ -1991,164 +2017,179 @@ export function BooksShowcase({
           )}
 
           {/* ACTIONS — single row */}
-          <div
+                    <div
             className={`pointer-events-auto mt-4 inline-flex max-w-full flex-wrap items-center gap-[10px] rounded-full bg-[#1a2140] p-[10px] shadow-[0_24px_60px_rgba(0,0,0,0.45)] @max-[760px]:mt-3 @max-[760px]:rounded-[28px] ${dpChild(330)}`}
           >
-           {(() => {
-  const isFree = selectedCfg?.isFree === true
-  const hasEbook = selectedCfg?.hasEbook !== false
-  const hasAudio = selectedCfg?.hasAudiobook === true
+            {(() => {
+              const isFree = selectedCfg?.isFree === true
+              const hasEbook = selectedCfg?.hasEbook !== false
+              const hasAudio = selectedCfg?.hasAudiobook === true
+              const canReadEbook = hasEbook && (isFree || !!ownedEbookOrderId)
+              const canDlEbook = hasEbook && (isFree || !!ownedEbookOrderId)
+              const canDlAudio = hasAudio && (isFree || !!ownedAudioOrderId)
 
-  const canReadEbook = hasEbook && (isFree || !!ownedEbookOrderId)
-  const canGetEbook = hasEbook && (isFree || !!ownedEbookOrderId || !isFree)
-  const canGetAudio = hasAudio && (isFree || !!ownedAudioOrderId || !isFree)
+              return (
+                <>
+                  <button
+                    type="button"
+                    disabled={!canReadEbook}
+                    onClick={() => {
+                      if (!selectedCfg || !hasEbook) return
+                      if (isFree || (ownedEbookOrderId && buyerEmail)) setReaderOpen(true)
+                    }}
+                    className="relative inline-flex h-[54px] items-center gap-[10px] rounded-full bg-[var(--bs-cream)] px-[22px] text-[16.5px] font-semibold text-[var(--bs-navy)] hover:scale-[1.04] disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-4"
+                  >
+                    Read
+                    {!canReadEbook && (
+                      <span className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500" />
+                    )}
+                  </button>
 
-  return (
-    <>
-      <button
-        type="button"
-        disabled={!canReadEbook}
-        onClick={() => {
-          if (!selectedCfg || !hasEbook) return
-          if (isFree || (ownedEbookOrderId && buyerEmail)) {
-            setReaderOpen(true)
-          }
-        }}
-        className="relative inline-flex h-[54px] items-center gap-[10px] rounded-full bg-[var(--bs-cream)] px-[26px] text-[16.5px] font-semibold text-[var(--bs-navy)] transition-[transform,filter,opacity] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-105 disabled:pointer-events-none disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-5 @max-[760px]:text-[15px]"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} className="h-5 w-5">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-          <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z" />
-        </svg>
-        <span className="relative inline-block">
-          Read
-          {!canReadEbook && (
-            <span
-              className="pointer-events-none absolute left-[-8%] right-[-8%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500"
-              aria-hidden
-            />
-          )}
-        </span>
-      </button>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      disabled={!!buyLoading || (!hasEbook && !hasAudio)}
+                      onClick={() => setDownloadMenu((v) => !v)}
+                      className="inline-flex h-[54px] min-w-[128px] items-center justify-center rounded-full bg-[var(--bs-pink)] px-5 text-[16.5px] font-semibold text-[var(--bs-navy)] hover:scale-[1.04] disabled:opacity-60 @max-[760px]:h-12"
+                    >
+                      {buyLoading ? '…' : 'Download'}
+                    </button>
+                    {downloadMenu && (
+                      <div className="absolute bottom-[110%] left-0 z-30 min-w-[200px] rounded-2xl bg-[#141a32] p-2 text-left text-sm text-white shadow-xl ring-1 ring-white/10">
+                        <p className="px-2 pb-1 text-[11px] uppercase tracking-wider text-white/40">
+                          Choose a file
+                        </p>
+                        <button
+                          type="button"
+                          disabled={!hasEbook}
+                          className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10 disabled:opacity-40"
+                          onClick={() => {
+                            setDownloadMenu(false)
+                            if (!selectedCfg || !hasEbook) return
+                            if (isFree) {
+                              window.location.href = freeBookUrl(selectedCfg.id, 'ebook', false)
+                              return
+                            }
+                            if (ownedEbookOrderId && buyerEmail) {
+                              window.location.href = downloadOrderUrl(ownedEbookOrderId, buyerEmail)
+                              return
+                            }
+                            setBuyLoading('ebook')
+                            const q = new URLSearchParams({
+                              bookId: selectedCfg.id,
+                              type: 'ebook',
+                              title: selectedCfg.title,
+                            })
+                            window.location.href = `/checkout?${q}`
+                          }}
+                        >
+                          {canDlEbook ? 'Download ebook (PDF)' : hasEbook ? 'Buy ebook to download' : 'Ebook unavailable'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!hasAudio}
+                          className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10 disabled:opacity-40"
+                          onClick={() => {
+                            setDownloadMenu(false)
+                            if (!selectedCfg || !hasAudio) return
+                            if (isFree) {
+                              window.location.href = freeBookUrl(selectedCfg.id, 'audiobook', false)
+                              return
+                            }
+                            if (ownedAudioOrderId && buyerEmail) {
+                              window.location.href = downloadOrderUrl(ownedAudioOrderId, buyerEmail)
+                              return
+                            }
+                            setBuyLoading('audiobook')
+                            const q = new URLSearchParams({
+                              bookId: selectedCfg.id,
+                              type: 'audiobook',
+                              title: selectedCfg.title,
+                            })
+                            window.location.href = `/checkout?${q}`
+                          }}
+                        >
+                          {canDlAudio ? 'Download audiobook' : hasAudio ? 'Buy audio to download' : 'Audio unavailable'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
 
-      <button
-        type="button"
-        disabled={!!buyLoading || !hasEbook}
-        onClick={() => {
-          if (!selectedCfg || buyLoading || !hasEbook) return
-          if (isFree) {
-            window.location.href = freeBookUrl(selectedCfg.id, 'ebook', false)
-            return
-          }
-          if (ownedEbookOrderId && buyerEmail) {
-            window.location.href = downloadOrderUrl(ownedEbookOrderId, buyerEmail)
-            return
-          }
-          setBuyLoading('ebook')
-          const q = new URLSearchParams({
-            bookId: selectedCfg.id,
-            type: 'ebook',
-            title: selectedCfg.title,
-          })
-          window.location.href = `/checkout?${q}`
-        }}
-        className="relative inline-flex h-[54px] min-w-[120px] items-center justify-center gap-2 rounded-full bg-[var(--bs-pink)] px-6 text-[16.5px] font-semibold text-[var(--bs-navy)] transition-[transform,filter,opacity] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-105 disabled:pointer-events-none disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-5 @max-[760px]:text-[15px]"
-      >
-        {buyLoading === 'ebook' ? (
-          <>
-            <span
-              className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--bs-navy)]/25 border-t-[var(--bs-navy)]"
-              aria-hidden
-            />
-            …
-          </>
-        ) : (
-          <span className="relative inline-block">
-            {isFree || ownedEbookOrderId ? 'Download' : 'Buy Now'}
-            {!hasEbook && (
-              <span
-                className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500"
-                aria-hidden
-              />
-            )}
-          </span>
-        )}
-      </button>
+                  <button
+                    type="button"
+                    disabled={!!buyLoading || !hasAudio}
+                    onClick={() => {
+                      if (!selectedCfg || !hasAudio) return
+                      if (isFree || ownedAudioOrderId) {
+                        setPlayerOpen(true)
+                        return
+                      }
+                      setBuyLoading('audiobook')
+                      const q = new URLSearchParams({
+                        bookId: selectedCfg.id,
+                        type: 'audiobook',
+                        title: selectedCfg.title,
+                      })
+                      window.location.href = `/checkout?${q}`
+                    }}
+                    className="relative inline-flex h-[54px] min-w-[120px] items-center justify-center rounded-full bg-[#10152c] px-5 text-[16.5px] font-semibold text-white ring-1 ring-[var(--bs-lav)]/25 disabled:opacity-60 @max-[760px]:h-12"
+                  >
+                    {!hasAudio ? 'No audio' : isFree || ownedAudioOrderId ? 'Listen' : 'Buy to listen'}
+                    {!hasAudio && (
+                      <span className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500" />
+                    )}
+                  </button>
 
-            <button
-        type="button"
-        disabled={!!buyLoading || !hasAudio}
-        onClick={() => {
-          if (!selectedCfg || buyLoading || !hasAudio) return
-          const canListen = isFree || !!ownedAudioOrderId
-          if (canListen) {
-            setPlayerOpen(true)
-            return
-          }
-          setBuyLoading('audiobook')
-          const q = new URLSearchParams({
-            bookId: selectedCfg.id,
-            type: 'audiobook',
-            title: selectedCfg.title,
-          })
-          window.location.href = `/checkout?${q}`
-        }}
-        className="relative inline-flex h-[54px] min-w-[140px] items-center justify-center gap-2 rounded-full bg-[#10152c] px-5 text-[16.5px] font-semibold text-white ring-1 ring-[var(--bs-lav)]/25 transition hover:scale-[1.04] disabled:pointer-events-none disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-4 @max-[760px]:text-[15px]"
-      >
-        {buyLoading === 'audiobook' ? (
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
-        ) : (
-          <span className="relative inline-block">
-            {!hasAudio
-              ? 'No audio'
-              : isFree || ownedAudioOrderId
-                ? 'Listen'
-                : 'Buy to listen'}
-            {!hasAudio && (
-              <span
-                className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500"
-                aria-hidden
-              />
-            )}
-          </span>
-        )}
-      </button>
-    </>
-  )
-})()}
+                  <button
+                    type="button"
+                    onClick={() => void shareBook()}
+                    aria-label="Share this book"
+                    className="inline-flex h-[54px] w-[54px] items-center justify-center rounded-full bg-[#242c50] text-[var(--bs-cream)] hover:scale-[1.04]"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                      <circle cx="18" cy="5" r="3" />
+                      <circle cx="6" cy="12" r="3" />
+                      <circle cx="18" cy="19" r="3" />
+                      <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+                    </svg>
+                  </button>
+                </>
+              )
+            })()}
+
             <button
               type="button"
               aria-label={bookmarked ? 'Remove from bookmarks' : 'Save to bookmarks'}
               aria-pressed={bookmarked}
               onClick={handleSave}
-              className={`inline-flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-full transition-[transform,filter,background-color,color] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-[1.04] hover:brightness-105 ${
+              className={`inline-flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-full ${
                 bookmarked
                   ? 'bg-[var(--bs-pink)] text-[var(--bs-navy)]'
                   : 'bg-[#242c50] text-[var(--bs-lav)]'
               }`}
             >
-              <svg
-                viewBox="0 0 24 24"
-                fill={bookmarked ? 'currentColor' : 'none'}
-                stroke="currentColor"
-                strokeWidth={1.7}
-                className="h-5 w-5"
-              >
+              <svg viewBox="0 0 24 24" fill={bookmarked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.7} className="h-5 w-5">
                 <path d="M7 3h10v18l-5-4-5 4z" />
               </svg>
             </button>
           </div>
 
           {selectedCfg && (
-            <div className={`pointer-events-auto mt-6 ${dpChild(330)}`}>
+            <div className={`pointer-events-auto mt-6 flex flex-wrap items-center gap-3 ${dpChild(330)}`}>
               <button
                 type="button"
                 onClick={() => setReviewsOpen(true)}
-                className="inline-flex items-center gap-2 rounded-full border border-[var(--bs-lav)]/30 bg-[#1a2140]/80 px-5 py-3 text-[15px] font-semibold text-[var(--bs-cream)] transition hover:border-[var(--bs-pink)]/50"
+                className="inline-flex items-center gap-2 rounded-full border border-[var(--bs-lav)]/30 bg-[#1a2140]/80 px-5 py-3 text-[15px] font-semibold text-[var(--bs-cream)]"
               >
                 Ratings & comments
                 <span aria-hidden>→</span>
               </button>
+              <Link
+                href="/purchases"
+                className="inline-flex items-center gap-2 rounded-full border border-[var(--bs-lav)]/30 bg-[#1a2140]/80 px-5 py-3 text-[15px] font-semibold text-[var(--bs-cream)]"
+              >
+                My purchases
+              </Link>
             </div>
           )}
         </div>

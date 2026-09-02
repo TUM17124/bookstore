@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { getOrder, confirmOrderPayment } from '@/lib/api'
+import { getOrder, confirmOrderPayment, getPurchases, type PurchaseItem } from '@/lib/api'
 import { getStoredUser } from '@/lib/auth-client'
 import { PdfReader } from '@/components/pdf-reader'
 
@@ -20,6 +20,12 @@ function SuccessInner() {
   const [error, setError] = useState('')
   const [readerOpen, setReaderOpen] = useState(false)
   const [productType, setProductType] = useState('')
+  const [bookId, setBookId] = useState('')
+  const [bookTitle, setBookTitle] = useState('')
+  const [purchases, setPurchases] = useState<{
+    ebooks: PurchaseItem[]
+    audiobooks: PurchaseItem[]
+  }>({ ebooks: [], audiobooks: [] })
 
   useEffect(() => {
     const fromQuery = (sp.get('email') || '').trim().toLowerCase()
@@ -48,11 +54,20 @@ function SuccessInner() {
         if (reference) {
           await confirmOrderPayment(orderId, { reference, email })
         }
-        const o = await getOrder(orderId, email)
-        if (!cancelled) {
-          setStatus((o as { status: string }).status)
-          setProductType(String((o as { product_type?: string }).product_type || ''))
+        const o = (await getOrder(orderId, email)) as {
+          status: string
+          product_type?: string
+          book_id?: string | number
+          title?: string
+          book_title?: string
         }
+        if (cancelled) return
+        setStatus(o.status)
+        setProductType(String(o.product_type || ''))
+        setBookId(String(o.book_id || ''))
+        setBookTitle(String(o.book_title || o.title || ''))
+        const list = await getPurchases(email)
+        if (!cancelled) setPurchases(list)
       } catch {
         if (!cancelled) {
           setStatus('error')
@@ -81,16 +96,23 @@ function SuccessInner() {
 
   const readUrl = downloadUrl ? `${downloadUrl}&inline=1` : null
   const canRead = Boolean(readUrl && productType !== 'audiobook')
+  const backHref = bookId ? `/?book=${encodeURIComponent(bookId)}` : '/'
+
+  const allPurchases = [
+    ...purchases.ebooks.map((p) => ({ ...p, kind: 'Ebook' })),
+    ...purchases.audiobooks.map((p) => ({ ...p, kind: 'Audiobook' })),
+  ]
 
   return (
     <main className="mx-auto max-w-md px-4 py-16 text-center">
       <h1 className="text-2xl font-bold">Thank you</h1>
       <p className="mt-2 text-sm text-foreground/60">
         Order #{orderId || '—'}
-        {status !== 'need_email' && status !== 'loading'
-          ? ` — status: ${status}`
-          : null}
+        {status !== 'need_email' && status !== 'loading' ? ` — status: ${status}` : null}
       </p>
+      {bookTitle ? (
+        <p className="mt-1 text-sm font-medium text-foreground/80">{bookTitle}</p>
+      ) : null}
 
       {status === 'loading' && (
         <p className="mt-6 text-sm text-foreground/50">Confirming your order…</p>
@@ -99,7 +121,7 @@ function SuccessInner() {
       {status === 'need_email' && (
         <form onSubmit={applyEmail} className="mt-8 text-left">
           <p className="text-sm text-foreground/60">
-            Enter the same email you used at checkout to unlock your download.
+            Enter the same email you used at checkout to unlock your files.
           </p>
           <input
             type="email"
@@ -135,25 +157,49 @@ function SuccessInner() {
             href={downloadUrl}
             className="inline-flex rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background"
           >
-            Download your file
+            Download this file
           </a>
-          <p className="text-sm text-foreground/55">
-            You can also open this book later and use{' '}
-            <span className="font-medium text-foreground/80">Read</span>,{' '}
-            <span className="font-medium text-foreground/80">Download</span> or{' '}
-            <span className="font-medium text-foreground/80">Download audio</span>{' '}
-            on the book page (same email).
-          </p>
         </div>
       )}
 
-      <p className="mt-6">
-        <Link href="/" className="text-sm underline">
-          Back home
+      {email && allPurchases.length > 0 && (
+        <section className="mt-10 text-left">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-foreground/40">
+            Your purchases
+          </h2>
+          <ul className="mt-3 space-y-2">
+            {allPurchases.map((p) => (
+              <li
+                key={`${p.kind}-${p.order_id}`}
+                className="flex items-center justify-between rounded-xl border border-foreground/10 px-3 py-2 text-sm"
+              >
+                <Link href={`/?book=${p.book_id}`} className="min-w-0 truncate font-medium hover:underline">
+                  {p.kind} · book #{p.book_id}
+                </Link>
+                <a
+                  href={`${API}/orders/${p.order_id}/download/?email=${encodeURIComponent(email)}`}
+                  className="shrink-0 text-xs font-semibold underline"
+                >
+                  Download
+                </a>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-center text-xs text-foreground/45">
+            <Link href="/purchases" className="underline">
+              Open full purchase list
+            </Link>
+          </p>
+        </section>
+      )}
+
+      <p className="mt-8">
+        <Link href={backHref} className="text-sm font-semibold underline">
+          Back to the book
         </Link>
       </p>
 
-            {readerOpen && readUrl && (
+      {readerOpen && readUrl && (
         <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
             <button
@@ -164,10 +210,10 @@ function SuccessInner() {
               ×
             </button>
             <p className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-white">
-              Reader
+              {bookTitle || 'Reader'}
             </p>
           </header>
-          <PdfReader url={readUrl} />
+          <PdfReader url={readUrl} bookId={bookId || undefined} />
         </div>
       )}
     </main>
