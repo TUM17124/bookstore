@@ -193,9 +193,12 @@ function SuccessInner() {
         </section>
       )}
 
-      <p className="mt-8">
-        <Link href={backHref} className="text-sm font-semibold underline">
-          Back to the book
+            <p className="mt-8">
+        <Link
+          href={backHref}
+          className="text-sm font-semibold underline"
+        >
+          {bookId ? 'Back to the book' : 'Back home'}
         </Link>
       </p>
 

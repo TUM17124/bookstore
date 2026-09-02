@@ -28,7 +28,9 @@ function CheckoutInner() {
     setLoggedIn(!!getToken())
     const u = getStoredUser()
     if (u?.email) setEmail(u.email)
-  }, [])
+    if (bookId) sessionStorage.setItem('checkout_book_id', bookId)
+    if (title) sessionStorage.setItem('checkout_book_title', title)
+  }, [bookId, title])
 
   const productLabel = type === 'ebook' ? 'ebook (PDF)' : 'audiobook'
 
@@ -44,6 +46,10 @@ function CheckoutInner() {
     try {
       const trimmed = email.trim().toLowerCase()
 
+      sessionStorage.setItem('checkout_email', trimmed)
+      sessionStorage.setItem('checkout_book_id', bookId)
+      sessionStorage.setItem('checkout_book_title', title)
+
       const res = await createCheckout({
         book_id: Number(bookId),
         product_type: type,
@@ -56,7 +62,6 @@ function CheckoutInner() {
         return
       }
 
-      sessionStorage.setItem('checkout_email', trimmed)
       sessionStorage.setItem('checkout_order_hint', String(res.order_id))
 
       let url = res.checkout_url
@@ -64,6 +69,7 @@ function CheckoutInner() {
         const u = new URL(url, window.location.origin)
         if (u.pathname.includes('/checkout/success')) {
           u.searchParams.set('email', trimmed)
+          if (bookId) u.searchParams.set('bookId', bookId)
           url = u.toString()
         }
       } catch {
@@ -102,10 +108,15 @@ function CheckoutInner() {
           Email address <span className="text-red-500">*</span>
         </label>
         <p className="mt-1 text-[13px] leading-relaxed text-foreground/50">
-          This email <strong className="font-semibold text-foreground/75">links your payment to this order</strong>.
-          Use it if you need help with a complaint, a failed payment, or a download problem.
-          Sign in later with the <strong className="font-semibold text-foreground/75">same address</strong> to
-          Read / Download or re-download audio without paying again. We do not use it for marketing.
+          This email{' '}
+          <strong className="font-semibold text-foreground/75">
+            links your payment to this order
+          </strong>
+          . Use it if you need help with a complaint, a failed payment, or a
+          download problem. Sign in later with the{' '}
+          <strong className="font-semibold text-foreground/75">same address</strong>{' '}
+          to Read / Download or re-download audio without paying again. We do
+          not use it for marketing.
         </p>
         <input
           id="checkout-email"
@@ -121,9 +132,7 @@ function CheckoutInner() {
         {mounted && !loggedIn && (
           <div className="mt-4 space-y-3 rounded-2xl border border-foreground/10 bg-foreground/[0.03] px-4 py-4">
             <div>
-              <p className="text-sm font-medium text-foreground/90">
-                Guest checkout
-              </p>
+              <p className="text-sm font-medium text-foreground/90">Guest checkout</p>
               <p className="mt-1.5 text-[13px] leading-relaxed text-foreground/60">
                 You can pay with email only. Keep this address—it is how we match
                 your payment if something goes wrong, and how we unlock downloads
@@ -178,14 +187,18 @@ function CheckoutInner() {
 
         <button
           type="button"
-          onClick={() => router.back()}
+          onClick={() =>
+            bookId
+              ? router.push(`/?book=${encodeURIComponent(bookId)}`)
+              : router.back()
+          }
           className="mt-3 w-full text-center text-sm text-foreground/50 hover:text-foreground"
         >
           Cancel
         </button>
       </form>
 
-            <p className="mt-6 text-center text-[12px] text-foreground/40">
+      <p className="mt-6 text-center text-[12px] text-foreground/40">
         By continuing you agree to our{' '}
         <Link href="/terms" className="underline hover:text-foreground/70">
           Terms
@@ -193,12 +206,9 @@ function CheckoutInner() {
         ,{' '}
         <Link href="/privacy" className="underline hover:text-foreground/70">
           Privacy
-        </Link>
-        {' '}and{' '}
-        <Link
-          href="/refund-policy"
-          className="underline hover:text-foreground/70"
-        >
+        </Link>{' '}
+        and{' '}
+        <Link href="/refund-policy" className="underline hover:text-foreground/70">
           Refund Policy
         </Link>
         .
