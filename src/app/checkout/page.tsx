@@ -6,6 +6,22 @@ import Link from 'next/link'
 import { createCheckout, getToken } from '@/lib/api'
 import { getStoredUser } from '@/lib/auth-client'
 
+function rememberBook(bookId: string, title: string, email?: string) {
+  if (typeof window === 'undefined') return
+  if (bookId) {
+    sessionStorage.setItem('checkout_book_id', bookId)
+    localStorage.setItem('checkout_book_id', bookId)
+  }
+  if (title) {
+    sessionStorage.setItem('checkout_book_title', title)
+    localStorage.setItem('checkout_book_title', title)
+  }
+  if (email) {
+    sessionStorage.setItem('checkout_email', email)
+    localStorage.setItem('checkout_email', email)
+  }
+}
+
 function CheckoutInner() {
   const sp = useSearchParams()
   const router = useRouter()
@@ -28,12 +44,10 @@ function CheckoutInner() {
     setLoggedIn(!!getToken())
     const u = getStoredUser()
     if (u?.email) setEmail(u.email)
-    if (bookId) sessionStorage.setItem('checkout_book_id', bookId)
-    if (title) sessionStorage.setItem('checkout_book_title', title)
+    rememberBook(bookId, title)
   }, [bookId, title])
 
   const productLabel = type === 'ebook' ? 'ebook (PDF)' : 'audiobook'
-
   const checkoutPath = `/checkout?bookId=${bookId}&type=${type}&title=${encodeURIComponent(title)}`
   const signupHref = `/signup?email=${encodeURIComponent(email)}&next=${encodeURIComponent(checkoutPath)}`
   const loginHref = `/login?next=${encodeURIComponent(checkoutPath)}`
@@ -45,10 +59,7 @@ function CheckoutInner() {
     setError('')
     try {
       const trimmed = email.trim().toLowerCase()
-
-      sessionStorage.setItem('checkout_email', trimmed)
-      sessionStorage.setItem('checkout_book_id', bookId)
-      sessionStorage.setItem('checkout_book_title', title)
+      rememberBook(bookId, title, trimmed)
 
       const res = await createCheckout({
         book_id: Number(bookId),
@@ -139,7 +150,6 @@ function CheckoutInner() {
                 after you log in.
               </p>
             </div>
-
             <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 px-3 py-3">
               <p className="text-[13px] leading-relaxed text-foreground/70">
                 Optional: create a free account with this same email to save

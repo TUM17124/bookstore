@@ -12,8 +12,16 @@ const API = process.env.NEXT_PUBLIC_API_URL!
 function readStoredBook() {
   if (typeof window === 'undefined') return { id: '', title: '' }
   return {
-    id: (sessionStorage.getItem('checkout_book_id') || '').trim(),
-    title: (sessionStorage.getItem('checkout_book_title') || '').trim(),
+    id: (
+      localStorage.getItem('checkout_book_id') ||
+      sessionStorage.getItem('checkout_book_id') ||
+      ''
+    ).trim(),
+    title: (
+      localStorage.getItem('checkout_book_title') ||
+      sessionStorage.getItem('checkout_book_title') ||
+      ''
+    ).trim(),
   }
 }
 
@@ -38,12 +46,16 @@ function SuccessInner() {
 
   useEffect(() => {
     const fromQuery = (sp.get('email') || '').trim().toLowerCase()
-    const fromSession =
+    const fromStore =
       typeof window !== 'undefined'
-        ? (sessionStorage.getItem('checkout_email') || '').trim().toLowerCase()
+        ? (
+            localStorage.getItem('checkout_email') ||
+            sessionStorage.getItem('checkout_email') ||
+            ''
+          ).trim().toLowerCase()
         : ''
     const fromUser = (getStoredUser()?.email || '').trim().toLowerCase()
-    const resolved = fromQuery || fromSession || fromUser
+    const resolved = fromQuery || fromStore || fromUser
     setEmail(resolved)
     setEmailInput(resolved)
 
@@ -102,11 +114,20 @@ function SuccessInner() {
     }
   }, [orderId, email, reference, bookFromQuery])
 
+  useEffect(() => {
+    if (bookId || !orderId) return
+    const row = [...purchases.ebooks, ...purchases.audiobooks].find(
+      (p) => String(p.order_id) === String(orderId),
+    )
+    if (row?.book_id) setBookId(String(row.book_id))
+  }, [purchases, orderId, bookId])
+
   function applyEmail(e: React.FormEvent) {
     e.preventDefault()
     const next = emailInput.trim().toLowerCase()
     if (!next) return
     sessionStorage.setItem('checkout_email', next)
+    localStorage.setItem('checkout_email', next)
     setEmail(next)
   }
 
