@@ -78,6 +78,7 @@ export interface BooksShowcaseProps {
   className?: string;
   onBookSelect?: (book: BookCfg | null) => void;
   onNearEnd?: () => void;
+  openBookId?: string;
 }
 
 function ChevronLeft() {
@@ -111,6 +112,7 @@ export function BooksShowcase({
   className,
   onBookSelect,
   onNearEnd,
+  openBookId,
 }: BooksShowcaseProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -189,6 +191,12 @@ async function shareBook() {
     window.prompt('Copy this link', shareUrl)
   }
 }
+
+    const pendingOpenIdRef = useRef<string | null>(openBookId || null)
+
+  useEffect(() => {
+    pendingOpenIdRef.current = openBookId || null
+  }, [openBookId])
 
   // hero-word entrance: flip to `mounted` one frame after first paint so the
   // opacity/translate transition below actually has something to animate from.
@@ -1715,6 +1723,18 @@ async function shareBook() {
     rebuildHitMeshes();
     camTo('hero');
     animate();
+
+        const wantId = pendingOpenIdRef.current
+    if (wantId) {
+      const idx = listNow().findIndex((b) => String(b.id) === String(wantId))
+      if (idx >= 0) {
+        const target = ensureBook(idx)
+        if (target) {
+          pendingOpenIdRef.current = null
+          setT(() => open(target), 900)
+        }
+      }
+    }
 
     const visibilityObserver = new IntersectionObserver(
       ([entry]) => {

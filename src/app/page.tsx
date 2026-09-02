@@ -154,6 +154,7 @@ function HomeInner() {
       <div className="home-shelf-stage">
         <BooksShowcase
           books={books}
+          openBookId={selectedBookId}
           onNearEnd={onNearEnd}
           heroTitle={selectedBookId || q ? "Results" : "Books"}
           navTitle={

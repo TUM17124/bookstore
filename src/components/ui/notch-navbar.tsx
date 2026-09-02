@@ -270,7 +270,7 @@ export function NotchNavbar({
                     </span>
                   )}
                 </Link>
-                <NavLink href="/purchases" icon={BookOpen} label="My purchases" />
+                <NavLink href="/purchases" icon={BookOpen} label="Purchases" />
                 <MobileThemeToggle />
               </div>
             </div>
