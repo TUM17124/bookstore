@@ -2205,7 +2205,11 @@ async function shareBook() {
                 <span aria-hidden>→</span>
               </button>
               <Link
-                href="/purchases"
+  href={
+    selectedCfg
+      ? `/purchases?book=${encodeURIComponent(selectedCfg.id)}`
+      : '/purchases'
+  }
                 className="inline-flex items-center gap-2 rounded-full border border-[var(--bs-lav)]/30 bg-[#1a2140]/80 px-5 py-3 text-[15px] font-semibold text-[var(--bs-cream)]"
               >
                 My purchases

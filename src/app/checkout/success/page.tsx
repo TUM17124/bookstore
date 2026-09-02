@@ -231,7 +231,7 @@ function SuccessInner() {
             ))}
           </ul>
           <p className="mt-3 text-center text-xs text-foreground/45">
-            <Link href="/purchases" className="underline">
+            <Link href={bookId ? `/purchases?book=${encodeURIComponent(bookId)}` : '/purchases'} className="underline">
               Open full purchase list
             </Link>
           </p>
