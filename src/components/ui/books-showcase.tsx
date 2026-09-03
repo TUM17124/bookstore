@@ -2345,7 +2345,7 @@ async function shareBook() {
       <PdfReader
   bookId={selectedCfg.id}
   url={previewBookUrl(selectedCfg.id)}
-  previewPages={selectedCfg.previewPages ?? 4}
+  previewPages={selectedCfg.previewPages}
 />
     </div>,
     document.body,

@@ -31,6 +31,7 @@ export function PdfReader({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const pdfRef = useRef<any>(null)
+  const maxPagesRef = useRef(0)
   const loadingPage = useRef<Set<number>>(new Set())
   const lastSave = useRef(0)
   const loggedIn = !!getToken()
@@ -79,7 +80,8 @@ export function PdfReader({
 
   async function extractPage(n: number) {
     const pdf = pdfRef.current
-    if (!pdf || n < 1 || n > total) return
+    const max = maxPagesRef.current
+    if (!pdf || !max || n < 1 || n > max) return
     if (pages[n] || loadingPage.current.has(n)) return
     loadingPage.current.add(n)
     try {
@@ -99,10 +101,10 @@ export function PdfReader({
   }
 
   async function bufferAround(center: number, count = AHEAD) {
-    const pdf = pdfRef.current
-    if (!pdf) return
+    const max = maxPagesRef.current
+    if (!pdfRef.current || !max) return
     const start = Math.max(1, center)
-    const end = Math.min(total, center + count)
+    const end = Math.min(max, center + count)
     for (let i = start; i <= end; i++) {
       await extractPage(i)
     }
@@ -128,6 +130,7 @@ export function PdfReader({
       try {
         setStatus('Opening…')
         setPages({})
+        maxPagesRef.current = 0
         await loadScript()
         if (cancelled) return
 
@@ -139,7 +142,13 @@ export function PdfReader({
         if (cancelled) return
 
         pdfRef.current = pdf
-        setTotal(pdf.numPages)
+
+        const rawTotal = pdf.numPages
+        const totalPages = previewPages
+          ? Math.min(rawTotal, previewPages)
+          : rawTotal
+        maxPagesRef.current = totalPages
+        setTotal(totalPages)
 
         let saved = Number(localStorage.getItem(markKey(url)) || 0)
         if (loggedIn && bookId) {
@@ -151,18 +160,13 @@ export function PdfReader({
           }
         }
 
-        const rawTotal = pdf.numPages
-const totalPages = previewPages
-  ? Math.min(rawTotal, previewPages)
-  : rawTotal
-setTotal(totalPages)
-
         const startAt = saved > 1 && saved <= totalPages ? saved : 1
         setPage(startAt)
-        setMarked(saved)
+        setMarked(saved > totalPages ? totalPages : saved)
         if (startAt > 1) setResumeAt(startAt)
 
         await bufferAround(startAt, AHEAD)
+        if (cancelled) return
         setStatus('')
 
         requestAnimationFrame(() => {
@@ -178,16 +182,18 @@ setTotal(totalPages)
     return () => {
       cancelled = true
       pdfRef.current = null
+      maxPagesRef.current = 0
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, bookId])
+  }, [url, bookId, previewPages])
 
   function onScroll() {
     const root = scrollRef.current
-    if (!root || !total) return
+    const max = maxPagesRef.current
+    if (!root || !max) return
     const mid = root.scrollTop + 80
     let current = page
-    for (let i = 1; i <= total; i++) {
+    for (let i = 1; i <= max; i++) {
       const el = document.getElementById(`read-page-${i}`)
       if (el && el.offsetTop <= mid) current = i
     }
@@ -258,7 +264,7 @@ setTotal(totalPages)
         )}
       </div>
 
-       {previewPages ? (
+      {previewPages ? (
         <p className="px-4 py-2 text-center text-[12px] text-black/55">
           Sneak peek — {previewPages} pages. Buy to unlock the rest.
         </p>
@@ -285,11 +291,11 @@ setTotal(totalPages)
             {' · '}
             <Link href={signupHref} className="font-semibold text-[#c45b78] underline">
               Sign up
-            </Link>
-            {' '}to continue on another device.
+            </Link>{' '}
+            to continue on another device.
           </p>
         ) : (
-          <p className="px-4 pt-3 text-center text-[12px] text-black/45">
+          <p className="px-4 pt-3 text-center text-[12px] text-black/55">
             Your page syncs to this account. Close here, open the same book on another phone.
           </p>
         )}
@@ -300,7 +306,10 @@ setTotal(totalPages)
               <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-black/40">
                 Page {n}
               </p>
-              <p className="font-semibold leading-relaxed text-black" style={{ fontSize: `${fontSize}px` }}>
+              <p
+                className="font-semibold leading-relaxed text-black"
+                style={{ fontSize: `${fontSize}px` }}
+              >
                 {pages[n] || (n <= page + AHEAD ? 'Loading page…' : '')}
               </p>
             </section>
