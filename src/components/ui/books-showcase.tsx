@@ -2049,8 +2049,8 @@ async function shareBook() {
 
           {/* ACTIONS — single row */}
                     <div
-            className={`pointer-events-auto mt-4 inline-flex max-w-full flex-wrap items-center gap-[10px] rounded-full bg-[#1a2140] p-[10px] shadow-[0_24px_60px_rgba(0,0,0,0.45)] @max-[760px]:mt-3 @max-[760px]:rounded-[28px] ${dpChild(330)}`}
-          >
+           className={`pointer-events-auto mt-4 flex max-w-full flex-wrap items-center gap-[10px] rounded-[28px] bg-[#1a2140] p-[10px] shadow-[0_24px_60px_rgba(0,0,0,0.45)] ${dpChild(330)}`}
+  >
             {(() => {
               const isFree = selectedCfg?.isFree === true
               const hasEbook = selectedCfg?.hasEbook !== false
@@ -2068,7 +2068,7 @@ async function shareBook() {
                       if (!selectedCfg || !hasEbook) return
                       if (isFree || (ownedEbookOrderId && buyerEmail)) setReaderOpen(true)
                     }}
-                    className="relative inline-flex h-[54px] items-center gap-[10px] rounded-full bg-[var(--bs-cream)] px-[22px] text-[16.5px] font-semibold text-[var(--bs-navy)] hover:scale-[1.04] disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-4"
+                    className="relative inline-flex h-[54px] shrink-0 items-center gap-[10px] rounded-full bg-[var(--bs-cream)] px-[22px] text-[16.5px] font-semibold text-[var(--bs-navy)] hover:scale-[1.04] disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-4"
                   >
                     Read
                     {!canReadEbook && (
@@ -2076,12 +2076,12 @@ async function shareBook() {
                     )}
                   </button>
 
-                  <div className="relative">
+                  <div className="relative shrink-0">
                     <button
                       type="button"
                       disabled={!!buyLoading || (!hasEbook && !hasAudio)}
                       onClick={() => setDownloadMenu((v) => !v)}
-                      className="inline-flex h-[54px] min-w-[128px] items-center justify-center rounded-full bg-[var(--bs-pink)] px-5 text-[16.5px] font-semibold text-[var(--bs-navy)] hover:scale-[1.04] disabled:opacity-60 @max-[760px]:h-12"
+                      className="inline-flex h-[54px]  items-center justify-center rounded-full bg-[var(--bs-pink)] px-5 text-[16.5px] font-semibold text-[var(--bs-navy)] hover:scale-[1.04] disabled:opacity-60 @max-[760px]:h-12"
                     >
                       {buyLoading ? '…' : 'Download'}
                     </button>
@@ -2163,7 +2163,7 @@ async function shareBook() {
                       })
                       window.location.href = `/checkout?${q}`
                     }}
-                    className="relative inline-flex h-[54px] min-w-[120px] items-center justify-center rounded-full bg-[#10152c] px-5 text-[16.5px] font-semibold text-white ring-1 ring-[var(--bs-lav)]/25 disabled:opacity-60 @max-[760px]:h-12"
+                    className="relative inline-flex h-[54px] shrink-0 items-center justify-center rounded-full bg-[#10152c] px-5 text-[16.5px] font-semibold text-white ring-1 ring-[var(--bs-lav)]/25 disabled:opacity-60 @max-[760px]:h-12"
                   >
                     {!hasAudio ? 'No audio' : isFree || ownedAudioOrderId ? 'Listen' : 'Buy to listen'}
                     {!hasAudio && (
@@ -2175,7 +2175,7 @@ async function shareBook() {
                     type="button"
                     onClick={() => void shareBook()}
                     aria-label="Share this book"
-                    className="inline-flex h-[54px] w-[54px] items-center justify-center rounded-full bg-[#242c50] text-[var(--bs-cream)] hover:scale-[1.04]"
+                    className="inline-flex h-[54px] shrink-0 w-[54px] items-center justify-center rounded-full bg-[#242c50] text-[var(--bs-cream)] hover:scale-[1.04]"
                   >
                     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
                       <circle cx="18" cy="5" r="3" />
@@ -2199,7 +2199,7 @@ async function shareBook() {
         })
         setPreviewOpen(true)
       }}
-      className="inline-flex h-[54px] w-[54px] items-center justify-center rounded-full bg-[#242c50] text-[var(--bs-lav)] transition hover:scale-[1.04] @max-[760px]:h-12 @max-[760px]:w-12"
+      className="inline-flex h-[54px] shrink-0 w-[54px] items-center justify-center rounded-full bg-[#242c50] text-[var(--bs-lav)] transition hover:scale-[1.04] @max-[760px]:h-12 @max-[760px]:w-12"
     >
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.7}>
         <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" />
@@ -2343,7 +2343,7 @@ async function shareBook() {
       <PdfReader
         bookId={selectedCfg.id}
         url={previewBookUrl(selectedCfg.id)}
-        previewPages={8}
+        previewPages={4}
       />
     </div>,
     document.body,
