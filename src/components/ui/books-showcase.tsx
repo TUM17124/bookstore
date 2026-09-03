@@ -7,7 +7,7 @@ import { useBookmarks } from '@/components/bookmarks-context';
 import Link from 'next/link';
 import { BookReviews } from '@/components/book-reviews';
 import { createPortal } from 'react-dom';
-import { getPurchases, downloadOrderUrl, getToken, freeBookUrl } from '@/lib/api';
+import { getPurchases, downloadOrderUrl, getToken, freeBookUrl, trackEvent, previewBookUrl } from '@/lib/api';
 import { getStoredUser } from '@/lib/auth-client';
 import { PdfReader } from '@/components/pdf-reader'
 import { AudioPlayer } from '@/components/audio-player'
@@ -167,6 +167,17 @@ export function BooksShowcase({
   };
 
   const [downloadMenu, setDownloadMenu] = useState(false)
+
+  const [previewOpen, setPreviewOpen] = useState(false)
+
+  useEffect(() => {
+    if (uiMode !== 'detail' || !selectedCfg?.id) return
+    void trackEvent({
+      kind: 'click',
+      book_id: selectedCfg.id,
+      source: 'shelf',
+    })
+  }, [uiMode, selectedCfg?.id])
 
 async function shareBook() {
   if (!selectedCfg) return
@@ -2173,6 +2184,29 @@ async function shareBook() {
                       <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
                     </svg>
                   </button>
+                  {selectedCfg &&
+  selectedCfg.hasEbook !== false &&
+  !selectedCfg.isFree &&
+  !ownedEbookOrderId && (
+    <button
+      type="button"
+      aria-label="Preview pages"
+      onClick={() => {
+        void trackEvent({
+          kind: 'preview',
+          book_id: selectedCfg.id,
+          source: 'eye',
+        })
+        setPreviewOpen(true)
+      }}
+      className="inline-flex h-[54px] w-[54px] items-center justify-center rounded-full bg-[#242c50] text-[var(--bs-lav)] transition hover:scale-[1.04] @max-[760px]:h-12 @max-[760px]:w-12"
+    >
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.7}>
+        <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    </button>
+  )}
                 </>
               )
             })()}
@@ -2281,6 +2315,36 @@ async function shareBook() {
       : `${downloadOrderUrl(ownedEbookOrderId!, buyerEmail!)}&inline=1`
   }
 />
+    </div>,
+    document.body,
+  )}
+
+
+  {previewOpen &&
+  selectedCfg &&
+  typeof document !== 'undefined' &&
+  createPortal(
+    <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
+        <button
+          type="button"
+          onClick={() => setPreviewOpen(false)}
+          className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10"
+        >
+          ×
+        </button>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-[16px] font-bold text-white">
+            Preview · {selectedCfg.title}
+          </h2>
+          <p className="text-[12px] text-white/50">First pages only. Buy to read the full book.</p>
+        </div>
+      </header>
+      <PdfReader
+        bookId={selectedCfg.id}
+        url={previewBookUrl(selectedCfg.id)}
+        previewPages={8}
+      />
     </div>,
     document.body,
   )}

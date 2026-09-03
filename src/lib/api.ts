@@ -1,3 +1,4 @@
+
 const API = process.env.NEXT_PUBLIC_API_URL!
 
 export type ApiBook = {
@@ -310,6 +311,32 @@ export async function savePdfProgress(bookId: string, page: number) {
     method: 'PUT',
     body: JSON.stringify({ page }),
   })
+}
+
+export async function trackEvent(payload: {
+  kind: 'search' | 'click' | 'preview'
+  book_id?: string | number
+  query?: string
+  source?: string
+  email?: string
+  path?: string
+}) {
+  try {
+    await fetch(`${API}/track/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...payload,
+        path: payload.path || (typeof window !== 'undefined' ? window.location.pathname : ''),
+      }),
+    })
+  } catch {
+    // never block UI
+  }
+}
+
+export function previewBookUrl(bookId: string | number) {
+  return `${API}/books/${bookId}/preview/?inline=1`
 }
 
 export type BookmarkRow = {

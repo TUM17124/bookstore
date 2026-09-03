@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { BooksShowcase, type BookCfg } from "@/components/ui/books-showcase"
 import { getBooks, asBookList, type Paginated, type ApiBook } from "@/lib/api"
 import { OfferMarquee } from "@/components/offer-marquee"
+import { trackEvent } from '@/lib/api'
 
 function toCfg(b: ApiBook): BookCfg {
   return {
@@ -84,6 +85,13 @@ function HomeInner() {
           !Array.isArray(data) && !!(data as Paginated<ApiBook>).next
         hasMoreRef.current = more
         pageRef.current = p
+        if (p === 1 && q) {
+          void trackEvent({
+            kind: "search",
+            query: q,
+            source: "home",
+          })
+        }
         setBooks((prev) => {
           if (replace) return orderWithSelected(list, selectedBookId)
           const seen = new Set(prev.map((b) => b.id))

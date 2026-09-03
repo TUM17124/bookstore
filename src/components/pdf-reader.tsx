@@ -23,9 +23,11 @@ const AHEAD = 2
 export function PdfReader({
   url,
   bookId,
+  previewPages,
 }: {
   url: string
   bookId?: string
+  previewPages?: number
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const pdfRef = useRef<any>(null)
@@ -77,7 +79,7 @@ export function PdfReader({
 
   async function extractPage(n: number) {
     const pdf = pdfRef.current
-    if (!pdf || n < 1 || n > pdf.numPages) return
+    if (!pdf || n < 1 || n > total) return
     if (pages[n] || loadingPage.current.has(n)) return
     loadingPage.current.add(n)
     try {
@@ -100,7 +102,7 @@ export function PdfReader({
     const pdf = pdfRef.current
     if (!pdf) return
     const start = Math.max(1, center)
-    const end = Math.min(pdf.numPages, center + count)
+    const end = Math.min(total, center + count)
     for (let i = start; i <= end; i++) {
       await extractPage(i)
     }
@@ -149,7 +151,13 @@ export function PdfReader({
           }
         }
 
-        const startAt = saved > 1 && saved <= pdf.numPages ? saved : 1
+        const rawTotal = pdf.numPages
+const totalPages = previewPages
+  ? Math.min(rawTotal, previewPages)
+  : rawTotal
+setTotal(totalPages)
+
+        const startAt = saved > 1 && saved <= totalPages ? saved : 1
         setPage(startAt)
         setMarked(saved)
         if (startAt > 1) setResumeAt(startAt)
@@ -249,6 +257,12 @@ export function PdfReader({
           </button>
         )}
       </div>
+
+       {previewPages ? (
+        <p className="px-4 py-2 text-center text-[12px] text-black/55">
+          Sneak peek — {previewPages} pages. Buy to unlock the rest.
+        </p>
+      ) : null}
 
       <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-auto">
         {status ? (

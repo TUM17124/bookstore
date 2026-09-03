@@ -18,6 +18,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { trackEvent } from "@/lib/api"
 
 /**
  * Search Modal
