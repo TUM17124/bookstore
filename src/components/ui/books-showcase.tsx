@@ -29,6 +29,8 @@ export interface BookCfg {
 
   isFree?: boolean
 
+  previewPages?: number
+
   // Procedural cover painters. All optional — omit and supply `images` instead, or omit both for a generated placeholder.
   front?: (x: CanvasRenderingContext2D, w: number, h: number) => void;
   back?: (x: CanvasRenderingContext2D, w: number, h: number) => void;
@@ -2341,10 +2343,10 @@ async function shareBook() {
         </div>
       </header>
       <PdfReader
-        bookId={selectedCfg.id}
-        url={previewBookUrl(selectedCfg.id)}
-        previewPages={4}
-      />
+  bookId={selectedCfg.id}
+  url={previewBookUrl(selectedCfg.id)}
+  previewPages={selectedCfg.previewPages ?? 4}
+/>
     </div>,
     document.body,
   )}

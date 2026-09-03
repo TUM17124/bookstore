@@ -35,6 +35,7 @@ function toCfg(b: ApiBook): BookCfg {
       b.hasEbook !== false && b.hasEbook !== undefined ? !!b.hasEbook : true,
     hasAudiobook: !!b.hasAudiobook,
     isFree: !!b.isFree,
+    previewPages: b.previewPages != null ? Number(b.previewPages) : 4,
   }
 }
 

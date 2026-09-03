@@ -28,6 +28,7 @@ export type ApiBook = {
   hasEbook?: boolean
   hasAudiobook?: boolean
   isFree?: boolean
+  previewPages?: number
 }
 
 export type Paginated<T> = {
