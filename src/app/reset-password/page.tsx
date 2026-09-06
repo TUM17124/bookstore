@@ -2,12 +2,21 @@
 
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { resetPassword, setToken } from '@/lib/api'
 import { setStoredUser } from '@/lib/auth-client'
 
+function safeNext(path: string) {
+  if (path.startsWith('/') && !path.startsWith('//')) return path
+  return '/'
+}
+
 function Inner() {
   const router = useRouter()
-  const email = (useSearchParams().get('email') || '').toLowerCase()
+  const sp = useSearchParams()
+  const email = (sp.get('email') || '').toLowerCase()
+  const nextPath = safeNext(sp.get('next') || '/')
+
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -25,9 +34,13 @@ function Inner() {
     try {
       const data = await resetPassword(email, code, password, confirm)
       if (data.access) setToken(data.access)
-      setStoredUser({ email: data.user?.email || email, name: data.user?.name })
+      setStoredUser({
+        email: data.user?.email || email,
+        name: data.user?.name,
+      })
       window.dispatchEvent(new Event('auth-changed'))
-      router.push('/')
+      router.push(nextPath)
+      router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed')
     }
@@ -74,6 +87,22 @@ function Inner() {
           {busy ? '…' : 'Save password'}
         </button>
       </form>
+      <p className="mt-4 text-sm text-foreground/60">
+        Back to{' '}
+        <Link
+          href={`/login?email=${encodeURIComponent(email)}&next=${encodeURIComponent(nextPath)}`}
+          className="underline"
+        >
+          Log in
+        </Link>
+        {' · '}
+        <Link
+          href={`/signup?email=${encodeURIComponent(email)}&next=${encodeURIComponent(nextPath)}`}
+          className="underline"
+        >
+          Sign up
+        </Link>
+      </p>
     </main>
   )
 }

@@ -2,11 +2,18 @@
 
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { forgotPassword } from '@/lib/api'
+
+function safeNext(path: string) {
+  if (path.startsWith('/') && !path.startsWith('//')) return path
+  return '/'
+}
 
 function Inner() {
   const router = useRouter()
   const sp = useSearchParams()
+  const nextPath = safeNext(sp.get('next') || '/')
   const [email, setEmail] = useState(sp.get('email') || '')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -17,7 +24,11 @@ function Inner() {
     setError('')
     try {
       await forgotPassword(email)
-      router.push(`/reset-password?email=${encodeURIComponent(email)}`)
+      const q = new URLSearchParams({
+        email,
+        next: nextPath,
+      })
+      router.push(`/reset-password?${q.toString()}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed')
     }
@@ -45,6 +56,24 @@ function Inner() {
           {busy ? '…' : 'Send reset code'}
         </button>
       </form>
+      <p className="mt-4 text-sm text-foreground/60">
+        Remembered it?{' '}
+        <Link
+          href={`/login?email=${encodeURIComponent(email)}&next=${encodeURIComponent(nextPath)}`}
+          className="underline"
+        >
+          Log in
+        </Link>
+      </p>
+      <p className="mt-2 text-sm text-foreground/60">
+        No account?{' '}
+        <Link
+          href={`/signup?email=${encodeURIComponent(email)}&next=${encodeURIComponent(nextPath)}`}
+          className="underline"
+        >
+          Sign up
+        </Link>
+      </p>
     </main>
   )
 }

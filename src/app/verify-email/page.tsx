@@ -8,6 +8,10 @@ import { setStoredUser } from '@/lib/auth-client'
 function Inner() {
   const router = useRouter()
   const sp = useSearchParams()
+  function safeNext(path: string) {
+  if (path.startsWith('/') && !path.startsWith('//')) return path
+  return '/'
+}
   const email = (sp.get('email') || '').toLowerCase()
   const nextPath = sp.get('next') || '/'
   const [code, setCode] = useState('')
@@ -24,7 +28,7 @@ function Inner() {
       if (data.access) setToken(data.access)
       setStoredUser({ email: data.user?.email || email, name: data.user?.name })
       window.dispatchEvent(new Event('auth-changed'))
-      router.push(nextPath.startsWith('/') ? nextPath : '/')
+      router.push(safeNext(sp.get('next') || '/'))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed')
     }

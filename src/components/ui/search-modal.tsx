@@ -1,7 +1,7 @@
-"use client";
+"use client"
 
-import * as React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as React from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Buildings,
   ChatTeardropText,
@@ -16,107 +16,75 @@ import {
   SlidersHorizontal,
   Users,
   X,
-} from "@phosphor-icons/react";
-import { cn } from "@/lib/utils";
-import { trackEvent } from "@/lib/api"
-
-/**
- * Search Modal
- *
- * A minimalist command-palette panel: a search bar that live-filters the result
- * list, removable "I'm looking for…" tags, people/results rows with per-row
- * actions, a quick-actions list with keyboard hints, and a files section.
- *
- * Ported from the vanilla "CodeGrid Modern Minimalist Search Modal" into a
- * single, self-contained, prop-driven React component. Every section is data
- * driven and optional, icons are Phosphor, and it adapts to light and dark mode.
- */
+} from "@phosphor-icons/react"
+import { cn } from "@/lib/utils"
+import { searchTrack } from "@/lib/api"
 
 export interface SearchTag {
-  label: string;
-  icon?: React.ReactNode;
+  label: string
+  icon?: React.ReactNode
 }
 
 export interface SearchResultAction {
-  icon: React.ReactNode;
-  label?: string;
-  onClick?: () => void;
+  icon: React.ReactNode
+  label?: string
+  onClick?: () => void
 }
 
 export interface SearchResult {
-  /** Primary label (also matched against the query). */
-  name: string;
-  /** Secondary text such as an email or context (also matched). */
-  meta?: string;
-  /** Avatar image URL. Falls back to a neutral circle. */
-  avatar?: string;
-  /** Link target for the row. */
-  href?: string;
-  /** Trailing action icons. */
-  actions?: SearchResultAction[];
+  name: string
+  meta?: string
+  avatar?: string
+  href?: string
+  actions?: SearchResultAction[]
+  book_id?: number | string
+  book_slug?: string
 }
 
 export interface QuickAction {
-  label: string;
-  icon?: React.ReactNode;
-  /** Keyboard hint shown on the right (e.g. "E"). */
-  shortcut?: string;
-  onClick?: () => void;
+  label: string
+  icon?: React.ReactNode
+  shortcut?: string
+  onClick?: () => void
 }
 
 export interface SearchFile {
-  name: string;
-  /** File extension shown dimmed after the name (e.g. ".pdf"). */
-  ext?: string;
-  icon?: React.ReactNode;
-  /** Show the green "verified" checks next to the name. */
-  verified?: boolean;
-  onShare?: () => void;
+  name: string
+  ext?: string
+  icon?: React.ReactNode
+  verified?: boolean
+  onShare?: () => void
+  book_id?: number | string
+  book_slug?: string
 }
 
 export interface SearchModalProps {
-  /** Placeholder for the search input. */
-  placeholder?: string;
-  /** Removable filter tags. */
-  tags?: SearchTag[];
-  /** Result rows, live-filtered by the query. */
-  results?: SearchResult[];
-  /** Quick-action rows. */
-  quickActions?: QuickAction[];
-  /** File rows. */
-  files?: SearchFile[];
-  /** Initial query value. */
-  defaultQuery?: string;
-  /** Called as the query changes. */
-  onQueryChange?: (query: string) => void;
-  /** Called when a result row is clicked. */
-  onSelectResult?: (result: SearchResult, index: number) => void;
-  /** Extra classes for the root panel. */
-  className?: string;
-
-  /** Render as a centered overlay with a backdrop instead of an inline panel. */
-  modal?: boolean;
-  /** Controlled open state (modal mode). */
-  open?: boolean;
-  /** Uncontrolled initial open state (modal mode). Defaults to false. */
-  defaultOpen?: boolean;
-  /** Called when the modal opens (true) or closes (false). */
-  onOpenChange?: (open: boolean) => void;
-  /** Key (pressed with ⌘/Ctrl) that toggles the modal. Defaults to "k"; set null to disable. */
-  hotkey?: string | null;
-  /** Close the modal on Escape. Defaults to true. */
-  closeOnEscape?: boolean;
-  /** Extra classes for the overlay wrapper (e.g. override `fixed` with `absolute` to scope it). */
-  overlayClassName?: string;
+  placeholder?: string
+  tags?: SearchTag[]
+  results?: SearchResult[]
+  quickActions?: QuickAction[]
+  files?: SearchFile[]
+  defaultQuery?: string
+  onQueryChange?: (query: string) => void
+  onSelectResult?: (result: SearchResult, index: number) => void
+  className?: string
+  modal?: boolean
+  open?: boolean
+  defaultOpen?: boolean
+  onOpenChange?: (open: boolean) => void
+  hotkey?: string | null
+  closeOnEscape?: boolean
+  overlayClassName?: string
+  source?: string
 }
 
-const ICON = "h-[18px] w-[18px] text-neutral-400 dark:text-neutral-500";
+const ICON = "h-[18px] w-[18px] text-neutral-400 dark:text-neutral-500"
 
 const DEFAULT_TAGS: SearchTag[] = [
   { label: "Reactions", icon: <RadioButton className="h-4 w-4" /> },
   { label: "People", icon: <Users className="h-4 w-4" /> },
   { label: "Companies", icon: <Buildings className="h-4 w-4" /> },
-];
+]
 
 const DEFAULT_RESULTS: SearchResult[] = [
   {
@@ -127,33 +95,33 @@ const DEFAULT_RESULTS: SearchResult[] = [
       { icon: <ListPlus className="h-4 w-4" />, label: "Add to list" },
     ],
   },
-  {
-    name: "Rob Miller",
-    meta: "rob@icloud.com",
-    actions: [{ icon: <ListPlus className="h-4 w-4" />, label: "Add to list" }],
-  },
-  {
-    name: "Hannah Steward",
-    meta: "replied on thread",
-    actions: [
-      { icon: <EnvelopeSimple className="h-4 w-4" />, label: "Email" },
-      { icon: <ListPlus className="h-4 w-4" />, label: "Add to list" },
-    ],
-  },
-];
+]
 
 const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
   { label: "Create new task", shortcut: "E" },
   { label: "Create note", shortcut: "S" },
   { label: "Add member", shortcut: "R" },
-];
+]
 
-const DEFAULT_FILES: SearchFile[] = [
-  { name: "Invoice", ext: ".pdf", verified: true },
-];
+const DEFAULT_FILES: SearchFile[] = [{ name: "Invoice", ext: ".pdf", verified: true }]
+
+function slugFromHref(href?: string): string | undefined {
+  if (!href) return undefined
+  try {
+    const path = href.startsWith("http") ? new URL(href).pathname : href
+    const parts = path.split("/").filter(Boolean)
+    const i = parts.findIndex((p) => p === "book" || p === "books" || p === "guides")
+    if (i >= 0 && parts[i + 1]) return decodeURIComponent(parts[i + 1])
+    const book = parts.find((p) => p.startsWith("book="))
+    if (book) return book.replace("book=", "")
+    return parts[parts.length - 1]
+  } catch {
+    return undefined
+  }
+}
 
 export function SearchModal({
-  placeholder = "Search for action, people, instruments",
+  placeholder = "Search guides, topics, questions…",
   tags = DEFAULT_TAGS,
   results = DEFAULT_RESULTS,
   quickActions = DEFAULT_QUICK_ACTIONS,
@@ -169,69 +137,110 @@ export function SearchModal({
   hotkey = "k",
   closeOnEscape = true,
   overlayClassName,
+  source = "search-modal",
 }: SearchModalProps) {
-  const [query, setQuery] = useState(defaultQuery);
-  const [activeTags, setActiveTags] = useState<SearchTag[]>(tags);
+  const [query, setQuery] = useState(defaultQuery)
+  const [activeTags, setActiveTags] = useState<SearchTag[]>(tags)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastTrackedQuery = useRef("")
 
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Open state — controlled via `open`, otherwise internal.
-  const isControlled = open !== undefined;
-  const [internalOpen, setInternalOpen] = useState(defaultOpen);
-  const actualOpen = isControlled ? open : internalOpen;
+  const isControlled = open !== undefined
+  const [internalOpen, setInternalOpen] = useState(defaultOpen)
+  const actualOpen = isControlled ? open : internalOpen
 
   const setOpen = useCallback(
     (value: boolean) => {
-      if (!isControlled) setInternalOpen(value);
-      onOpenChange?.(value);
+      if (!isControlled) setInternalOpen(value)
+      onOpenChange?.(value)
     },
     [isControlled, onOpenChange],
-  );
+  )
 
-  // Keep the latest open state / setter reachable from the one-time listener.
-  const openRef = useRef(actualOpen);
-  const setOpenRef = useRef(setOpen);
+  const openRef = useRef(actualOpen)
+  const setOpenRef = useRef(setOpen)
   useEffect(() => {
-    openRef.current = actualOpen;
-    setOpenRef.current = setOpen;
-  });
+    openRef.current = actualOpen
+    setOpenRef.current = setOpen
+  })
 
-  // ⌘K / Ctrl+K to toggle, Escape to close.
   useEffect(() => {
-    if (!modal) return;
+    if (!modal) return
     const onKeyDown = (e: KeyboardEvent) => {
-      if (hotkey && e.key && e.key.toLowerCase() === hotkey.toLowerCase() && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setOpenRef.current(!openRef.current);
+      if (
+        hotkey &&
+        e.key &&
+        e.key.toLowerCase() === hotkey.toLowerCase() &&
+        (e.metaKey || e.ctrlKey)
+      ) {
+        e.preventDefault()
+        setOpenRef.current(!openRef.current)
       } else if (closeOnEscape && e.key === "Escape" && openRef.current) {
-        setOpenRef.current(false);
+        setOpenRef.current(false)
       }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [modal, hotkey, closeOnEscape]);
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [modal, hotkey, closeOnEscape])
 
-  // Focus the input when the modal opens.
   useEffect(() => {
     if (modal && actualOpen) {
-      const id = requestAnimationFrame(() => inputRef.current?.focus());
-      return () => cancelAnimationFrame(id);
+      const id = requestAnimationFrame(() => inputRef.current?.focus())
+      return () => cancelAnimationFrame(id)
     }
-  }, [modal, actualOpen]);
+  }, [modal, actualOpen])
 
   const filteredResults = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return results;
-    return results.filter((r) => `${r.name} ${r.meta ?? ""}`.toLowerCase().includes(q));
-  }, [query, results]);
+    const q = query.trim().toLowerCase()
+    if (!q) return results
+    return results.filter((r) =>
+      `${r.name} ${r.meta ?? ""} ${r.book_slug ?? ""}`.toLowerCase().includes(q),
+    )
+  }, [query, results])
+
+  const trackSearch = useCallback(
+    (value: string) => {
+      const q = value.trim()
+      if (q.length < 2) return
+      if (q === lastTrackedQuery.current) return
+      lastTrackedQuery.current = q
+      void searchTrack({
+        event_type: "search",
+        query: q,
+        source,
+      })
+    },
+    [source],
+  )
+
+  const trackClick = useCallback(
+    (opts: { book_id?: number | string; book_slug?: string; name?: string }) => {
+      void searchTrack({
+        event_type: "click",
+        query: query.trim() || undefined,
+        book_id: opts.book_id,
+        book_slug: opts.book_slug,
+        source,
+      })
+    },
+    [query, source],
+  )
 
   const handleQuery = (value: string) => {
-    setQuery(value);
-    onQueryChange?.(value);
-  };
+    setQuery(value)
+    onQueryChange?.(value)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => trackSearch(value), 400)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [])
 
   const removeTag = (index: number) =>
-    setActiveTags((prev) => prev.filter((_, i) => i !== index));
+    setActiveTags((prev) => prev.filter((_, i) => i !== index))
 
   const panel = (
     <div
@@ -244,7 +253,6 @@ export function SearchModal({
         className,
       )}
     >
-      {/* Search bar */}
       <div className="flex items-center gap-1 border-b border-black/[0.06] px-4 py-3.5 dark:border-white/[0.06]">
         <MagnifyingGlass className={ICON} />
         <input
@@ -252,12 +260,22 @@ export function SearchModal({
           type="text"
           value={query}
           onChange={(e) => handleQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              if (debounceRef.current) clearTimeout(debounceRef.current)
+              trackSearch(query)
+            }
+          }}
           placeholder={placeholder}
           aria-label="Search"
           className="min-w-0 flex-1 bg-transparent px-3 text-sm text-current outline-none placeholder:text-neutral-400 dark:placeholder:text-neutral-500"
         />
         <div className="flex shrink-0 items-center gap-2.5">
-          <button type="button" aria-label="Filters" className="text-neutral-400 transition-colors hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-200">
+          <button
+            type="button"
+            aria-label="Filters"
+            className="text-neutral-400 transition-colors hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-200"
+          >
             <SlidersHorizontal className="h-[18px] w-[18px]" />
           </button>
           <kbd className="flex items-center gap-0.5 rounded-md border border-black/[0.06] bg-black/[0.03] px-1.5 py-0.5 font-sans text-[11px] font-medium text-neutral-400 dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-neutral-500">
@@ -267,10 +285,11 @@ export function SearchModal({
         </div>
       </div>
 
-      {/* Tags */}
       {activeTags.length > 0 ? (
         <div className="border-b border-black/[0.06] px-4 py-3.5 dark:border-white/[0.06]">
-          <span className="text-[13px] text-neutral-400 dark:text-neutral-500">I&apos;m looking for...</span>
+          <span className="text-[13px] text-neutral-400 dark:text-neutral-500">
+            I&apos;m looking for...
+          </span>
           <div className="mt-3 flex flex-wrap gap-2">
             {activeTags.map((tag, i) => (
               <span
@@ -293,63 +312,81 @@ export function SearchModal({
         </div>
       ) : null}
 
-      {/* Results */}
       {results.length > 0 ? (
         <div className="border-b border-black/[0.06] dark:border-white/[0.06]">
           <p className="px-4 pt-3.5 pb-2 text-[13px] text-neutral-400 dark:text-neutral-500">
-            Last search&nbsp;&nbsp;<span className="text-neutral-600 dark:text-neutral-300">{filteredResults.length}</span>
+            Last search&nbsp;&nbsp;
+            <span className="text-neutral-600 dark:text-neutral-300">
+              {filteredResults.length}
+            </span>
           </p>
           <ul className="px-1.5 pb-1.5">
-            {filteredResults.map((result, i) => (
-              <li key={`${result.name}-${i}`}>
-                <a
-                  href={result.href ?? "#"}
-                  onClick={() => onSelectResult?.(result, i)}
-                  className="group relative flex items-center rounded-lg px-2.5 py-2 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-                >
-                  {result.avatar ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={result.avatar}
-                      alt=""
-                      className="h-6 w-6 shrink-0 rounded-full object-cover ring-1 ring-black/5 dark:ring-white/10"
-                    />
-                  ) : (
-                    <span className="h-6 w-6 shrink-0 rounded-full bg-neutral-300 ring-1 ring-black/5 dark:bg-neutral-600 dark:ring-white/10" />
-                  )}
-                  <span className="ml-2.5 truncate text-sm">
-                    {result.name}
-                    {result.meta ? <span className="pl-1.5 text-neutral-400 dark:text-neutral-500">{result.meta}</span> : null}
-                  </span>
-                  {result.actions && result.actions.length > 0 ? (
-                    <span className="ml-auto flex items-center gap-2.5 pl-3 text-neutral-400 opacity-70 transition-opacity group-hover:opacity-100 dark:text-neutral-500">
-                      {result.actions.map((action, ai) => (
-                        <button
-                          key={ai}
-                          type="button"
-                          aria-label={action.label}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            action.onClick?.();
-                          }}
-                          className="transition-colors hover:text-neutral-700 dark:hover:text-neutral-200"
-                        >
-                          {action.icon}
-                        </button>
-                      ))}
+            {filteredResults.map((result, i) => {
+              const slug = result.book_slug || slugFromHref(result.href)
+              return (
+                <li key={`${result.name}-${i}`}>
+                  <a
+                    href={result.href ?? "#"}
+                    onClick={(e) => {
+                      if (!result.href || result.href === "#") e.preventDefault()
+                      trackClick({
+                        book_id: result.book_id,
+                        book_slug: slug,
+                        name: result.name,
+                      })
+                      onSelectResult?.(result, i)
+                    }}
+                    className="group relative flex items-center rounded-lg px-2.5 py-2 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                  >
+                    {result.avatar ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={result.avatar}
+                        alt=""
+                        className="h-6 w-6 shrink-0 rounded-full object-cover ring-1 ring-black/5 dark:ring-white/10"
+                      />
+                    ) : (
+                      <span className="h-6 w-6 shrink-0 rounded-full bg-neutral-300 ring-1 ring-black/5 dark:bg-neutral-600 dark:ring-white/10" />
+                    )}
+                    <span className="ml-2.5 truncate text-sm">
+                      {result.name}
+                      {result.meta ? (
+                        <span className="pl-1.5 text-neutral-400 dark:text-neutral-500">
+                          {result.meta}
+                        </span>
+                      ) : null}
                     </span>
-                  ) : null}
-                </a>
-              </li>
-            ))}
+                    {result.actions && result.actions.length > 0 ? (
+                      <span className="ml-auto flex items-center gap-2.5 pl-3 text-neutral-400 opacity-70 transition-opacity group-hover:opacity-100 dark:text-neutral-500">
+                        {result.actions.map((action, ai) => (
+                          <button
+                            key={ai}
+                            type="button"
+                            aria-label={action.label}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              action.onClick?.()
+                            }}
+                            className="transition-colors hover:text-neutral-700 dark:hover:text-neutral-200"
+                          >
+                            {action.icon}
+                          </button>
+                        ))}
+                      </span>
+                    ) : null}
+                  </a>
+                </li>
+              )
+            })}
           </ul>
         </div>
       ) : null}
 
-      {/* Quick actions */}
       {quickActions.length > 0 ? (
         <div className="border-b border-black/[0.06] px-1.5 py-1.5 dark:border-white/[0.06]">
-          <p className="px-2.5 pt-2 pb-1 text-[13px] text-neutral-400 dark:text-neutral-500">Quick actions</p>
+          <p className="px-2.5 pt-2 pb-1 text-[13px] text-neutral-400 dark:text-neutral-500">
+            Quick actions
+          </p>
           {quickActions.map((action, i) => (
             <button
               key={`${action.label}-${i}`}
@@ -371,11 +408,11 @@ export function SearchModal({
         </div>
       ) : null}
 
-      {/* Files */}
       {files.length > 0 ? (
         <div className="px-1.5 py-1.5">
           <p className="px-2.5 pt-2 pb-1 text-[13px] text-neutral-400 dark:text-neutral-500">
-            Files&nbsp;&nbsp;<span className="text-neutral-600 dark:text-neutral-300">{files.length}</span>
+            Files&nbsp;&nbsp;
+            <span className="text-neutral-600 dark:text-neutral-300">{files.length}</span>
           </p>
           {files.map((file, i) => (
             <div
@@ -388,13 +425,22 @@ export function SearchModal({
               <span className="flex items-center gap-1.5 pl-3 text-sm">
                 <span>
                   {file.name}
-                  {file.ext ? <span className="text-neutral-400 dark:text-neutral-500">{file.ext}</span> : null}
+                  {file.ext ? (
+                    <span className="text-neutral-400 dark:text-neutral-500">{file.ext}</span>
+                  ) : null}
                 </span>
                 {file.verified ? <Checks className="h-4 w-4 text-emerald-500" /> : null}
               </span>
               <button
                 type="button"
-                onClick={file.onShare}
+                onClick={() => {
+                  trackClick({
+                    book_id: file.book_id,
+                    book_slug: file.book_slug,
+                    name: file.name,
+                  })
+                  file.onShare?.()
+                }}
                 className="ml-auto flex items-center gap-1.5 text-sm text-neutral-400 opacity-80 transition-all hover:text-neutral-700 group-hover:opacity-100 dark:text-neutral-500 dark:hover:text-neutral-200"
               >
                 <ShareFat weight="bold" className="h-4 w-4" />
@@ -405,9 +451,9 @@ export function SearchModal({
         </div>
       ) : null}
     </div>
-  );
+  )
 
-  if (!modal) return panel;
+  if (!modal) return panel
 
   return (
     <div
@@ -430,7 +476,7 @@ export function SearchModal({
         {panel}
       </div>
     </div>
-  );
+  )
 }
 
-export default SearchModal;
+export default SearchModal

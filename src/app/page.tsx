@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { BooksShowcase, type BookCfg } from "@/components/ui/books-showcase"
 import { getBooks, asBookList, type Paginated, type ApiBook } from "@/lib/api"
 import { OfferMarquee } from "@/components/offer-marquee"
-import { trackEvent } from '@/lib/api'
+import { searchTrack } from '@/lib/api'
 
 function toCfg(b: ApiBook): BookCfg {
   return {
@@ -36,6 +36,8 @@ function toCfg(b: ApiBook): BookCfg {
     hasAudiobook: !!b.hasAudiobook,
     isFree: !!b.isFree,
     previewPages: b.previewPages != null ? Number(b.previewPages) : 4,
+    audioUrl: b.audioUrl || undefined,
+    pdfUrl: b.pdfUrl || undefined,
   }
 }
 
@@ -66,6 +68,8 @@ function HomeInner() {
   const category = (sp.get("category") || "").trim()
   const selectedBookId = (sp.get("book") || "").trim()
 
+  const view = (sp.get('view') || '').trim() // read | listen | reviews
+
   const [books, setBooks] = useState<BookCfg[]>([])
   const [error, setError] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -87,8 +91,8 @@ function HomeInner() {
         hasMoreRef.current = more
         pageRef.current = p
         if (p === 1 && q) {
-          void trackEvent({
-            kind: "search",
+          void searchTrack({
+            event_type: "search",
             query: q,
             source: "home",
           })
@@ -164,6 +168,7 @@ function HomeInner() {
         <BooksShowcase
           books={books}
           openBookId={selectedBookId}
+          openView={view}
           onNearEnd={onNearEnd}
           heroTitle={selectedBookId || q ? "Results" : "Books"}
           navTitle={

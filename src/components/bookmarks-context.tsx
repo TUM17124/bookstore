@@ -64,6 +64,8 @@ function apiBookToCfg(b: ApiBook): BookCfg {
     hasAudiobook: !!b.hasAudiobook,
     price: b.price != null ? Number(b.price) : undefined,
     previewPages: b.previewPages != null ? Number(b.previewPages) : 4,
+    audioUrl: b.audioUrl || undefined,
+    pdfUrl: b.pdfUrl || undefined,
   };
 }
 

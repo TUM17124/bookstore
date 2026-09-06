@@ -81,9 +81,12 @@ function LoginInner() {
         </button>
       </form>
       <p className="mt-4 text-sm text-foreground/60">
-        <Link href={`/forgot-password?email=${encodeURIComponent(email)}`} className="underline">
-          Forgot password?
-        </Link>
+        <Link
+  href={`/forgot-password?email=${encodeURIComponent(email)}&next=${encodeURIComponent(nextPath)}`}
+  className="underline"
+>
+  Forgot password?
+</Link>
       </p>
       <p className="mt-2 text-sm text-foreground/60">
         No account?{' '}

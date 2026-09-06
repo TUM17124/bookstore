@@ -107,7 +107,8 @@ export function AudioPlayer({
   const lastSleepMinRef = useRef(0)
   const lastSave = useRef(0)
   const restored = useRef(false)
-  const tries = useRef(0)
+  const seekingRef = useRef(false)
+  const seekTarget = useRef(0)
   const lastShake = useRef(0)
   const lastMag = useRef(0)
   const loggedIn = !!getToken()
@@ -133,7 +134,7 @@ export function AudioPlayer({
 
   const nextPath =
     typeof window !== 'undefined'
-      ? `${window.location.pathname}${window.location.search}`
+      ? `/?book=${encodeURIComponent(bookId || '')}&view=listen`
       : '/'
   const loginHref = `/login?next=${encodeURIComponent(nextPath)}`
   const signupHref = `/signup?next=${encodeURIComponent(nextPath)}`
@@ -188,31 +189,6 @@ export function AudioPlayer({
     }
   }
 
-  function applyPosition(audio: HTMLAudioElement, saved: number) {
-    if (restored.current || saved < 3) {
-      restored.current = true
-      return
-    }
-    const attempt = () => {
-      if (restored.current || tries.current > 24) return
-      tries.current += 1
-      try {
-        audio.currentTime = saved
-      } catch {
-        // not seekable yet
-      }
-      if (Math.abs(audio.currentTime - saved) <= 1.5) {
-        restored.current = true
-        setT(audio.currentTime)
-        setResumeAt(saved)
-        return
-      }
-      window.setTimeout(attempt, 300)
-    }
-    setResumeAt(saved)
-    attempt()
-  }
-
   function readBuffer(audio: HTMLAudioElement) {
     try {
       if (audio.buffered.length) {
@@ -223,118 +199,55 @@ export function AudioPlayer({
     }
   }
 
+  function seek(sec: number) {
+    const a = audioRef.current
+    if (!a) return
+
+    const d = Number.isFinite(a.duration) && a.duration > 0 ? a.duration : dur
+    let next = sec
+    if (next < 0) next = 0
+    if (d && next > d) next = Math.max(0, d - 0.25)
+
+    seekingRef.current = true
+    seekTarget.current = next
+    restored.current = true
+    setT(next)
+    setStatus('')
+
+    try {
+      a.currentTime = next
+    } catch {
+      // ignore
+    }
+
+    saveLocal(next, d)
+    window.setTimeout(() => {
+      seekingRef.current = false
+    }, 250)
+  }
+
   useEffect(() => {
-    let cancelled = false
     restored.current = false
-    tries.current = 0
-    const audio = new Audio()
-    audioRef.current = audio
-    audio.preload = 'auto'
-    audio.volume = vol
-    audio.crossOrigin = 'anonymous'
-    audio.src = url
+    seekingRef.current = false
+    setReady(false)
+    setStatus('Buffering…')
+    setT(0)
+    setDur(0)
+    setBuffered(0)
+  }, [url, title, bookId])
 
-    const startRestore = async () => {
-      let saved = Number(localStorage.getItem(posKey(title)) || 0)
-      if (loggedIn && bookId) {
-        try {
-          const cloud = await getAudioProgress(bookId)
-          if (cloud.position > saved) saved = cloud.position
-        } catch {
-          // stay local
-        }
-      }
-      const pausedAt = Number(localStorage.getItem(pauseKey(title)) || 0)
-      if (pausedAt && Date.now() - pausedAt > ROLLBACK_AFTER_MS) {
-        saved = Math.max(0, saved - ROLLBACK_SEC)
-      }
-      if (!cancelled) applyPosition(audio, saved)
-    }
-
-    const onProgress = () => readBuffer(audio)
-    const onWaiting = () => {
-      if (!cancelled) setStatus('Buffering…')
-    }
-    const onCanPlay = () => {
-      if (cancelled) return
-      void startRestore()
-      setStatus('')
-      setReady(true)
-    }
-    const onTime = () => {
-      setT(audio.currentTime)
-      setDur(Number.isFinite(audio.duration) ? audio.duration : 0)
-      readBuffer(audio)
-      const now = Date.now()
-      if (now - lastSave.current > 2500) {
-        lastSave.current = now
-        saveLocal(audio.currentTime, audio.duration || 0)
-        void saveCloud(audio.currentTime, audio.duration || 0)
-      }
-    }
-    const onPause = () => {
-      setPlaying(false)
-      try {
-        localStorage.setItem(pauseKey(title), String(Date.now()))
-      } catch {
-        // ignore
-      }
-      saveLocal(audio.currentTime, audio.duration || 0)
-      void saveCloud(audio.currentTime, audio.duration || 0)
-    }
-
-    audio.addEventListener('progress', onProgress)
-    audio.addEventListener('waiting', onWaiting)
-    audio.addEventListener('canplay', onCanPlay)
-    audio.addEventListener('loadeddata', onCanPlay)
-    audio.addEventListener('timeupdate', onTime)
-    audio.addEventListener('loadedmetadata', () => {
-      setDur(Number.isFinite(audio.duration) ? audio.duration : 0)
-    })
-    audio.addEventListener('play', () => {
-      setPlaying(true)
-      setStatus('')
-    })
-    audio.addEventListener('pause', onPause)
-    audio.addEventListener('ended', () => {
-      setPlaying(false)
-      try {
-        localStorage.removeItem(posKey(title))
-      } catch {
-        // ignore
-      }
-    })
-    audio.addEventListener('error', () => {
-      if (!cancelled) setStatus('Could not load this audiobook.')
-    })
-
-    const onHide = () => {
-      saveLocal(audio.currentTime, audio.duration || 0)
-      void saveCloud(audio.currentTime, audio.duration || 0)
-    }
-    window.addEventListener('pagehide', onHide)
-    document.addEventListener('visibilitychange', onHide)
-
-    if (loggedIn && bookId) {
-      getAudioNotes(bookId)
-        .then((rows) => {
-          if (!cancelled) setNotes(rows)
-        })
-        .catch(() => {})
-    }
-
+  useEffect(() => {
+    if (!loggedIn || !bookId) return
+    let cancelled = false
+    getAudioNotes(bookId)
+      .then((rows) => {
+        if (!cancelled) setNotes(rows)
+      })
+      .catch(() => {})
     return () => {
       cancelled = true
-      saveLocal(audio.currentTime, audio.duration || 0)
-      void saveCloud(audio.currentTime, audio.duration || 0)
-      audio.pause()
-      audio.removeAttribute('src')
-      audio.load()
-      window.removeEventListener('pagehide', onHide)
-      document.removeEventListener('visibilitychange', onHide)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, title, bookId])
+  }, [loggedIn, bookId])
 
   useEffect(() => {
     const a = audioRef.current
@@ -346,7 +259,7 @@ export function AudioPlayer({
     if (a) a.volume = vol
   }, [vol])
 
-    useEffect(() => {
+  useEffect(() => {
     if (!sleepMin || !sleepEndRef.current) {
       setSleepLeft(0)
       return
@@ -370,12 +283,11 @@ export function AudioPlayer({
     const onMotion = (e: DeviceMotionEvent) => {
       const minutes = sleepMinRef.current || lastSleepMinRef.current
       if (!minutes) return
-
       const g = e.accelerationIncludingGravity
-      const a = e.acceleration
-      const x = a?.x ?? g?.x ?? 0
-      const y = a?.y ?? g?.y ?? 0
-      const z = a?.z ?? g?.z ?? 0
+      const acc = e.acceleration
+      const x = acc?.x ?? g?.x ?? 0
+      const y = acc?.y ?? g?.y ?? 0
+      const z = acc?.z ?? g?.z ?? 0
       const mag = Math.sqrt(x * x + y * y + z * z)
       if (!lastMag.current) {
         lastMag.current = mag
@@ -420,24 +332,84 @@ export function AudioPlayer({
     }
   }
 
-  function toggle() {
-    const a = audioRef.current
-    if (!a || !ready) return
-    if (a.paused) void a.play()
-    else a.pause()
-  }
-
-  function skip(sec: number) {
+  async function onLoadedMetadata() {
     const a = audioRef.current
     if (!a) return
-    const next = Math.max(0, a.currentTime + sec)
-    const cap = Number.isFinite(a.duration) && a.duration > 0 ? a.duration : next
-    try {
-      a.currentTime = Math.min(cap, next)
-      setT(a.currentTime)
-    } catch {
-      setStatus('Buffering…')
+    setDur(Number.isFinite(a.duration) ? a.duration : 0)
+    setReady(true)
+    setStatus('')
+    if (restored.current) return
+
+    let saved = Number(localStorage.getItem(posKey(title)) || 0)
+    if (loggedIn && bookId) {
+      try {
+        const cloud = await getAudioProgress(bookId)
+        if (cloud.position > saved) saved = cloud.position
+      } catch {
+        // stay local
+      }
     }
+    const pausedAt = Number(localStorage.getItem(pauseKey(title)) || 0)
+    if (pausedAt && Date.now() - pausedAt > ROLLBACK_AFTER_MS) {
+      saved = Math.max(0, saved - ROLLBACK_SEC)
+    }
+    restored.current = true
+    if (saved >= 3) {
+      seekingRef.current = true
+      a.currentTime = saved
+      setT(saved)
+      setResumeAt(saved)
+      window.setTimeout(() => {
+        seekingRef.current = false
+      }, 250)
+    }
+  }
+
+  function onTimeUpdate() {
+    const a = audioRef.current
+    if (!a) return
+    if (seekingRef.current) {
+      setT(seekTarget.current)
+      return
+    }
+    setT(a.currentTime)
+    setDur(Number.isFinite(a.duration) ? a.duration : 0)
+    readBuffer(a)
+    const now = Date.now()
+    if (now - lastSave.current > 2500) {
+      lastSave.current = now
+      saveLocal(a.currentTime, a.duration || 0)
+      void saveCloud(a.currentTime, a.duration || 0)
+    }
+  }
+
+  function onSeeked() {
+    const a = audioRef.current
+    seekingRef.current = false
+    if (!a) return
+    setT(a.currentTime)
+    setStatus('')
+  }
+
+  function onPause() {
+    const a = audioRef.current
+    setPlaying(false)
+    try {
+      localStorage.setItem(pauseKey(title), String(Date.now()))
+    } catch {
+      // ignore
+    }
+    if (a) {
+      saveLocal(a.currentTime, a.duration || 0)
+      void saveCloud(a.currentTime, a.duration || 0)
+    }
+  }
+
+  function toggle() {
+    const a = audioRef.current
+    if (!a) return
+    if (a.paused) void a.play()
+    else a.pause()
   }
 
   async function markMoment() {
@@ -459,7 +431,7 @@ export function AudioPlayer({
     setOfflineBusy(true)
     setOfflineMsg('Saving offline…')
     try {
-      const res = await fetch(url, { mode: 'cors' })
+      const res = await fetch(url)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const buf = await res.arrayBuffer()
       const db = await openDb()
@@ -473,7 +445,7 @@ export function AudioPlayer({
     } catch (err) {
       setOfflineMsg(
         err instanceof Error
-          ? `Could not save offline (${err.message}). The audio host must allow this site.`
+          ? `Could not save offline (${err.message}).`
           : 'Could not save offline.',
       )
     }
@@ -487,6 +459,47 @@ export function AudioPlayer({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#0b1020] text-[#fdfbf4]">
+      <audio
+        ref={audioRef}
+        src={url.split('#')[0]}
+        preload="metadata"
+        onLoadedMetadata={() => void onLoadedMetadata()}
+        onCanPlay={() => {
+          setReady(true)
+          setStatus('')
+        }}
+        onTimeUpdate={onTimeUpdate}
+        onSeeked={onSeeked}
+        onSeeking={() => {
+          seekingRef.current = true
+        }}
+        onProgress={() => {
+          if (audioRef.current) readBuffer(audioRef.current)
+        }}
+        onWaiting={() => {
+          if (!seekingRef.current) setStatus('Buffering…')
+        }}
+        onPlaying={() => {
+          setPlaying(true)
+          setStatus('')
+        }}
+        onPlay={() => {
+          setPlaying(true)
+          setStatus('')
+        }}
+        onPause={onPause}
+        onEnded={() => {
+          setPlaying(false)
+          try {
+            localStorage.removeItem(posKey(title))
+          } catch {
+            // ignore
+          }
+        }}
+        onError={() => setStatus('Could not load this audiobook.')}
+        className="pointer-events-none absolute h-0 w-0 overflow-hidden opacity-0"
+      />
+
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
         <button
           type="button"
@@ -505,8 +518,8 @@ export function AudioPlayer({
         ) : (
           <>
             <div className="flex h-72 w-72 items-center justify-center rounded-[2.5rem] bg-[#141a32] text-[7.5rem] leading-none text-[#f591ac] ring-1 ring-white/10">
-  ♪
-</div>
+              ♪
+            </div>
 
             {resumeAt > 0 ? (
               <p className="text-center text-[13px] text-[#f591ac]">
@@ -544,16 +557,7 @@ export function AudioPlayer({
                   max={span}
                   step={0.1}
                   value={t}
-                  onChange={(e) => {
-                    const a = audioRef.current
-                    if (!a) return
-                    try {
-                      a.currentTime = Number(e.target.value)
-                      setT(a.currentTime)
-                    } catch {
-                      setStatus('Buffering…')
-                    }
-                  }}
+                  onChange={(e) => seek(Number(e.target.value))}
                   className="absolute inset-0 z-10 m-0 h-2 w-full cursor-pointer appearance-none bg-transparent accent-[#f591ac]"
                 />
               </div>
@@ -564,13 +568,28 @@ export function AudioPlayer({
             </div>
 
             <div className="flex items-center gap-5">
-              <button type="button" onClick={() => skip(-15)} aria-label="Back 15 seconds" className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white">
+              <button
+                type="button"
+                onClick={() => seek((audioRef.current?.currentTime || t) - 15)}
+                aria-label="Back 15 seconds"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white"
+              >
                 <IconBack15 />
               </button>
-              <button type="button" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'} className="flex h-16 w-16 items-center justify-center rounded-full bg-[#f591ac] text-[#141a32]">
+              <button
+                type="button"
+                onClick={toggle}
+                aria-label={playing ? 'Pause' : 'Play'}
+                className="flex h-16 w-16 items-center justify-center rounded-full bg-[#f591ac] text-[#141a32]"
+              >
                 {playing ? <IconPause /> : <IconPlay />}
               </button>
-              <button type="button" onClick={() => skip(15)} aria-label="Forward 15 seconds" className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white">
+              <button
+                type="button"
+                onClick={() => seek((audioRef.current?.currentTime || t) + 15)}
+                aria-label="Forward 15 seconds"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white"
+              >
                 <IconFwd15 />
               </button>
             </div>
@@ -580,7 +599,15 @@ export function AudioPlayer({
               <p className="mb-1 text-center text-[12px] uppercase tracking-wider text-white/40">
                 Volume {Math.round(vol * 100)}%
               </p>
-              <input type="range" min={0} max={1} step={0.05} value={vol} onChange={(e) => setVol(Number(e.target.value))} className="w-full accent-[#f591ac]" />
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={vol}
+                onChange={(e) => setVol(Number(e.target.value))}
+                className="w-full accent-[#f591ac]"
+              />
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-2">
@@ -605,7 +632,11 @@ export function AudioPlayer({
               </p>
 
               <div className="mb-2 grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => void enableShake()} className="rounded-full bg-white/10 px-3 py-2 text-[12px] font-semibold">
+                <button
+                  type="button"
+                  onClick={() => void enableShake()}
+                  className="rounded-full bg-white/10 px-3 py-2 text-[12px] font-semibold"
+                >
                   Enable shake
                 </button>
                 <button
@@ -643,7 +674,9 @@ export function AudioPlayer({
             </div>
 
             <div className="w-full max-w-md rounded-2xl border border-white/10 p-3">
-              <p className="mb-2 text-[12px] uppercase tracking-wider text-white/40">Bookmark this moment</p>
+              <p className="mb-2 text-[12px] uppercase tracking-wider text-white/40">
+                Bookmark this moment
+              </p>
               {loggedIn ? (
                 <>
                   <div className="flex gap-2">
@@ -667,7 +700,11 @@ export function AudioPlayer({
                   <ul className="mt-3 space-y-2">
                     {notes.map((n) => (
                       <li key={n.id} className="flex items-center gap-2 text-sm">
-                        <button type="button" onClick={() => skip(n.position - t)} className="text-[#f591ac]">
+                        <button
+                          type="button"
+                          onClick={() => seek(n.position)}
+                          className="text-[#f591ac]"
+                        >
                           {fmt(n.position)}
                         </button>
                         <span className="min-w-0 flex-1 truncate text-white/70">{n.note}</span>
@@ -703,7 +740,9 @@ export function AudioPlayer({
             >
               {offlineBusy ? 'Saving offline…' : 'Save offline on this device'}
             </button>
-            {offlineMsg ? <p className="text-center text-[12px] text-white/50">{offlineMsg}</p> : null}
+            {offlineMsg ? (
+              <p className="text-center text-[12px] text-white/50">{offlineMsg}</p>
+            ) : null}
           </>
         )}
       </div>

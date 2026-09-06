@@ -107,6 +107,14 @@ function SignupInner() {
           Log in
         </Link>
       </p>
+      <p className="mt-4 text-sm text-foreground/60">
+              <Link
+        href={`/forgot-password?email=${encodeURIComponent(email)}&next=${encodeURIComponent(nextPath)}`}
+        className="underline"
+      >
+        Forgot password?
+      </Link>
+            </p>
     </main>
   )
 }

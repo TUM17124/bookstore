@@ -7,7 +7,7 @@ import { useBookmarks } from '@/components/bookmarks-context';
 import Link from 'next/link';
 import { BookReviews } from '@/components/book-reviews';
 import { createPortal } from 'react-dom';
-import { getPurchases, downloadOrderUrl, getToken, freeBookUrl, trackEvent, previewBookUrl } from '@/lib/api';
+import { getPurchases, downloadOrderUrl, getToken, freeBookUrl, searchTrack, previewBookUrl, getRatings } from '@/lib/api';
 import { getStoredUser } from '@/lib/auth-client';
 import { PdfReader } from '@/components/pdf-reader'
 import { AudioPlayer } from '@/components/audio-player'
@@ -30,6 +30,10 @@ export interface BookCfg {
   isFree?: boolean
 
   previewPages?: number
+
+  audioUrl?: string | null
+  pdfUrl?: string | null
+
 
   // Procedural cover painters. All optional — omit and supply `images` instead, or omit both for a generated placeholder.
   front?: (x: CanvasRenderingContext2D, w: number, h: number) => void;
@@ -81,6 +85,7 @@ export interface BooksShowcaseProps {
   onBookSelect?: (book: BookCfg | null) => void;
   onNearEnd?: () => void;
   openBookId?: string;
+  openView?: string;
 }
 
 function ChevronLeft() {
@@ -115,6 +120,7 @@ export function BooksShowcase({
   onBookSelect,
   onNearEnd,
   openBookId,
+  openView,
 }: BooksShowcaseProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -160,6 +166,10 @@ export function BooksShowcase({
 
     const { isBookmarked, toggleBookmark } = useBookmarks();
 
+    const [ratingAvg, setRatingAvg] = useState(0)
+const [ratingCount, setRatingCount] = useState(0)
+const [myRating, setMyRating] = useState<number | null>(null)
+
   const bookmarked =
     selectedCfg != null ? isBookmarked(selectedCfg.id) : false;
 
@@ -173,13 +183,15 @@ export function BooksShowcase({
   const [previewOpen, setPreviewOpen] = useState(false)
 
   useEffect(() => {
-    if (uiMode !== 'detail' || !selectedCfg?.id) return
-    void trackEvent({
-      kind: 'click',
-      book_id: selectedCfg.id,
-      source: 'shelf',
-    })
-  }, [uiMode, selectedCfg?.id])
+  if (uiMode !== "detail" || !selectedCfg?.id) return
+  void searchTrack({
+    event_type: "click",
+    book_id: selectedCfg.id,
+    book_slug: String(selectedCfg.id),
+    query: selectedCfg.title,
+    source: "shelf",
+  })
+}, [uiMode, selectedCfg?.id])
 
 async function shareBook() {
   if (!selectedCfg) return
@@ -254,6 +266,44 @@ async function shareBook() {
       cancelled = true;
     };
   }, [selectedCfg]);
+
+
+  useEffect(() => {
+  if (!selectedCfg?.id) {
+    setRatingAvg(0)
+    setRatingCount(0)
+    setMyRating(null)
+    return
+  }
+  let cancelled = false
+  getRatings(selectedCfg.id)
+    .then((r) => {
+      if (cancelled) return
+      setRatingAvg(Number(r.average) || 0)
+      setRatingCount(Number(r.count) || 0)
+      setMyRating(r.myRating == null ? null : Number(r.myRating))
+    })
+    .catch(() => {
+      if (cancelled) return
+      setRatingAvg(0)
+      setRatingCount(0)
+      setMyRating(null)
+    })
+  return () => {
+    cancelled = true
+  }
+}, [selectedCfg?.id])
+
+
+useEffect(() => {
+  if (!openBookId) return
+  const book = books.find((b) => String(b.id) === String(openBookId))
+  if (!book) return
+  setSelectedCfg(book)
+  if (openView === 'reviews') setReviewsOpen(true)
+  if (openView === 'read') setReaderOpen(true)
+  if (openView === 'listen') setPlayerOpen(true)
+}, [openBookId, openView, books])
 
   useEffect(() => {
     const root = rootRef.current;
@@ -1986,20 +2036,71 @@ async function shareBook() {
             {selectedCfg?.desc}
           </p>
 
-          <div className={`mt-3 flex items-center gap-3 ${dpChild(210)}`}>
-            <div className="flex gap-[3px]">
-              {[0, 1, 2, 3, 4].map((i) => (
-                <svg
-                  key={i}
-                  viewBox="0 0 24 24"
-                  className={`h-4 w-4 fill-[var(--bs-pink)] ${i < (selectedCfg?.stars ?? 0) ? '' : 'opacity-25'}`}
-                >
-                  <path d="M12 2.6l2.8 6 6.6.6-5 4.4 1.5 6.5L12 16.7 6.1 20.1l1.5-6.5-5-4.4 6.6-.6z" />
-                </svg>
-              ))}
+                    <div className={`mt-3 flex flex-col gap-1.5 ${dpChild(210)}`}>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setReviewsOpen(true)}
+                className="pointer-events-auto inline-flex items-center gap-2 rounded-full"
+                aria-label="Rate and comment"
+              >
+                <span className="flex gap-[3px]">
+                  {[0, 1, 2, 3, 4].map((i) => {
+                    const value = ratingCount > 0 ? ratingAvg : (selectedCfg?.stars ?? 0)
+                    return (
+                      <svg
+                        key={i}
+                        viewBox="0 0 24 24"
+                        className={`h-4 w-4 fill-[var(--bs-pink)] ${i < Math.round(value) ? '' : 'opacity-25'}`}
+                      >
+                        <path d="M12 2.6l2.8 6 6.6.6-5 4.4 1.5 6.5L12 16.7 6.1 20.1l1.5-6.5-5-4.4 6.6-.6z" />
+                      </svg>
+                    )
+                  })}
+                </span>
+                {ratingCount > 0 ? (
+                  <span className="text-[13px] text-[#98a4d6]">
+                    {ratingAvg.toFixed(1)} · {ratingCount} {ratingCount === 1 ? 'rating' : 'ratings'}
+                  </span>
+                ) : (
+                  <span className="text-[12px] text-[#98a4d6]/80">Catalog rating</span>
+                )}
+              </button>
+              <div className="h-4 w-px bg-[var(--bs-lav)]/[0.28]" />
+              <div className="text-[13px] italic text-[#98a4d6]">{selectedCfg?.year}</div>
             </div>
-            <div className="h-4 w-px bg-[var(--bs-lav)]/[0.28]" />
-            <div className="text-[13px] italic text-[#98a4d6]">{selectedCfg?.year}</div>
+
+            {ratingCount === 0 ? (
+              <p className="text-[12px] text-[var(--bs-lav)]/70">
+                Stars shown are set by PlugYard. No reader ratings yet.{' '}
+                <button
+                  type="button"
+                  onClick={() => setReviewsOpen(true)}
+                  className="pointer-events-auto font-semibold text-[var(--bs-pink)] underline"
+                >
+                  Click to rate and comment
+                </button>
+              </p>
+            ) : myRating == null ? (
+              <button
+                type="button"
+                onClick={() => setReviewsOpen(true)}
+                className="pointer-events-auto w-fit text-left text-[12px] font-semibold text-[var(--bs-pink)] underline"
+              >
+                Click to rate and comment
+              </button>
+            ) : (
+              <p className="text-[12px] text-[var(--bs-lav)]/70">
+                You rated this {myRating}/5.{' '}
+                <button
+                  type="button"
+                  onClick={() => setReviewsOpen(true)}
+                  className="pointer-events-auto font-semibold text-[var(--bs-pink)] underline"
+                >
+                  Change or comment
+                </button>
+              </p>
+            )}
           </div>
     
             <div className={`mt-[26px] border-t border-[var(--bs-lav)]/[0.18] @max-[760px]:mt-4 ${dpChild(270)}`} />
@@ -2194,9 +2295,11 @@ async function shareBook() {
       type="button"
       aria-label="Preview pages"
       onClick={() => {
-        void trackEvent({
-          kind: 'preview',
+        void searchTrack({
+          event_type: 'preview',
           book_id: selectedCfg.id,
+          book_slug: String(selectedCfg.id),
+          query: selectedCfg.title,
           source: 'eye',
         })
         setPreviewOpen(true)
@@ -2229,29 +2332,6 @@ async function shareBook() {
               </svg>
             </button>
           </div>
-
-          {selectedCfg && (
-            <div className={`pointer-events-auto mt-6 flex flex-wrap items-center gap-3 ${dpChild(330)}`}>
-              <button
-                type="button"
-                onClick={() => setReviewsOpen(true)}
-                className="inline-flex items-center gap-2 rounded-full border border-[var(--bs-lav)]/30 bg-[#1a2140]/80 px-5 py-3 text-[15px] font-semibold text-[var(--bs-cream)]"
-              >
-                Ratings & comments
-                <span aria-hidden>→</span>
-              </button>
-              <Link
-  href={
-    selectedCfg
-      ? `/purchases?book=${encodeURIComponent(selectedCfg.id)}`
-      : '/purchases'
-  }
-                className="inline-flex items-center gap-2 rounded-full border border-[var(--bs-lav)]/30 bg-[#1a2140]/80 px-5 py-3 text-[15px] font-semibold text-[var(--bs-cream)]"
-              >
-                My purchases
-              </Link>
-            </div>
-          )}
         </div>
       )}
 
@@ -2312,10 +2392,10 @@ async function shareBook() {
       <PdfReader
   bookId={selectedCfg.id}
   url={
-    selectedCfg.isFree
-      ? freeBookUrl(selectedCfg.id, 'ebook', true)
-      : `${downloadOrderUrl(ownedEbookOrderId!, buyerEmail!)}&inline=1`
-  }
+  selectedCfg.isFree
+    ? (selectedCfg.pdfUrl || freeBookUrl(selectedCfg.id, 'ebook', true))
+    : `${downloadOrderUrl(ownedEbookOrderId!, buyerEmail!)}&inline=1`
+}
 />
     </div>,
     document.body,
@@ -2362,10 +2442,10 @@ async function shareBook() {
   title={selectedCfg.title}
   bookId={selectedCfg.id}
   url={
-    selectedCfg.isFree
-      ? freeBookUrl(selectedCfg.id, 'audiobook', true)
-      : `${downloadOrderUrl(ownedAudioOrderId!, buyerEmail!)}&inline=1`
-  }
+  selectedCfg.isFree
+    ? (selectedCfg.audioUrl || freeBookUrl(selectedCfg.id, 'audiobook', true))
+    : `${downloadOrderUrl(ownedAudioOrderId!, buyerEmail!)}&inline=1`
+}
   onClose={() => setPlayerOpen(false)}
 />
             </div>,

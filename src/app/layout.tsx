@@ -98,7 +98,7 @@ export default function RootLayout({
             <div className="site-nav">
               <NotchNavbar />
             </div>
-            <div className="site-main-offset pt-20">{children}</div>
+            <div className="site-main-offset">{children}</div>
             <SiteFooter />
           </BookmarksProvider>
         </ThemeProvider>

@@ -29,6 +29,8 @@ export type ApiBook = {
   hasAudiobook?: boolean
   isFree?: boolean
   previewPages?: number
+  audioUrl?: string | null
+  pdfUrl?: string | null
 }
 
 export type Paginated<T> = {
@@ -56,6 +58,9 @@ export async function getPurchases(email: string): Promise<{
   const res = await fetch(
     `${API}/orders/purchases/?email=${encodeURIComponent(email)}`,
   )
+  if (res.status === 429) {
+    throw new Error('Too many lookups. Wait a minute and try again.')
+  }
   if (!res.ok) return { ebooks: [], audiobooks: [] }
   return res.json()
 }
@@ -314,21 +319,32 @@ export async function savePdfProgress(bookId: string, page: number) {
   })
 }
 
-export async function trackEvent(payload: {
-  kind: 'search' | 'click' | 'preview'
-  book_id?: string | number
+export type SearchTrackKind = "search" | "click" | "preview" | "view"
+
+export async function searchTrack(payload: {
+  event_type?: SearchTrackKind
+  kind?: SearchTrackKind
   query?: string
+  book_id?: number | string | null
+  book_slug?: string
   source?: string
-  email?: string
   path?: string
 }) {
+  const API = process.env.NEXT_PUBLIC_API_URL || ""
   try {
     await fetch(`${API}/track/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
-        ...payload,
-        path: payload.path || (typeof window !== 'undefined' ? window.location.pathname : ''),
+        event_type: payload.event_type || payload.kind || "search",
+        query: payload.query ?? "",
+        book_id: payload.book_id ?? null,
+        book_slug: payload.book_slug ?? "",
+        source: payload.source ?? "",
+        path:
+          payload.path ||
+          (typeof window !== "undefined" ? window.location.pathname : ""),
       }),
     })
   } catch {
@@ -404,3 +420,5 @@ export async function postComment(
     }),
   })
 }
+
+export default searchTrack

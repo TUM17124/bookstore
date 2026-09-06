@@ -45,11 +45,11 @@ export function PdfReader({
   const [resumeAt, setResumeAt] = useState(0)
 
   const nextPath =
-    typeof window !== 'undefined'
-      ? `${window.location.pathname}${window.location.search}`
-      : '/'
-  const loginHref = `/login?next=${encodeURIComponent(nextPath)}`
-  const signupHref = `/signup?next=${encodeURIComponent(nextPath)}`
+  typeof window !== 'undefined'
+    ? `/?book=${encodeURIComponent(bookId || '')}&view=read`
+    : '/'
+const loginHref = `/login?next=${encodeURIComponent(nextPath)}`
+const signupHref = `/signup?next=${encodeURIComponent(nextPath)}`
 
   function saveLocal(n: number) {
     try {

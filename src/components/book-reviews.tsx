@@ -35,6 +35,16 @@ function timeAgo(iso: string) {
   return new Date(iso).toLocaleDateString();
 }
 
+function currentReturnPath() {
+  if (typeof window === 'undefined') return '/';
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+function authHref(kind: 'login' | 'signup', id: string) {
+  const next = `/?book=${encodeURIComponent(id)}&view=reviews`
+  return `/${kind}?next=${encodeURIComponent(next)}`
+}
+
 function Stars({
   value,
   interactive,
@@ -107,6 +117,9 @@ export function BookReviews({
   const [error, setError] = useState('');
   const [auth, setAuth] = useState(false);
 
+  const loginHref = authHref('login', bookId)
+  const signupHref = authHref('signup', bookId)
+
   useEffect(() => {
     setAuth(!!getToken());
   }, []);
@@ -161,9 +174,9 @@ export function BookReviews({
 
   async function rate(value: number) {
     if (!getToken()) {
-      window.location.href = '/login';
-      return;
-    }
+  window.location.href = authHref('login', bookId)
+  return
+}
     setBusy(true);
     setError('');
     try {
@@ -273,10 +286,17 @@ export function BookReviews({
               {!auth && (
                 <p className="text-[13px] text-[#c9d0ee]/70">
                   <Link
-                    href="/login"
+                    href={loginHref}
                     className="font-semibold text-[#f591ac] hover:underline"
                   >
                     Log in
+                  </Link>
+                  {' · '}
+                  <Link
+                    href={signupHref}
+                    className="font-semibold text-[#f591ac] hover:underline"
+                  >
+                    Sign up
                   </Link>{' '}
                   to rate and join the discussion
                 </p>
@@ -336,10 +356,17 @@ export function BookReviews({
           {!auth ? (
             <p className="py-2 text-center text-[14px] text-foreground/55">
               <Link
-                href="/login"
+                href={loginHref}
                 className="font-semibold text-[#f591ac] hover:underline"
               >
                 Log in
+              </Link>
+              {' · '}
+              <Link
+                href={signupHref}
+                className="font-semibold text-[#f591ac] hover:underline"
+              >
+                Sign up
               </Link>{' '}
               to comment
             </p>
