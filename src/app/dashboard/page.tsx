@@ -11,9 +11,12 @@ import {
   myBoosts,
   myBooks,
   payoutAccount,
+  requestPayout,
   savePayoutAccount,
   updateMyBook,
 } from "@/lib/api";
+
+const PAYOUT_EVERY_DAYS = 30;
 
 function useCountdown(seconds: number) {
   const [left, setLeft] = useState(seconds);
@@ -30,6 +33,16 @@ function useCountdown(seconds: number) {
   return { left, label: left > 0 ? `${d}d ${h}h ${m}m ${s}s` : "Ended" };
 }
 
+function cycleDate(c: any): Date | null {
+  const raw =
+    String(c?.status || "").toLowerCase() === "paid"
+      ? c?.paid_at || c?.period_end
+      : c?.paid_at;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export default function DashboardPage() {
   const [token, setToken] = useState("");
   const [books, setBooks] = useState<any[]>([]);
@@ -40,6 +53,10 @@ export default function DashboardPage() {
   const [authorPercent, setAuthorPercent] = useState<number>(100);
   const [salesTotal, setSalesTotal] = useState<number>(0);
   const [authorTotal, setAuthorTotal] = useState<number>(0);
+  const [available, setAvailable] = useState<number>(0);
+  const [minPayout, setMinPayout] = useState<number>(0);
+  const [payoutBusy, setPayoutBusy] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [msg, setMsg] = useState("");
   const [msgOk, setMsgOk] = useState(true);
   const [form, setForm] = useState({
@@ -51,9 +68,46 @@ export default function DashboardPage() {
 
   const hasAccount = Boolean(payout?.account?.account_number || payout?.account?.method);
 
+  const cycles = useMemo(() => {
+    const rows = payout?.cycles || payout?.payout_cycles || [];
+    if (!Array.isArray(rows)) return [];
+    return [...rows].sort((a, b) => {
+      const da = cycleDate(a)?.getTime() || 0;
+      const db = cycleDate(b)?.getTime() || 0;
+      return db - da;
+    });
+  }, [payout]);
+
+  const nextPayoutDays = useMemo(() => {
+    const every = Number(payout?.payout_every_days ?? PAYOUT_EVERY_DAYS) || PAYOUT_EVERY_DAYS;
+    const latest = cycles.find((c) => String(c.status || "").toLowerCase() === "paid") || cycles[0];
+    const when = cycleDate(latest);
+    if (when) {
+      const nxt = new Date(when.getTime() + every * 86400000);
+      return Math.max(0, Math.ceil((nxt.getTime() - Date.now()) / 86400000));
+    }
+    if (payout?.next_payout_in_days != null && payout.next_payout_in_days !== "") {
+      return Number(payout.next_payout_in_days);
+    }
+    return every;
+  }, [cycles, payout]);
+
   useEffect(() => {
     setToken(getToken() || "");
   }, []);
+
+  function applySales(d: any) {
+    const rows = d.sales || d.results || [];
+    setSales(Array.isArray(rows) ? rows : []);
+    const cut = Number(d.cut_percent ?? d.platform_cut ?? d.commission ?? 0);
+    const author = Number(d.author_percent ?? (100 - cut));
+    setCutPercent(Number.isFinite(cut) ? cut : 0);
+    setAuthorPercent(Number.isFinite(author) ? author : 100);
+    setSalesTotal(Number(d.total ?? d.gross ?? 0) || 0);
+    setAuthorTotal(Number(d.author_total ?? d.net ?? d.publisher_share ?? 0) || 0);
+    setAvailable(Number(d.available ?? 0) || 0);
+    setMinPayout(Number(d.min_payout_kes ?? 0) || 0);
+  }
 
   useEffect(() => {
     if (!token) return;
@@ -72,16 +126,7 @@ export default function DashboardPage() {
       }
     });
     getMySales()
-      .then((d) => {
-        const rows = d.sales || d.results || [];
-        setSales(Array.isArray(rows) ? rows : []);
-        const cut = Number(d.cut_percent ?? d.platform_cut ?? d.commission ?? 0);
-        const author = Number(d.author_percent ?? (100 - cut));
-        setCutPercent(Number.isFinite(cut) ? cut : 0);
-        setAuthorPercent(Number.isFinite(author) ? author : 100);
-        setSalesTotal(Number(d.total ?? d.gross ?? 0) || 0);
-        setAuthorTotal(Number(d.author_total ?? d.net ?? 0) || 0);
-      })
+      .then(applySales)
       .catch(() => setSales([]));
 
     const params = new URLSearchParams(window.location.search);
@@ -158,6 +203,36 @@ export default function DashboardPage() {
     }
   }
 
+  async function onRequestPayout() {
+    if (!hasAccount) {
+      setMsgOk(false);
+      setMsg("Add a payout account first.");
+      return;
+    }
+    if (available < minPayout) {
+      setMsgOk(false);
+      setMsg(`Minimum payout is KES ${minPayout.toLocaleString()}. Available KES ${available.toLocaleString()}.`);
+      return;
+    }
+    if (!window.confirm(`Request payout of KES ${available.toLocaleString()}?`)) return;
+    setPayoutBusy(true);
+    try {
+      const d = await requestPayout();
+      setMsgOk(true);
+      setMsg(d.message || `Payout of KES ${Number(d.amount || available).toLocaleString()} requested.`);
+      const salesData = await getMySales();
+      applySales(salesData);
+      const acc = await payoutAccount(token);
+      setPayout(acc);
+    } catch (err) {
+      setMsgOk(false);
+      setMsg(err instanceof Error ? err.message : "Could not request payout");
+    }
+    setPayoutBusy(false);
+  }
+
+  const canRequest = hasAccount && available >= minPayout && minPayout > 0 && !payoutBusy;
+
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-8">
       {msg && (
@@ -173,20 +248,13 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {payout?.payment_received_note && (
-        <div className="rounded-xl bg-amber-50 border border-amber-200 p-4">
-          <p className="font-semibold">Payment received</p>
-          <p className="text-sm mt-1">{payout.payment_received_note}</p>
-        </div>
-      )}
-
-            <section className="rounded-2xl border p-4 space-y-3">
+      <section className="rounded-2xl border p-4 space-y-3">
         <h2 className="text-xl font-bold">Sales and cut</h2>
         <p className="text-sm text-neutral-600">
           PlugYard keeps <b>{cutPercent}%</b>. You keep <b>{authorPercent}%</b>.
-          Payouts go out every 30 days to the account below.
+          Minimum payout is <b>KES {minPayout.toLocaleString()}</b>.
         </p>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-4">
           <div className="rounded-xl border p-3">
             <p className="text-xs uppercase tracking-wide text-neutral-500">Gross sales</p>
             <p className="text-lg font-semibold">KES {computedSalesTotal.toLocaleString()}</p>
@@ -194,6 +262,10 @@ export default function DashboardPage() {
           <div className="rounded-xl border p-3">
             <p className="text-xs uppercase tracking-wide text-neutral-500">Your cut</p>
             <p className="text-lg font-semibold">KES {computedAuthorTotal.toLocaleString()}</p>
+          </div>
+          <div className="rounded-xl border p-3">
+            <p className="text-xs uppercase tracking-wide text-neutral-500">Available</p>
+            <p className="text-lg font-semibold">KES {available.toLocaleString()}</p>
           </div>
           <div className="rounded-xl border p-3">
             <p className="text-xs uppercase tracking-wide text-neutral-500">Orders</p>
@@ -231,15 +303,32 @@ export default function DashboardPage() {
             })}
           </ul>
         )}
+        <button
+          type="button"
+          disabled={!canRequest}
+          onClick={onRequestPayout}
+          className="w-full rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-400"
+        >
+          {payoutBusy
+            ? "Requesting…"
+            : `Request payout · KES ${available.toLocaleString()}`}
+        </button>
+        <p className="text-xs text-neutral-500">
+          {!hasAccount
+            ? "Save a payout account below before requesting."
+            : available < minPayout
+              ? `You need at least KES ${minPayout.toLocaleString()} available.`
+              : "Paid from Site Settings minimum payout."}
+        </p>
       </section>
 
-      <section className="rounded-2xl border p-4 space-y-3">
+            <section className="rounded-2xl border p-4 space-y-3">
         <h2 className="text-xl font-bold">Where should we send your money?</h2>
         <p className="text-sm text-neutral-600">
-          Sales are paid every 30 days. Add M-Pesa, Airtel Money, or a card.
-          {payout?.next_payout_in_days != null && (
-            <> Next payout window in about {payout.next_payout_in_days} days.</>
-          )}
+          Sales are paid every {payout?.payout_every_days || PAYOUT_EVERY_DAYS} days. Add M-Pesa, Airtel Money, or a card.
+          {" "}
+          Next payout window in about{" "}
+          <b>{Number.isFinite(nextPayoutDays) ? nextPayoutDays : PAYOUT_EVERY_DAYS} days</b>.
         </p>
         {hasAccount && (
           <p className="text-sm">
@@ -286,6 +375,40 @@ export default function DashboardPage() {
           >
             Delete payout account
           </button>
+        )}
+      </section>
+
+      <section className="rounded-2xl border p-4 space-y-3">
+        <h2 className="text-xl font-bold">Payout cycle history</h2>
+        <p className="text-sm text-neutral-600">
+          Requests you make and cycles marked paid in admin.
+        </p>
+        {cycles.length === 0 ? (
+          <p className="text-sm text-neutral-600">No payout cycles yet.</p>
+        ) : (
+          <ul className="space-y-2">
+            {cycles.map((c: any, i: number) => {
+              const when = cycleDate(c);
+              return (
+                <li
+                  key={c.id || i}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
+                >
+                  <span>
+                    <b>
+                      {c.period_start || "—"} – {c.period_end || "—"}
+                    </b>
+                    <span className="text-neutral-500">
+                      {" "}
+                      · {c.status || "pending"}
+                      {when ? ` · ${when.toLocaleString()}` : ""}
+                    </span>
+                  </span>
+                  <span>KES {Number(c.amount || 0).toLocaleString()}</span>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </section>
 
