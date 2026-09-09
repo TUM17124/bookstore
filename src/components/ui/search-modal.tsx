@@ -76,6 +76,8 @@ export interface SearchModalProps {
   closeOnEscape?: boolean
   overlayClassName?: string
   source?: string
+  disableSearchTrack?: boolean
+  disableClickTrack?: boolean
 }
 
 const ICON = "h-[18px] w-[18px] text-neutral-400 dark:text-neutral-500"
@@ -138,6 +140,8 @@ export function SearchModal({
   closeOnEscape = true,
   overlayClassName,
   source = "search-modal",
+  disableSearchTrack = false,
+  disableClickTrack = false,
 }: SearchModalProps) {
   const [query, setQuery] = useState(defaultQuery)
   const [activeTags, setActiveTags] = useState<SearchTag[]>(tags)
@@ -198,8 +202,9 @@ export function SearchModal({
     )
   }, [query, results])
 
-  const trackSearch = useCallback(
+    const trackSearch = useCallback(
     (value: string) => {
+      if (disableSearchTrack) return
       const q = value.trim()
       if (q.length < 2) return
       if (q === lastTrackedQuery.current) return
@@ -210,11 +215,12 @@ export function SearchModal({
         source,
       })
     },
-    [source],
+    [source, disableSearchTrack],
   )
 
-  const trackClick = useCallback(
+    const trackClick = useCallback(
     (opts: { book_id?: number | string; book_slug?: string; name?: string }) => {
+      if (disableClickTrack) return
       void searchTrack({
         event_type: "click",
         query: query.trim() || undefined,
@@ -223,7 +229,7 @@ export function SearchModal({
         source,
       })
     },
-    [query, source],
+    [query, source, disableClickTrack],
   )
 
   const handleQuery = (value: string) => {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import {
   Home,
@@ -15,6 +15,11 @@ import {
   Sun,
   Moon,
   Bookmark,
+  Upload,
+  LayoutDashboard,
+  LogOut,
+  ChevronDown,
+  User,
 } from "lucide-react"
 import { BookSearchModal } from "@/components/book-search-modal"
 import { cn } from "@/lib/utils"
@@ -33,13 +38,16 @@ const NavLink = ({
   href,
   icon: Icon,
   label,
+  onClick,
 }: {
   href: string
   icon: React.ComponentType<{ className?: string }>
   label: string
+  onClick?: () => void
 }) => (
   <Link
     href={href}
+    onClick={onClick}
     className="
       group flex items-center gap-1.5 text-sm font-medium
       text-foreground/70 hover:text-foreground
@@ -86,6 +94,8 @@ export function NotchNavbar({
   const [authReady, setAuthReady] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
+  const accountRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const sync = () => {
@@ -103,42 +113,93 @@ export function NotchNavbar({
     }
   }, [refreshBookmarks])
 
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (!accountRef.current?.contains(e.target as Node)) setAccountOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAccountOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onDoc)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [])
+
   const handleLogout = () => {
     clientLogout()
     setUser(null)
     setIsMobileMenuOpen(false)
+    setAccountOpen(false)
     void refreshBookmarks?.()
   }
 
   const categories = [
-    {
-      label: "Business",
-      href: "/?category=business-compliance",
-      icon: Briefcase,
-    },
+    { label: "Business", href: "/?category=business-compliance", icon: Briefcase },
     { label: "Career", href: "/?category=career", icon: GraduationCap },
     { label: "Academic", href: "/?category=academic", icon: BookOpen },
-    {
-      label: "Finance",
-      href: "/?category=personal-finance",
-      icon: Wallet,
-    },
+    { label: "Finance", href: "/?category=personal-finance", icon: Wallet },
     { label: "Lifestyle", href: "/?category=lifestyle", icon: Heart },
   ]
 
-  const authDesktop = !authReady ? null : user ? (
-    <>
-      <span className="text-sm text-foreground/70 truncate max-w-[120px]">
-        {user.name || user.email}
-      </span>
+  const accountMenu = (
+    <div className="py-1">
+      <div className="px-3 py-2 text-xs text-foreground/50 truncate max-w-[220px]">
+        {user?.name || user?.email}
+      </div>
+      <Link
+        href="/publish"
+        onClick={() => setAccountOpen(false)}
+        className="flex items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5"
+      >
+        <Upload className="w-4 h-4" />
+        Publish
+      </Link>
+      <Link
+        href="/dashboard"
+        onClick={() => setAccountOpen(false)}
+        className="flex items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5"
+      >
+        <LayoutDashboard className="w-4 h-4" />
+        Dashboard
+      </Link>
       <button
         type="button"
         onClick={handleLogout}
-        className="text-sm font-medium text-foreground/70 hover:text-foreground transition-colors whitespace-nowrap"
+        className="flex w-full items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5 text-left"
       >
+        <LogOut className="w-4 h-4" />
         Log out
       </button>
-    </>
+    </div>
+  )
+
+  const authDesktop = !authReady ? null : user ? (
+    <div className="relative" ref={accountRef}>
+      <button
+        type="button"
+        onClick={() => setAccountOpen((v) => !v)}
+        className="flex items-center gap-1.5 h-9 px-2.5 rounded-full hover:bg-foreground/5 text-sm font-medium text-foreground/80"
+        aria-expanded={accountOpen}
+        aria-haspopup="menu"
+      >
+        <User className="w-4 h-4" />
+        <span className="hidden xl:inline max-w-[90px] truncate">
+          {user.name || user.email}
+        </span>
+        <ChevronDown className={`w-3.5 h-3.5 transition ${accountOpen ? "rotate-180" : ""}`} />
+      </button>
+      {accountOpen && (
+        <div
+          role="menu"
+          className="absolute right-0 top-[calc(100%+6px)] z-50 w-52 rounded-xl border border-foreground/10 bg-zinc-50 dark:bg-zinc-950 shadow-lg"
+        >
+          {accountMenu}
+        </div>
+      )}
+    </div>
   ) : (
     <>
       <Link
@@ -169,8 +230,8 @@ export function NotchNavbar({
           </svg>
         </div>
 
-        <div className="flex h-16 relative z-10 shrink-0 -ml-px">
-          <div className="w-[50px] h-full relative shrink-0">
+        <div className="flex h-16 relative z-10 shrink-0 -ml-px max-w-[min(100%,1100px)]">
+          <div className="w-[36px] sm:w-[50px] h-full relative shrink-0">
             <div className="absolute inset-0 bg-zinc-50 dark:bg-black" style={{ clipPath: "path('M0 0 H50 V64 C25 64 25 40 0 40 Z')" }} />
             <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 50 64">
               <path d="M0 39.5 C25 39.5 25 63.5 50 63.5" fill="none" stroke="currentColor" strokeOpacity={0.05} strokeWidth={0.5} className="text-foreground" />
@@ -186,23 +247,28 @@ export function NotchNavbar({
               </svg>
             </div>
 
-            <div className="relative w-full h-full flex items-end justify-between pb-2 px-4 md:px-8">
-              <div className="hidden md:flex items-center gap-6 mb-1 w-full">
+            <div className="relative w-full h-full flex items-end justify-between pb-2 px-2 sm:px-4 lg:px-5">
+              <div className="hidden lg:flex items-center gap-3 xl:gap-4 mb-1 w-full min-w-0">
                 <Link href="/" className="flex items-center shrink-0" aria-label="Home">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src="/logo.png" alt="Logo" className="h-8 w-8 rounded-lg object-contain" />
                 </Link>
 
-                <nav className="flex items-center gap-6 shrink-0">
+                <nav className="flex items-center gap-3 xl:gap-4 min-w-0 overflow-hidden">
                   <NavLink href="/" icon={Home} label="Home" />
                   {categories.map((category) => (
-                    <NavLink key={category.label} href={category.href} icon={category.icon} label={category.label} />
+                    <NavLink
+                      key={category.label}
+                      href={category.href}
+                      icon={category.icon}
+                      label={category.label}
+                    />
                   ))}
                 </nav>
 
-                <div className="flex-1 min-w-4" aria-hidden />
+                <div className="flex-1 min-w-2" aria-hidden />
 
-                <div className="flex gap-2 pl-4 border-l border-foreground/10 shrink-0 items-center">
+                <div className="flex gap-1 pl-3 border-l border-foreground/10 shrink-0 items-center">
                   <button
                     type="button"
                     onClick={() => setSearchOpen(true)}
@@ -225,14 +291,21 @@ export function NotchNavbar({
                     )}
                   </Link>
 
-                  <NavLink href="/purchases" icon={BookOpen} label="My purchases" />
+                  <Link
+                    href="/purchases"
+                    className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-foreground/5 text-foreground/70 hover:text-foreground"
+                    aria-label="Purchases"
+                    title="Purchases"
+                  >
+                    <BookOpen className="w-4 h-4" />
+                  </Link>
 
                   <ThemeToggle />
                   {authDesktop}
                 </div>
               </div>
 
-              <div className="md:hidden flex items-center gap-2 mb-1">
+              <div className="lg:hidden flex items-center gap-2 mb-1">
                 <Link href="/" className="flex items-center shrink-0" aria-label="Home">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src="/logo.png" alt="Logo" className="h-7 w-7 rounded-md object-contain" />
@@ -247,9 +320,9 @@ export function NotchNavbar({
                 </button>
               </div>
 
-              <div className="flex-1 md:hidden" />
+              <div className="flex-1 lg:hidden" />
 
-              <div className="md:hidden flex items-center gap-2 mb-1">
+              <div className="lg:hidden flex items-center gap-1 mb-1">
                 <button
                   type="button"
                   onClick={() => setSearchOpen(true)}
@@ -270,13 +343,12 @@ export function NotchNavbar({
                     </span>
                   )}
                 </Link>
-                <NavLink href="/purchases" icon={BookOpen} label="Purchases" />
                 <MobileThemeToggle />
               </div>
             </div>
           </div>
 
-          <div className="w-[50px] h-full relative shrink-0 -ml-px">
+          <div className="w-[36px] sm:w-[50px] h-full relative shrink-0 -ml-px">
             <div className="absolute inset-0 bg-zinc-50 dark:bg-black" style={{ clipPath: "path('M0 0 H50 V40 C25 40 25 64 0 64 Z')" }} />
             <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 50 64">
               <path d="M0 63.5 C25 63.5 25 39.5 50 39.5" fill="none" stroke="currentColor" strokeOpacity={0.05} strokeWidth={0.5} className="text-foreground" />
@@ -302,7 +374,7 @@ export function NotchNavbar({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-x-0 top-16 z-40 bg-zinc-50 dark:bg-black border-b border-foreground/5 p-4 md:hidden shadow-lg max-h-[calc(100vh-4rem)] overflow-y-auto"
+            className="fixed inset-x-0 top-16 z-40 bg-zinc-50 dark:bg-black border-b border-foreground/5 p-4 lg:hidden shadow-lg max-h-[calc(100vh-4rem)] overflow-y-auto"
           >
             <nav className="flex flex-col gap-1">
               <Link href="/" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
@@ -321,6 +393,17 @@ export function NotchNavbar({
               ))}
 
               <div className="h-px bg-foreground/10 my-3" />
+              <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-foreground/40">Library</p>
+              <Link href="/purchases" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
+                <BookOpen className="w-5 h-5 opacity-70" />
+                <span className="font-medium text-foreground/90">Purchases</span>
+              </Link>
+              <Link href="/bookmarks" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
+                <Bookmark className="w-5 h-5 opacity-70" />
+                <span className="font-medium text-foreground/90">Bookmarks</span>
+              </Link>
+
+              <div className="h-px bg-foreground/10 my-3" />
               <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-foreground/40">Account</p>
 
               {!authReady ? null : user ? (
@@ -328,11 +411,20 @@ export function NotchNavbar({
                   <div className="px-3 py-2 text-sm text-foreground/70 truncate">
                     {user.name || user.email}
                   </div>
+                  <Link href="/publish" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
+                    <Upload className="w-5 h-5 opacity-70" />
+                    <span className="font-medium text-foreground/90">Publish</span>
+                  </Link>
+                  <Link href="/dashboard" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
+                    <LayoutDashboard className="w-5 h-5 opacity-70" />
+                    <span className="font-medium text-foreground/90">Dashboard</span>
+                  </Link>
                   <button
                     type="button"
                     className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors font-medium text-foreground/90 text-left"
                     onClick={handleLogout}
                   >
+                    <LogOut className="w-5 h-5 opacity-70" />
                     Log out
                   </button>
                 </>

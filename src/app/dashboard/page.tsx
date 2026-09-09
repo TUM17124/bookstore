@@ -1,0 +1,493 @@
+"use client";
+
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  confirmBoost,
+  deleteMyBook,
+  deletePayoutAccount,
+  getMySales,
+  getToken,
+  initBoost,
+  myBoosts,
+  myBooks,
+  payoutAccount,
+  savePayoutAccount,
+  updateMyBook,
+} from "@/lib/api";
+
+function useCountdown(seconds: number) {
+  const [left, setLeft] = useState(seconds);
+  useEffect(() => {
+    setLeft(seconds);
+    if (seconds <= 0) return;
+    const t = setInterval(() => setLeft((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [seconds]);
+  const d = Math.floor(left / 86400);
+  const h = Math.floor((left % 86400) / 3600);
+  const m = Math.floor((left % 3600) / 60);
+  const s = left % 60;
+  return { left, label: left > 0 ? `${d}d ${h}h ${m}m ${s}s` : "Ended" };
+}
+
+export default function DashboardPage() {
+  const [token, setToken] = useState("");
+  const [books, setBooks] = useState<any[]>([]);
+  const [boosts, setBoosts] = useState<any[]>([]);
+  const [payout, setPayout] = useState<any>(null);
+  const [sales, setSales] = useState<any[]>([]);
+  const [cutPercent, setCutPercent] = useState<number>(0);
+  const [authorPercent, setAuthorPercent] = useState<number>(100);
+  const [salesTotal, setSalesTotal] = useState<number>(0);
+  const [authorTotal, setAuthorTotal] = useState<number>(0);
+  const [msg, setMsg] = useState("");
+  const [msgOk, setMsgOk] = useState(true);
+  const [form, setForm] = useState({
+    method: "mpesa",
+    account_name: "",
+    account_number: "",
+    extra: "",
+  });
+
+  const hasAccount = Boolean(payout?.account?.account_number || payout?.account?.method);
+
+  useEffect(() => {
+    setToken(getToken() || "");
+  }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    myBooks(token).then((d) => setBooks(d.results || d.books || d || []));
+    myBoosts(token).then((d) => setBoosts(d.boosts || d.results || []));
+    payoutAccount(token).then((d) => {
+      setPayout(d);
+      const acc = d?.account;
+      if (acc) {
+        setForm({
+          method: acc.method || "mpesa",
+          account_name: acc.account_name || "",
+          account_number: acc.account_number || "",
+          extra: acc.extra || "",
+        });
+      }
+    });
+    getMySales()
+      .then((d) => {
+        const rows = d.sales || d.results || [];
+        setSales(Array.isArray(rows) ? rows : []);
+        const cut = Number(d.cut_percent ?? d.platform_cut ?? d.commission ?? 0);
+        const author = Number(d.author_percent ?? (100 - cut));
+        setCutPercent(Number.isFinite(cut) ? cut : 0);
+        setAuthorPercent(Number.isFinite(author) ? author : 100);
+        setSalesTotal(Number(d.total ?? d.gross ?? 0) || 0);
+        setAuthorTotal(Number(d.author_total ?? d.net ?? 0) || 0);
+      })
+      .catch(() => setSales([]));
+
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get("boost_ref") || params.get("reference");
+    if (ref) {
+      confirmBoost(token, ref).then((d) => {
+        if (d.ok && d.paid) {
+          setMsgOk(true);
+          setMsg("Payment received. Your book is now boosted and featured.");
+        } else if (!d.paid) {
+          setMsgOk(false);
+          setMsg("Payment was not completed. No boost was created.");
+        }
+        myBoosts(token).then((x) => setBoosts(x.boosts || []));
+      });
+    }
+  }, [token]);
+
+  const byBook = useMemo(() => {
+    const m: Record<number, any> = {};
+    boosts.forEach((b) => {
+      if (!m[b.book_id] || (b.is_active && !m[b.book_id].is_active)) m[b.book_id] = b;
+    });
+    return m;
+  }, [boosts]);
+
+  const computedAuthorTotal =
+    authorTotal ||
+    sales.reduce((sum, row) => sum + Number(row.amount ?? row.author_amount ?? row.net ?? 0), 0);
+
+  const computedSalesTotal =
+    salesTotal ||
+    sales.reduce((sum, row) => sum + Number(row.gross ?? row.total ?? row.amount ?? 0), 0);
+
+  async function onBoost(bookId: number) {
+    setMsg("");
+    const d = await initBoost(token, bookId);
+    if (!d.ok) {
+      setMsgOk(false);
+      setMsg(d.error || "Cannot boost yet");
+      return;
+    }
+    if (d.authorization_url) window.location.href = d.authorization_url;
+    else {
+      setMsgOk(false);
+      setMsg(d.error || "Cannot start Paystack checkout");
+    }
+  }
+
+  async function onSavePayout(e: FormEvent) {
+    e.preventDefault();
+    const d = await savePayoutAccount(token, form);
+    if (d.ok) {
+      setPayout((p: any) => ({ ...p, account: d.account, needs_account: false }));
+      setMsgOk(true);
+      setMsg(hasAccount ? "Payout account updated." : "Payout account saved. Earnings are sent every 30 days.");
+    } else {
+      setMsgOk(false);
+      setMsg(d.error || "Could not save account");
+    }
+  }
+
+  async function onDeletePayout() {
+    if (!window.confirm("Delete the saved payout account?")) return;
+    const d = await deletePayoutAccount(token);
+    if (d.ok !== false) {
+      setPayout((p: any) => ({ ...p, account: null, needs_account: true }));
+      setForm({ method: "mpesa", account_name: "", account_number: "", extra: "" });
+      setMsgOk(true);
+      setMsg("Payout account deleted.");
+    } else {
+      setMsgOk(false);
+      setMsg(d.error || "Could not delete account");
+    }
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto p-4 space-y-8">
+      {msg && (
+        <div
+          role={msgOk ? "status" : "alert"}
+          className={
+            msgOk
+              ? "rounded-xl border-2 border-green-600 bg-green-100 p-3 text-sm font-semibold text-green-800 dark:border-green-400 dark:bg-green-950 dark:text-green-300"
+              : "rounded-xl border-2 border-red-600 bg-red-100 p-3 text-sm font-semibold text-red-800 dark:border-red-400 dark:bg-red-950 dark:text-red-300"
+          }
+        >
+          {msg}
+        </div>
+      )}
+
+      {payout?.payment_received_note && (
+        <div className="rounded-xl bg-amber-50 border border-amber-200 p-4">
+          <p className="font-semibold">Payment received</p>
+          <p className="text-sm mt-1">{payout.payment_received_note}</p>
+        </div>
+      )}
+
+            <section className="rounded-2xl border p-4 space-y-3">
+        <h2 className="text-xl font-bold">Sales and cut</h2>
+        <p className="text-sm text-neutral-600">
+          PlugYard keeps <b>{cutPercent}%</b>. You keep <b>{authorPercent}%</b>.
+          Payouts go out every 30 days to the account below.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border p-3">
+            <p className="text-xs uppercase tracking-wide text-neutral-500">Gross sales</p>
+            <p className="text-lg font-semibold">KES {computedSalesTotal.toLocaleString()}</p>
+          </div>
+          <div className="rounded-xl border p-3">
+            <p className="text-xs uppercase tracking-wide text-neutral-500">Your cut</p>
+            <p className="text-lg font-semibold">KES {computedAuthorTotal.toLocaleString()}</p>
+          </div>
+          <div className="rounded-xl border p-3">
+            <p className="text-xs uppercase tracking-wide text-neutral-500">Orders</p>
+            <p className="text-lg font-semibold">{sales.length}</p>
+          </div>
+        </div>
+        {sales.length === 0 ? (
+          <p className="text-sm text-neutral-600">No sales yet. That is normal for a new title.</p>
+        ) : (
+          <ul className="space-y-2">
+            {sales.map((row, i) => {
+              const title = row.book_title || row.title || `Order #${row.order_id || row.id}`;
+              const yourCut = Number(row.author_amount ?? row.net ?? row.amount ?? 0);
+              const grossAmt = Number(row.gross ?? row.total ?? 0);
+              return (
+                <li
+                  key={row.id || row.order_id || i}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
+                >
+                  <span>
+                    <b>{title}</b>
+                    <span className="text-neutral-500">
+                      {" "}
+                      · Order #{row.order_id || row.id}
+                      {row.product_type ? ` · ${row.product_type}` : ""}
+                    </span>
+                  </span>
+                  <span>
+                    Your cut KES {yourCut.toLocaleString()}
+                    {grossAmt ? ` · gross ${grossAmt.toLocaleString()}` : ""}
+                    {row.cut_percent != null ? ` · platform ${row.cut_percent}%` : ""}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <section className="rounded-2xl border p-4 space-y-3">
+        <h2 className="text-xl font-bold">Where should we send your money?</h2>
+        <p className="text-sm text-neutral-600">
+          Sales are paid every 30 days. Add M-Pesa, Airtel Money, or a card.
+          {payout?.next_payout_in_days != null && (
+            <> Next payout window in about {payout.next_payout_in_days} days.</>
+          )}
+        </p>
+        {hasAccount && (
+          <p className="text-sm">
+            Saved: <b>{payout.account.method}</b> · {payout.account.account_name} · {payout.account.account_number}
+          </p>
+        )}
+        <form onSubmit={onSavePayout} className="grid gap-3 sm:grid-cols-2">
+          <select
+            className="border rounded-lg p-2"
+            value={form.method}
+            onChange={(e) => setForm({ ...form, method: e.target.value })}
+          >
+            <option value="mpesa">M-Pesa number</option>
+            <option value="airtel">Airtel Money number</option>
+            <option value="card">Card</option>
+          </select>
+          <input
+            className="border rounded-lg p-2"
+            placeholder="Account / holder name"
+            value={form.account_name}
+            onChange={(e) => setForm({ ...form, account_name: e.target.value })}
+          />
+          <input
+            className="border rounded-lg p-2"
+            placeholder={form.method === "card" ? "Card last 4 or Paystack auth code" : "07xx number"}
+            value={form.account_number}
+            onChange={(e) => setForm({ ...form, account_number: e.target.value })}
+          />
+          <input
+            className="border rounded-lg p-2"
+            placeholder="Bank / extra (optional)"
+            value={form.extra}
+            onChange={(e) => setForm({ ...form, extra: e.target.value })}
+          />
+          <button className="sm:col-span-2 bg-black text-white rounded-lg py-2">
+            {hasAccount ? "Update payout account" : "Save payout account"}
+          </button>
+        </form>
+        {hasAccount && (
+          <button
+            type="button"
+            onClick={onDeletePayout}
+            className="w-full rounded-lg border border-red-600 px-4 py-2 text-sm font-semibold text-red-700"
+          >
+            Delete payout account
+          </button>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-xl font-bold">Your books</h2>
+        {books.length === 0 && (
+          <p className="text-sm text-neutral-600">No books yet. Publish a title to manage it here.</p>
+        )}
+        {books.map((book) => (
+          <BookBoostRow
+            key={book.id}
+            book={book}
+            boost={byBook[book.id]}
+            onBoost={onBoost}
+            onUpdated={(next) =>
+              setBooks((list) => list.map((b) => (String(b.id) === String(next.id) ? { ...b, ...next } : b)))
+            }
+            onRemoved={(id) => setBooks((list) => list.filter((b) => String(b.id) !== String(id)))}
+            onFlash={(text, ok) => {
+              setMsgOk(ok);
+              setMsg(text);
+            }}
+          />
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function BookBoostRow({
+  book,
+  boost,
+  onBoost,
+  onUpdated,
+  onRemoved,
+  onFlash,
+}: {
+  book: any;
+  boost?: any;
+  onBoost: (id: number) => void;
+  onUpdated: (book: any) => void;
+  onRemoved: (id: string | number) => void;
+  onFlash: (text: string, ok: boolean) => void;
+}) {
+  const { label, left } = useCountdown(boost?.seconds_left || 0);
+  const active = Boolean(boost?.is_active);
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [isFree, setIsFree] = useState(Boolean(book.isFree || book.is_free));
+
+  useEffect(() => {
+    setIsFree(Boolean(book.isFree || book.is_free));
+  }, [book]);
+
+  async function onSave(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const fd = new FormData(e.currentTarget);
+      fd.set("is_free", isFree ? "true" : "false");
+      if (isFree) {
+        fd.set("ebook_price", "0");
+        fd.set("audiobook_price", "0");
+      }
+      const data = await updateMyBook(book.id, fd);
+      if (data.book) onUpdated(data.book);
+      setEditing(false);
+      onFlash(data.message || "Book updated.", true);
+    } catch (err) {
+      onFlash(err instanceof Error ? err.message : "Could not update book", false);
+    }
+    setBusy(false);
+  }
+
+  async function onDelete() {
+    if (!window.confirm(`Delete “${book.title}”? This cannot be undone if it has no sales.`)) return;
+    setBusy(true);
+    try {
+      const data = await deleteMyBook(book.id);
+      if (data.deleted) onRemoved(book.id);
+      else if (data.book) onUpdated({ ...book, ...data.book, is_available: false });
+      else onRemoved(book.id);
+      onFlash(data.message || "Book deleted.", true);
+    } catch (err) {
+      onFlash(err instanceof Error ? err.message : "Could not delete book", false);
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="border rounded-xl p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="font-semibold">{book.title}</p>
+          <p className="text-sm text-neutral-600">
+            {book.year ? `${book.year} · ` : ""}
+            {book.status || "draft"}
+            {book.is_available === false ? " · off the store" : ""}
+          </p>
+          {active ? (
+            <p className="text-sm text-emerald-700">
+              Boosted · featured until countdown ends: <b>{label}</b>
+            </p>
+          ) : boost?.status === "expired" || (boost?.status === "paid" && left === 0) ? (
+            <p className="text-sm text-neutral-600">Boost ended. You can boost again now.</p>
+          ) : (
+            <p className="text-sm text-neutral-600">Not boosted. Pay with Paystack to feature this title.</p>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setEditing((v) => !v)} className="px-4 py-2 rounded-lg border">
+            {editing ? "Close" : "Edit"}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onDelete}
+            className="px-4 py-2 rounded-lg bg-red-600 text-white disabled:opacity-50"
+          >
+            Delete
+          </button>
+          <button
+            disabled={active}
+            onClick={() => onBoost(book.id)}
+            className={`px-4 py-2 rounded-lg text-white ${active ? "bg-neutral-400 cursor-not-allowed" : "bg-indigo-600"}`}
+          >
+            {active ? `Boosted · ${label}` : "Boost now"}
+          </button>
+        </div>
+      </div>
+
+      {editing && (
+        <form onSubmit={onSave} className="grid gap-3 sm:grid-cols-2 border-t pt-3">
+          <input name="title" required defaultValue={book.title || ""} placeholder="Title" className="border rounded-lg p-2" />
+          <input name="year" defaultValue={book.year || ""} placeholder="Year" className="border rounded-lg p-2" />
+          <textarea
+            name="description"
+            rows={3}
+            defaultValue={book.desc || book.description || ""}
+            placeholder="Description"
+            className="sm:col-span-2 border rounded-lg p-2"
+          />
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <input type="checkbox" checked={isFree} onChange={(e) => setIsFree(e.target.checked)} />
+            Free to read
+          </label>
+          {!isFree && (
+            <>
+              <input
+                name="ebook_price"
+                type="number"
+                min="0"
+                step="1"
+                defaultValue={book.ebook_price ?? book.price ?? ""}
+                placeholder="Ebook price (KES)"
+                className="border rounded-lg p-2"
+              />
+              <input
+                name="audiobook_price"
+                type="number"
+                min="0"
+                step="1"
+                defaultValue={book.audiobook_price ?? ""}
+                placeholder="Audiobook price (KES)"
+                className="border rounded-lg p-2"
+              />
+            </>
+          )}
+          <label className="text-sm">
+            Front cover
+            {book.images?.front ? (
+              <img src={book.images.front} alt="" className="mt-1 h-16 w-auto rounded border object-cover" />
+            ) : null}
+            <input name="image_front" type="file" accept="image/*" className="mt-1 block w-full text-sm" />
+          </label>
+          <label className="text-sm">
+            Spine
+            {book.images?.spine ? (
+              <img src={book.images.spine} alt="" className="mt-1 h-16 w-auto rounded border object-cover" />
+            ) : null}
+            <input name="image_spine" type="file" accept="image/*" className="mt-1 block w-full text-sm" />
+          </label>
+          <label className="text-sm">
+            Back cover
+            {book.images?.back ? (
+              <img src={book.images.back} alt="" className="mt-1 h-16 w-auto rounded border object-cover" />
+            ) : null}
+            <input name="image_back" type="file" accept="image/*" className="mt-1 block w-full text-sm" />
+          </label>
+          <label className="text-sm">
+            PDF {book.hasEbook ? "(current file kept unless you pick a new one)" : ""}
+            <input name="pdf" type="file" accept="application/pdf" className="mt-1 block w-full text-sm" />
+          </label>
+          <label className="text-sm sm:col-span-2">
+            Audiobook MP3 {book.hasAudiobook ? "(current file kept unless you pick a new one)" : "(optional)"}
+            <input name="audio" type="file" accept="audio/*" className="mt-1 block w-full text-sm" />
+          </label>
+          <button type="submit" disabled={busy} className="sm:col-span-2 bg-black text-white rounded-lg py-2 disabled:opacity-50">
+            {busy ? "Saving…" : "Save changes"}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}

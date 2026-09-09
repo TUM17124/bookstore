@@ -1,4 +1,4 @@
-
+// src/lib/api.ts
 const API = process.env.NEXT_PUBLIC_API_URL!
 
 export type ApiBook = {
@@ -50,6 +50,59 @@ export type PurchaseItem = {
   product_type: string
 }
 
+export function getToken(): string | null {
+  if (typeof window === "undefined") return null
+  return (
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("access") ||
+    localStorage.getItem("token")
+  )
+}
+
+export function setTokens(access: string, refresh?: string) {
+  localStorage.setItem("access_token", access)
+  localStorage.setItem("access", access)
+  if (refresh) localStorage.setItem("refresh_token", refresh)
+}
+
+export function setToken(access: string) {
+  setTokens(access)
+}
+
+export function clearTokens() {
+  localStorage.removeItem("access_token")
+  localStorage.removeItem("access")
+  localStorage.removeItem("token")
+  localStorage.removeItem("refresh_token")
+}
+
+function bearer(token?: string) {
+  return token || getToken() || ""
+}
+
+export async function api<T = unknown>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  }
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  const res = await fetch(`${API}${path}`, { ...options, headers })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const msg =
+      (data as { error?: string; detail?: string }).error ||
+      (data as { detail?: string }).detail ||
+      "Request failed"
+    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg))
+  }
+  return data as T
+}
+
 export async function getPurchases(email: string): Promise<{
   ebooks: PurchaseItem[]
   audiobooks: PurchaseItem[]
@@ -59,7 +112,7 @@ export async function getPurchases(email: string): Promise<{
     `${API}/orders/purchases/?email=${encodeURIComponent(email)}`,
   )
   if (res.status === 429) {
-    throw new Error('Too many lookups. Wait a minute and try again.')
+    throw new Error("Too many lookups. Wait a minute and try again.")
   }
   if (!res.ok) return { ebooks: [], audiobooks: [] }
   return res.json()
@@ -75,29 +128,29 @@ export async function getBooks(params?: {
   search?: string
   page?: number
 }): Promise<Paginated<ApiBook> | ApiBook[]> {
-  if (!API) throw new Error('NEXT_PUBLIC_API_URL is not set')
+  if (!API) throw new Error("NEXT_PUBLIC_API_URL is not set")
 
   const q = new URLSearchParams()
-  if (params?.featured) q.set('featured', '1')
-  if (params?.category) q.set('category', params.category)
-  if (params?.search) q.set('search', params.search)
-  if (params?.page) q.set('page', String(params.page))
+  if (params?.featured) q.set("featured", "1")
+  if (params?.category) q.set("category", params.category)
+  if (params?.search) q.set("search", params.search)
+  if (params?.page) q.set("page", String(params.page))
 
   const qs = q.toString()
-  const url = `${API}/books/${qs ? `?${qs}` : ''}`
+  const url = `${API}/books/${qs ? `?${qs}` : ""}`
   const res = await fetch(url)
-  if (!res.ok) throw new Error('Failed to load books')
+  if (!res.ok) throw new Error("Failed to load books")
   return res.json()
 }
 
 export async function createCheckout(payload: {
   book_id: number
-  product_type: 'ebook' | 'audiobook'
+  product_type: "ebook" | "audiobook"
   email: string
 }) {
   return api<{ order_id: number; checkout_url: string; dev_mode?: boolean }>(
-    '/checkout/',
-    { method: 'POST', body: JSON.stringify(payload) },
+    "/checkout/",
+    { method: "POST", body: JSON.stringify(payload) },
   )
 }
 
@@ -106,82 +159,40 @@ export async function confirmOrderPayment(
   payload: { reference?: string; email: string },
 ) {
   const res = await fetch(`${API}/orders/${orderId}/confirm/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error((err as { error?: string }).error || 'Confirm failed')
+    throw new Error((err as { error?: string }).error || "Confirm failed")
   }
   return res.json()
 }
 
 export function freeBookUrl(
   bookId: string | number,
-  type: 'ebook' | 'audiobook' = 'ebook',
+  type: "ebook" | "audiobook" = "ebook",
   inline = false,
 ) {
   const q = new URLSearchParams({ type })
-  if (inline) q.set('inline', '1')
+  if (inline) q.set("inline", "1")
   return `${API}/books/${bookId}/free/?${q}`
 }
 
 export async function getOrder(orderId: string, email?: string) {
-  const q = email ? `?email=${encodeURIComponent(email)}` : ''
+  const q = email ? `?email=${encodeURIComponent(email)}` : ""
   return api(`/orders/${orderId}/${q}`)
-}
-
-export function getToken(): string | null {
-  if (typeof window === 'undefined') return null
-  return localStorage.getItem('access_token')
-}
-
-export function setTokens(access: string, refresh?: string) {
-  localStorage.setItem('access_token', access)
-  if (refresh) localStorage.setItem('refresh_token', refresh)
-}
-
-export function setToken(access: string) {
-  setTokens(access)
-}
-
-export function clearTokens() {
-  localStorage.removeItem('access_token')
-  localStorage.removeItem('refresh_token')
-}
-
-export async function api<T = unknown>(
-  path: string,
-  options: RequestInit = {},
-): Promise<T> {
-  const token = getToken()
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string>),
-  }
-  if (token) headers.Authorization = `Bearer ${token}`
-
-  const res = await fetch(`${API}${path}`, { ...options, headers })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) {
-    const msg =
-      (data as { error?: string; detail?: string }).error ||
-      (data as { detail?: string }).detail ||
-      'Request failed'
-    throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg))
-  }
-  return data as T
 }
 
 export async function register(
   email: string,
   password: string,
-  name = '',
-  confirmPassword = '',
+  name = "",
+  confirmPassword = "",
 ) {
-  return api('/auth/register/', {
-    method: 'POST',
+  return api("/auth/register/", {
+    method: "POST",
     body: JSON.stringify({
       email,
       password,
@@ -196,8 +207,8 @@ export async function verifyEmail(email: string, code: string) {
     access?: string
     refresh?: string
     user?: { email?: string; name?: string }
-  }>('/auth/verify-email/', {
-    method: 'POST',
+  }>("/auth/verify-email/", {
+    method: "POST",
     body: JSON.stringify({ email, code }),
   })
   if (data.access) setTokens(data.access, data.refresh)
@@ -206,17 +217,17 @@ export async function verifyEmail(email: string, code: string) {
 
 export async function resendCode(
   email: string,
-  purpose: 'verify' | 'reset' = 'verify',
+  purpose: "verify" | "reset" = "verify",
 ) {
-  return api('/auth/resend-code/', {
-    method: 'POST',
+  return api("/auth/resend-code/", {
+    method: "POST",
     body: JSON.stringify({ email, purpose }),
   })
 }
 
 export async function forgotPassword(email: string) {
-  return api('/auth/forgot-password/', {
-    method: 'POST',
+  return api("/auth/forgot-password/", {
+    method: "POST",
     body: JSON.stringify({ email }),
   })
 }
@@ -231,8 +242,8 @@ export async function resetPassword(
     access?: string
     refresh?: string
     user?: { email?: string; name?: string }
-  }>('/auth/reset-password/', {
-    method: 'POST',
+  }>("/auth/reset-password/", {
+    method: "POST",
     body: JSON.stringify({
       email,
       code,
@@ -249,8 +260,8 @@ export async function googleLogin(credential: string) {
     access?: string
     refresh?: string
     user?: { email?: string; name?: string }
-  }>('/auth/google/', {
-    method: 'POST',
+  }>("/auth/google/", {
+    method: "POST",
     body: JSON.stringify({ credential }),
   })
   if (data.access) setTokens(data.access, data.refresh)
@@ -258,8 +269,8 @@ export async function googleLogin(credential: string) {
 }
 
 export async function login(email: string, password: string) {
-  const data = await api<{ access: string; refresh: string }>('/auth/login/', {
-    method: 'POST',
+  const data = await api<{ access: string; refresh: string }>("/auth/login/", {
+    method: "POST",
     body: JSON.stringify({ username: email, email, password }),
   })
   setTokens(data.access, data.refresh)
@@ -282,7 +293,7 @@ export async function saveAudioProgress(
   duration: number,
 ) {
   return api(`/books/${bookId}/audio-progress/`, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify({ position, duration }),
   })
 }
@@ -299,13 +310,13 @@ export async function addAudioNote(
   note: string,
 ) {
   return api(`/books/${bookId}/audio-notes/`, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify({ position, note }),
   })
 }
 
 export async function deleteAudioNote(id: number) {
-  return api(`/audio-notes/${id}/`, { method: 'DELETE' })
+  return api(`/audio-notes/${id}/`, { method: "DELETE" })
 }
 
 export async function getPdfProgress(bookId: string) {
@@ -314,7 +325,7 @@ export async function getPdfProgress(bookId: string) {
 
 export async function savePdfProgress(bookId: string, page: number) {
   return api(`/books/${bookId}/pdf-progress/`, {
-    method: 'PUT',
+    method: "PUT",
     body: JSON.stringify({ page }),
   })
 }
@@ -330,7 +341,6 @@ export async function searchTrack(payload: {
   source?: string
   path?: string
 }) {
-  const API = process.env.NEXT_PUBLIC_API_URL || ""
   try {
     await fetch(`${API}/track/`, {
       method: "POST",
@@ -365,19 +375,19 @@ export type BookmarkRow = {
 export async function fetchBookmarks(page = 1): Promise<
   Paginated<BookmarkRow> | BookmarkRow[]
 > {
-  const q = page > 1 ? `?page=${page}` : ''
+  const q = page > 1 ? `?page=${page}` : ""
   return api(`/bookmarks/${q}`)
 }
 
 export async function addBookmarkApi(bookId: string | number) {
-  return api('/bookmarks/', {
-    method: 'POST',
+  return api("/bookmarks/", {
+    method: "POST",
     body: JSON.stringify({ book_id: Number(bookId) }),
   })
 }
 
 export async function removeBookmarkApi(bookId: string | number) {
-  return api(`/bookmarks/${bookId}/`, { method: 'DELETE' })
+  return api(`/bookmarks/${bookId}/`, { method: "DELETE" })
 }
 
 export async function getRatings(bookId: string) {
@@ -388,7 +398,7 @@ export async function getRatings(bookId: string) {
 
 export async function postRating(bookId: string, value: number) {
   return api(`/books/${bookId}/ratings/`, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify({ value }),
   })
 }
@@ -413,12 +423,160 @@ export async function postComment(
   parentId?: number | string | null,
 ) {
   return api(`/books/${bookId}/comments/`, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify({
       body,
       parentId: parentId != null ? Number(parentId) : null,
     }),
   })
+}
+
+export async function getMySales() {
+  const token = bearer()
+  const res = await fetch(`${API}/me/sales/`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) return { ok: true, sales: [], books: [] }
+  return res.json()
+}
+
+export async function requestPayout() {
+  const token = bearer()
+  const res = await fetch(`${API}/me/payouts/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  })
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}))
+    throw new Error(e.error || "Payout failed")
+  }
+  return res.json()
+}
+
+export async function createBoost(book_id: number, days = 7) {
+  return initBoost(bearer(), book_id, days)
+}
+
+export async function publishBook(form: FormData) {
+  const token = bearer()
+  const res = await fetch(`${API}/me/books/`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || "Could not submit book")
+  return data
+}
+
+export async function myBooks(_token?: string) {
+  const token = bearer(_token)
+  const res = await fetch(`${API}/me/books/`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) throw new Error("Could not load your books")
+  return res.json()
+}
+
+export async function updateMyBook(bookId: string | number, form: FormData) {
+  const token = bearer()
+  const res = await fetch(`${API}/me/books/${bookId}/`, {
+    method: "PATCH",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || "Could not update book")
+  return data
+}
+
+export async function deleteMyBook(bookId: string | number) {
+  const token = bearer()
+  const res = await fetch(`${API}/me/books/${bookId}/`, {
+    method: "DELETE",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || "Could not delete book")
+  return data
+}
+
+export async function initBoost(token: string, bookId: number, days = 7) {
+  const r = await fetch(`${API}/me/boost/init/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${bearer(token)}`,
+    },
+    body: JSON.stringify({ book_id: bookId, days }),
+  })
+  return r.json()
+}
+
+export async function confirmBoost(token: string, reference: string) {
+  const r = await fetch(`${API}/me/boost/confirm/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${bearer(token)}`,
+    },
+    body: JSON.stringify({ reference }),
+  })
+  return r.json()
+}
+
+export async function myBoosts(token?: string) {
+  const r = await fetch(`${API}/me/boosts/`, {
+    headers: { Authorization: `Bearer ${bearer(token)}` },
+  })
+  return r.json()
+}
+
+export async function payoutAccount(token?: string) {
+  const r = await fetch(`${API}/me/payout-account/`, {
+    headers: { Authorization: `Bearer ${bearer(token)}` },
+  })
+  return r.json()
+}
+
+export async function savePayoutAccount(
+  token: string,
+  body: {
+    method: string
+    account_name?: string
+    account_number?: string
+    extra?: string
+  },
+) {
+  const r = await fetch(`${API}/me/payout-account/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${bearer(token)}`,
+    },
+    body: JSON.stringify(body),
+  })
+  return r.json()
+}
+
+export async function deletePayoutAccount(token?: string) {
+  const t =
+    token ||
+    (typeof window !== "undefined"
+      ? localStorage.getItem("access_token") ||
+        localStorage.getItem("access") ||
+        localStorage.getItem("token") ||
+        ""
+      : "")
+  const API = process.env.NEXT_PUBLIC_API_URL!
+  const r = await fetch(`${API}/me/payout-account/`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${t}` },
+  })
+  return r.json().catch(() => ({ ok: r.ok }))
 }
 
 export default searchTrack

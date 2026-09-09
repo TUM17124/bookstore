@@ -38,7 +38,7 @@ export function SiteFooter() {
                 className="h-9 w-9 rounded-lg object-contain"
               />
               <span className="text-base font-semibold tracking-tight text-foreground">
-                Bookstore
+                PlugYard
               </span>
             </Link>
             <p className="mt-3 max-w-xs text-sm leading-relaxed text-foreground/55">
@@ -99,18 +99,34 @@ export function SiteFooter() {
             <ul className="mt-4 space-y-2.5">
               <li>
                 <Link
+                  href="/signup"
+                  className="text-sm font-semibold text-foreground transition-colors hover:text-sky-600 dark:hover:text-sky-400"
+                >
+                  Sign up
+                </Link>
+              </li>
+              <li>
+                <Link
                   href="/login"
-                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
+                  className="text-sm font-semibold text-foreground transition-colors hover:text-sky-600 dark:hover:text-sky-400"
                 >
                   Log in
                 </Link>
               </li>
               <li>
                 <Link
-                  href="/signup"
+                  href="/publish"
+                  className="text-sm font-semibold text-foreground transition-colors hover:text-sky-600 dark:hover:text-sky-400"
+                >
+                  Publish
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/dashboard"
                   className="text-sm text-foreground/70 transition-colors hover:text-foreground"
                 >
-                  Sign up
+                  Dashboard
                 </Link>
               </li>
               <li>
@@ -147,7 +163,7 @@ export function SiteFooter() {
         {/* Bottom bar */}
         <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-foreground/5 pt-6 sm:flex-row sm:items-center">
           <p className="text-xs text-foreground/45">
-            © {year} Bookstore. All rights reserved.
+            © {year} PlugYard. All rights reserved.
           </p>
           <a
             href="mailto:contact@plugyard.com"
