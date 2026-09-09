@@ -322,13 +322,12 @@ export default function DashboardPage() {
         </p>
       </section>
 
-            <section className="rounded-2xl border p-4 space-y-3">
+      <section className="rounded-2xl border p-4 space-y-3">
         <h2 className="text-xl font-bold">Where should we send your money?</h2>
         <p className="text-sm text-neutral-600">
           Sales are paid every {payout?.payout_every_days || PAYOUT_EVERY_DAYS} days. Add M-Pesa, Airtel Money, or a card.
           {" "}
-          Next payout window in about{" "}
-          <b>{Number.isFinite(nextPayoutDays) ? nextPayoutDays : PAYOUT_EVERY_DAYS} days</b>.
+          Next payout window in about <b>{Number.isFinite(nextPayoutDays) ? nextPayoutDays : PAYOUT_EVERY_DAYS} days</b>.
         </p>
         {hasAccount && (
           <p className="text-sm">
@@ -376,39 +375,44 @@ export default function DashboardPage() {
             Delete payout account
           </button>
         )}
-      </section>
 
-      <section className="rounded-2xl border p-4 space-y-3">
-        <h2 className="text-xl font-bold">Payout cycle history</h2>
-        <p className="text-sm text-neutral-600">
-          Requests you make and cycles marked paid in admin.
-        </p>
-        {cycles.length === 0 ? (
-          <p className="text-sm text-neutral-600">No payout cycles yet.</p>
-        ) : (
-          <ul className="space-y-2">
-            {cycles.map((c: any, i: number) => {
-              const when = cycleDate(c);
-              return (
-                <li
-                  key={c.id || i}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
-                >
-                  <span>
-                    <b>
-                      {c.period_start || "—"} – {c.period_end || "—"}
-                    </b>
-                    <span className="text-neutral-500">
-                      {" "}
-                      · {c.status || "pending"}
-                      {when ? ` · ${when.toLocaleString()}` : ""}
-                    </span>
-                  </span>
-                  <span>KES {Number(c.amount || 0).toLocaleString()}</span>
-                </li>
-              );
-            })}
-          </ul>
+        <button
+          type="button"
+          onClick={() => setHistoryOpen((v) => !v)}
+          className="w-full rounded-lg border px-4 py-2 text-sm font-semibold"
+        >
+          {historyOpen ? "Hide payment history" : "Payment history"}
+        </button>
+        {historyOpen && (
+          <div className="space-y-2">
+            {cycles.length === 0 ? (
+              <p className="text-sm text-neutral-600">No payout cycles yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {cycles.map((c: any, i: number) => {
+                  const when = cycleDate(c);
+                  return (
+                    <li
+                      key={c.id || i}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
+                    >
+                      <span>
+                        <b>
+                          {c.period_start || "—"} – {c.period_end || "—"}
+                        </b>
+                        <span className="text-neutral-500">
+                          {" "}
+                          · {c.status || "pending"}
+                          {when ? ` · ${when.toLocaleString()}` : ""}
+                        </span>
+                      </span>
+                      <span>KES {Number(c.amount || 0).toLocaleString()}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         )}
       </section>
 
