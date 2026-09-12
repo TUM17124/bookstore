@@ -6,6 +6,7 @@ import { BookmarksProvider } from "@/components/bookmarks-context"
 import { SiteFooter } from "@/components/site-footer"
 import { PwaRegister } from "@/components/pwa-register"
 import { PublishInviteModal } from "@/components/publish-invite-modal"
+import { LegalGate } from '@/components/legal-gate'
 
 const SITE = "https://plugyard.com"
 
@@ -100,6 +101,7 @@ export default function RootLayout({
               <NotchNavbar />
             </div>
             <div className="site-main-offset">{children}</div>
+             <LegalGate />
             <PublishInviteModal />
             <SiteFooter />
           </BookmarksProvider>

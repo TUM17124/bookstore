@@ -190,6 +190,7 @@ export async function register(
   password: string,
   name = "",
   confirmPassword = "",
+  termsAccepted = false,
 ) {
   return api("/auth/register/", {
     method: "POST",
@@ -198,6 +199,7 @@ export async function register(
       password,
       confirm_password: confirmPassword || password,
       name,
+      terms_accepted: termsAccepted,
     }),
   })
 }
@@ -255,23 +257,35 @@ export async function resetPassword(
   return data
 }
 
-export async function googleLogin(credential: string) {
+export async function googleLogin(credential: string, termsAccepted = false) {
   const data = await api<{
     access?: string
     refresh?: string
-    user?: { email?: string; name?: string }
+    user?: { email?: string; name?: string; terms_accepted?: boolean }
   }>("/auth/google/", {
     method: "POST",
-    body: JSON.stringify({ credential }),
+    body: JSON.stringify({
+      credential,
+      terms_accepted: termsAccepted,
+    }),
   })
   if (data.access) setTokens(data.access, data.refresh)
   return data
 }
 
-export async function login(email: string, password: string) {
-  const data = await api<{ access: string; refresh: string }>("/auth/login/", {
+export async function login(email: string, password: string, termsAccepted = false) {
+  const data = await api<{
+    access: string
+    refresh: string
+    user?: { email?: string; name?: string; terms_accepted?: boolean }
+  }>("/auth/login/", {
     method: "POST",
-    body: JSON.stringify({ username: email, email, password }),
+    body: JSON.stringify({
+      username: email,
+      email,
+      password,
+      terms_accepted: termsAccepted,
+    }),
   })
   setTokens(data.access, data.refresh)
   return data
@@ -577,6 +591,45 @@ export async function deletePayoutAccount(token?: string) {
     headers: { Authorization: `Bearer ${t}` },
   })
   return r.json().catch(() => ({ ok: r.ok }))
+}
+
+export async function getLegalPages(slug?: string) {
+  const q = slug ? `?slug=${encodeURIComponent(slug)}` : ""
+
+  const r = await fetch(`${API}/legal/${q}`, {
+    cache: "no-store",
+  })
+
+  return r.json()
+}
+
+export async function getLegalStatus(token?: string) {
+  const r = await fetch(`${API}/legal/status/`, {
+    headers: token
+      ? {
+          Authorization: `Bearer ${token}`,
+        }
+      : {},
+    cache: "no-store",
+  })
+
+  return r.json()
+}
+
+export async function acceptLegal(
+  token: string,
+  source = "reaccept",
+) {
+  const r = await fetch(`${API}/legal/accept/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ source }),
+  })
+
+  return r.json()
 }
 
 export default searchTrack
