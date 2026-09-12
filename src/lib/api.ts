@@ -632,4 +632,11 @@ export async function acceptLegal(
   return r.json()
 }
 
+export const getSettings = () => api<any>("/me/settings/")
+export const changeUsername = (username: string) => api("/me/settings/username/", { method: "POST", body: JSON.stringify({ username }) })
+export const startEmailChange = (email: string, current_password: string) => api("/me/settings/email/", { method: "POST", body: JSON.stringify({ email, current_password }) })
+export const confirmEmailChange = (code: string) => api("/me/settings/email/confirm/", { method: "POST", body: JSON.stringify({ code }) })
+export const requestAffiliateWithdrawal = (amount: string) => api("/me/affiliate/withdrawals/", { method: "POST", body: JSON.stringify({ amount }) })
+export const deleteAccount = (body: { current_password?: string; google_credential?: string; reason?: string }) => api("/me/settings/delete-account/", { method: "POST", body: JSON.stringify(body) })
+
 export default searchTrack

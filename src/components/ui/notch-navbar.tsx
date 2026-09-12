@@ -17,6 +17,7 @@ import {
   Bookmark,
   Upload,
   LayoutDashboard,
+  Settings,
   LogOut,
   ChevronDown,
   User,
@@ -165,6 +166,7 @@ export function NotchNavbar({
         <LayoutDashboard className="w-4 h-4" />
         Dashboard
       </Link>
+      <Link href="/settings" onClick={() => setAccountOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5"><Settings className="w-4 h-4" />Settings</Link>
       <button
         type="button"
         onClick={handleLogout}
