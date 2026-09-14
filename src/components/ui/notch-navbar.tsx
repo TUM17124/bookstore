@@ -28,12 +28,14 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { motion, AnimatePresence } from "framer-motion"
 import { useTheme } from "@teispace/next-themes"
 import { useBookmarks } from "@/components/bookmarks-context"
+import { NotificationBell } from "@/components/notification-bell"
 import {
   getStoredUser,
   isLoggedIn,
   clientLogout,
   type AuthUser,
 } from "@/lib/auth-client"
+import { getReferralCode } from "@/lib/referral"
 
 const NavLink = ({
   href,
@@ -96,6 +98,7 @@ export function NotchNavbar({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
+  const [referralCode, setReferralCode] = useState("")
   const accountRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -108,6 +111,7 @@ export function NotchNavbar({
     sync()
     window.addEventListener("auth-changed", sync)
     window.addEventListener("storage", sync)
+    setReferralCode(getReferralCode())
     return () => {
       window.removeEventListener("auth-changed", sync)
       window.removeEventListener("storage", sync)
@@ -211,7 +215,7 @@ export function NotchNavbar({
         Log in
       </Link>
       <Link
-        href="/signup"
+        href={referralCode ? `/signup?ref=${encodeURIComponent(referralCode)}` : "/signup"}
         className="px-3 py-1.5 text-sm font-medium text-background bg-foreground rounded-2xl hover:bg-foreground/90 transition-colors shadow-sm shadow-foreground/10 whitespace-nowrap"
       >
         Sign up
@@ -302,6 +306,7 @@ export function NotchNavbar({
                     <BookOpen className="w-4 h-4" />
                   </Link>
 
+                  <NotificationBell />
                   <ThemeToggle />
                   {authDesktop}
                 </div>
@@ -345,6 +350,7 @@ export function NotchNavbar({
                     </span>
                   )}
                 </Link>
+                <NotificationBell />
                 <MobileThemeToggle />
               </div>
             </div>
@@ -421,6 +427,10 @@ export function NotchNavbar({
                     <LayoutDashboard className="w-5 h-5 opacity-70" />
                     <span className="font-medium text-foreground/90">Dashboard</span>
                   </Link>
+                  <Link href="/settings" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
+                    <Settings className="w-5 h-5 opacity-70" />
+                    <span className="font-medium text-foreground/90">Settings</span>
+                  </Link>
                   <button
                     type="button"
                     className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors font-medium text-foreground/90 text-left"
@@ -435,7 +445,7 @@ export function NotchNavbar({
                   <Link href="/login" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors font-medium text-foreground/90" onClick={() => setIsMobileMenuOpen(false)}>
                     Log in
                   </Link>
-                  <Link href="/signup" className="flex items-center justify-center gap-2 p-3 rounded-lg bg-foreground text-background font-medium mt-2" onClick={() => setIsMobileMenuOpen(false)}>
+                  <Link href={referralCode ? `/signup?ref=${encodeURIComponent(referralCode)}` : "/signup"} className="flex items-center justify-center gap-2 p-3 rounded-lg bg-foreground text-background font-medium mt-2" onClick={() => setIsMobileMenuOpen(false)}>
                     Sign up
                   </Link>
                 </>

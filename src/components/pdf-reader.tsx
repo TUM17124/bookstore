@@ -284,15 +284,16 @@ const signupHref = `/signup?next=${encodeURIComponent(nextPath)}`
 
         {!loggedIn ? (
           <p className="px-4 pt-3 text-center text-[13px] text-black/60">
-            Your place is saved on this phone only.{' '}
+            Your place is saved on this phone only. Create a free account so
+            the page you are on follows you to another device — that is why
+            people register.{' '}
             <Link href={loginHref} className="font-semibold text-[#c45b78] underline">
               Log in
             </Link>
             {' · '}
             <Link href={signupHref} className="font-semibold text-[#c45b78] underline">
-              Sign up
-            </Link>{' '}
-            to continue on another device.
+              Create account
+            </Link>
           </p>
         ) : (
           <p className="px-4 pt-3 text-center text-[12px] text-black/55">

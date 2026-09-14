@@ -100,7 +100,7 @@ export function SiteFooter() {
               <li>
                 <Link
                   href="/signup"
-                  className="text-sm font-semibold text-foreground transition-colors hover:text-sky-600 dark:hover:text-sky-400"
+                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
                 >
                   Sign up
                 </Link>
@@ -108,7 +108,7 @@ export function SiteFooter() {
               <li>
                 <Link
                   href="/login"
-                  className="text-sm font-semibold text-foreground transition-colors hover:text-sky-600 dark:hover:text-sky-400"
+                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
                 >
                   Log in
                 </Link>
@@ -116,7 +116,7 @@ export function SiteFooter() {
               <li>
                 <Link
                   href="/publish"
-                  className="text-sm font-semibold text-foreground transition-colors hover:text-sky-600 dark:hover:text-sky-400"
+                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
                 >
                   Publish
                 </Link>
@@ -127,6 +127,14 @@ export function SiteFooter() {
                   className="text-sm text-foreground/70 transition-colors hover:text-foreground"
                 >
                   Dashboard
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/settings"
+                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
+                >
+                  Settings
                 </Link>
               </li>
               <li>

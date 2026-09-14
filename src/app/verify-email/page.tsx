@@ -4,6 +4,8 @@ import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { verifyEmail, resendCode, setToken } from '@/lib/api'
 import { setStoredUser } from '@/lib/auth-client'
+import { bindPushToAccount } from '@/lib/push'
+import { clearReferralCode } from '@/lib/referral'
 
 function Inner() {
   const router = useRouter()
@@ -28,6 +30,8 @@ function Inner() {
       if (data.access) setToken(data.access)
       setStoredUser({ email: data.user?.email || email, name: data.user?.name })
       window.dispatchEvent(new Event('auth-changed'))
+      clearReferralCode()
+      void bindPushToAccount()
       router.push(safeNext(sp.get('next') || '/'))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed')

@@ -3,6 +3,8 @@
 import { useEffect, useRef } from 'react'
 import { googleLogin, setTokens, clearTokens } from '@/lib/api'
 import { setStoredUser } from '@/lib/auth-client'
+import { bindPushToAccount } from '@/lib/push'
+import { clearReferralCode } from '@/lib/referral'
 
 declare global {
   interface Window {
@@ -36,18 +38,22 @@ export function GoogleLoginButton({
   accepted,
   onDone,
   onError,
+  referralCode = "",
 }: {
   accepted: boolean
   onDone: () => void
   onError?: (message: string) => void
+  referralCode?: string
 }) {
   const acceptedRef = useRef(accepted)
   const onDoneRef = useRef(onDone)
   const onErrorRef = useRef(onError)
+  const referralRef = useRef(referralCode)
 
   acceptedRef.current = accepted
   onDoneRef.current = onDone
   onErrorRef.current = onError
+  referralRef.current = referralCode
 
   useEffect(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
@@ -85,6 +91,7 @@ export function GoogleLoginButton({
             const data = await googleLogin(
               resp.credential,
               acceptedRef.current,
+              referralRef.current,
             )
 
             if (data.access) {
@@ -105,6 +112,8 @@ export function GoogleLoginButton({
             })
 
             window.dispatchEvent(new Event('auth-changed'))
+            void bindPushToAccount()
+            if (data.new_user) clearReferralCode()
 
             onDoneRef.current()
           } catch (err) {

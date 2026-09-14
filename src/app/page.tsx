@@ -35,6 +35,7 @@ function toCfg(b: ApiBook): BookCfg {
       b.hasEbook !== false && b.hasEbook !== undefined ? !!b.hasEbook : true,
     hasAudiobook: !!b.hasAudiobook,
     isFree: !!b.isFree,
+    isFeatured: !!b.is_featured,
     previewPages: b.previewPages != null ? Number(b.previewPages) : 4,
     audioUrl: b.audioUrl || undefined,
     pdfUrl: b.pdfUrl || undefined,
@@ -84,7 +85,15 @@ function HomeInner() {
       if (!replace && !hasMoreRef.current) return
       busy.current = true
       try {
-        const data = await getBooks({ ...queryFor(q, category), page: p })
+        const phone =
+          typeof window !== "undefined" &&
+          (window.matchMedia("(max-width: 760px)").matches ||
+            window.matchMedia("(pointer: coarse)").matches)
+        const data = await getBooks({
+          ...queryFor(q, category),
+          page: p,
+          pageSize: phone ? 6 : 12,
+        })
         const list = asBookList(data).map(toCfg)
         const more =
           !Array.isArray(data) && !!(data as Paginated<ApiBook>).next
@@ -100,7 +109,16 @@ function HomeInner() {
         setBooks((prev) => {
           if (replace) return orderWithSelected(list, selectedBookId)
           const seen = new Set(prev.map((b) => b.id))
-          return [...prev, ...list.filter((b) => !seen.has(b.id))]
+          return [
+            ...prev,
+            ...list.filter((b) => {
+              if (!seen.has(b.id)) {
+                seen.add(b.id)
+                return true
+              }
+              return !!b.isFeatured
+            }),
+          ]
         })
       } catch (e) {
         console.error(e)
@@ -131,8 +149,11 @@ function HomeInner() {
 
   if (loading) {
     return (
-      <main className="flex min-h-[calc(100dvh-4rem)] items-center justify-center text-sm text-muted-foreground">
-        Loading books…
+      <main className="home-shelf">
+        <OfferMarquee />
+        <div className="flex min-h-[calc(100dvh-6rem)] flex-1 items-center justify-center text-sm text-muted-foreground">
+          Opening the shelf…
+        </div>
       </main>
     )
   }

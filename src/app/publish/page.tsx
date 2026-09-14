@@ -86,13 +86,17 @@ export default function PublishPage() {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
         <h1 className="text-2xl font-bold">Publish a book</h1>
-        <p className="mt-3 text-sm text-foreground/60">
-          Sign in to submit a title for review.
+        <p className="mt-3 text-sm leading-relaxed text-foreground/65">
+          Publishing needs an account so the title, the payout, and the
+          invite reward attach to a real person — not a browser tab.
+          Create one to upload a PDF, set a price or mark it free, and
+          earn when readers buy. Install PlugYard afterwards if you want
+          to check sales and reviews from your home screen.
         </p>
         <p className="mt-6 text-sm">
           <Link href="/login?next=/publish" className="underline">Log in</Link>
           {' · '}
-          <Link href="/signup?next=/publish" className="underline">Sign up</Link>
+          <Link href="/signup?next=/publish" className="underline">Create a free account</Link>
         </p>
       </main>
     )

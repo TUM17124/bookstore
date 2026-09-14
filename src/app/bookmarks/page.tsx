@@ -34,11 +34,15 @@ export default function BookmarksPage() {
           <p>No bookmarks yet. Save a book from the detail panel.</p>
           {!loggedIn && (
             <p className="max-w-sm text-foreground/45">
-              Guest saves stay on this device.{' '}
+              Guest saves stay on this device. Create an account so a
+              bookmark is still there when you switch phones.{' '}
               <Link href="/login" className="font-semibold text-sky-600 underline">
                 Log in
-              </Link>{' '}
-              to sync them to your account.
+              </Link>
+              {' · '}
+              <Link href="/signup" className="font-semibold text-sky-600 underline">
+                Create account
+              </Link>
             </p>
           )}
         </div>

@@ -7,6 +7,9 @@ import { SiteFooter } from "@/components/site-footer"
 import { PwaRegister } from "@/components/pwa-register"
 import { PublishInviteModal } from "@/components/publish-invite-modal"
 import { LegalGate } from '@/components/legal-gate'
+import { InstallAndPush } from "@/components/install-and-push"
+import { PushPrompt } from "@/components/push-prompt"
+import { ReferralCapture } from "@/components/referral-capture"
 
 const SITE = "https://plugyard.com"
 
@@ -97,11 +100,14 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <BookmarksProvider>
             <PwaRegister />
+            <ReferralCapture />
             <div className="site-nav">
               <NotchNavbar />
+              <PushPrompt />
             </div>
             <div className="site-main-offset">{children}</div>
              <LegalGate />
+             <InstallAndPush />
             <PublishInviteModal />
             <SiteFooter />
           </BookmarksProvider>

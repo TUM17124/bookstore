@@ -28,6 +28,7 @@ export type ApiBook = {
   hasEbook?: boolean
   hasAudiobook?: boolean
   isFree?: boolean
+  is_featured?: boolean
   previewPages?: number
   audioUrl?: string | null
   pdfUrl?: string | null
@@ -127,6 +128,7 @@ export async function getBooks(params?: {
   category?: string
   search?: string
   page?: number
+  pageSize?: number
 }): Promise<Paginated<ApiBook> | ApiBook[]> {
   if (!API) throw new Error("NEXT_PUBLIC_API_URL is not set")
 
@@ -135,6 +137,7 @@ export async function getBooks(params?: {
   if (params?.category) q.set("category", params.category)
   if (params?.search) q.set("search", params.search)
   if (params?.page) q.set("page", String(params.page))
+  if (params?.pageSize) q.set("page_size", String(params.pageSize))
 
   const qs = q.toString()
   const url = `${API}/books/${qs ? `?${qs}` : ""}`
@@ -191,6 +194,7 @@ export async function register(
   name = "",
   confirmPassword = "",
   termsAccepted = false,
+  referralCode = "",
 ) {
   return api("/auth/register/", {
     method: "POST",
@@ -200,6 +204,8 @@ export async function register(
       confirm_password: confirmPassword || password,
       name,
       terms_accepted: termsAccepted,
+      referral_code: (referralCode || "").trim(),
+      ref: (referralCode || "").trim(),
     }),
   })
 }
@@ -257,16 +263,23 @@ export async function resetPassword(
   return data
 }
 
-export async function googleLogin(credential: string, termsAccepted = false) {
+export async function googleLogin(
+  credential: string,
+  termsAccepted = false,
+  referralCode = "",
+) {
   const data = await api<{
     access?: string
     refresh?: string
     user?: { email?: string; name?: string; terms_accepted?: boolean }
+    new_user?: boolean
   }>("/auth/google/", {
     method: "POST",
     body: JSON.stringify({
       credential,
       terms_accepted: termsAccepted,
+      referral_code: (referralCode || "").trim(),
+      ref: (referralCode || "").trim(),
     }),
   })
   if (data.access) setTokens(data.access, data.refresh)
@@ -634,6 +647,12 @@ export async function acceptLegal(
 
 export const getSettings = () => api<any>("/me/settings/")
 export const changeUsername = (username: string) => api("/me/settings/username/", { method: "POST", body: JSON.stringify({ username }) })
+export async function changeName(first_name: string, last_name: string) {
+  return api("/settings/name/", {
+    method: "POST",
+    body: JSON.stringify({ first_name, last_name }),
+  })
+}
 export const startEmailChange = (email: string, current_password: string) => api("/me/settings/email/", { method: "POST", body: JSON.stringify({ email, current_password }) })
 export const confirmEmailChange = (code: string) => api("/me/settings/email/confirm/", { method: "POST", body: JSON.stringify({ code }) })
 export const requestAffiliateWithdrawal = (amount: string) => api("/me/affiliate/withdrawals/", { method: "POST", body: JSON.stringify({ amount }) })

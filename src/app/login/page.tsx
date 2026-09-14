@@ -7,6 +7,8 @@ import { login } from '@/lib/api'
 import { setStoredUser } from '@/lib/auth-client'
 import { GoogleLoginButton } from '@/components/google-login-button'
 import { LegalAcceptTick } from '@/components/legal-accept'
+import { bindPushToAccount } from '@/lib/push'
+import { captureReferralFromLocation, getReferralCode } from '@/lib/referral'
 
 function isLegalError(message: string) {
   const text = message.toLowerCase()
@@ -34,9 +36,15 @@ function LoginInner() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
+  const [referralCode, setReferralCodeState] = useState('')
+
   useEffect(() => {
     if (prefillEmail) setEmail(prefillEmail)
   }, [prefillEmail])
+
+  useEffect(() => {
+    setReferralCodeState(captureReferralFromLocation() || getReferralCode())
+  }, [])
 
   function safeNext(path: string) {
     if (path.startsWith('/') && !path.startsWith('//')) return path
@@ -49,6 +57,7 @@ function LoginInner() {
       name: name || userEmail.split('@')[0],
     })
     window.dispatchEvent(new Event('auth-changed'))
+    void bindPushToAccount()
     router.push(safeNext(nextPath))
     router.refresh()
   }
@@ -87,6 +96,11 @@ function LoginInner() {
   return (
     <main className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4">
       <h1 className="text-2xl font-bold">Log in</h1>
+      <p className="mt-2 text-sm leading-relaxed text-foreground/65">
+        Signing in puts your place, bookmarks, purchases, and invite
+        wallet on this phone. After that, install PlugYard so the library
+        opens like an app instead of a tab you have to search for.
+      </p>
 
       <div
         className={`mt-6 rounded-lg ${
@@ -115,8 +129,10 @@ function LoginInner() {
       <div className="mt-6">
         <GoogleLoginButton
           accepted={accepted}
+          referralCode={referralCode}
           onDone={() => {
             window.dispatchEvent(new Event('auth-changed'))
+            void bindPushToAccount()
             router.push(safeNext(nextPath))
             router.refresh()
           }}
@@ -180,7 +196,9 @@ function LoginInner() {
         <Link
           href={`/signup?email=${encodeURIComponent(
             email,
-          )}&next=${encodeURIComponent(nextPath)}`}
+          )}&next=${encodeURIComponent(nextPath)}${
+            referralCode ? `&ref=${encodeURIComponent(referralCode)}` : ''
+          }`}
           className="underline"
         >
           Sign up

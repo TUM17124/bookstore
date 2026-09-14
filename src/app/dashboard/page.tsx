@@ -19,6 +19,14 @@ import {
 
 const PAYOUT_EVERY_DAYS = 30;
 
+const SECTIONS = [
+  { id: "sales", label: "Sales and cut" },
+  { id: "payout", label: "Payout account" },
+  { id: "books", label: "Your books" },
+] as const;
+
+type SectionId = (typeof SECTIONS)[number]["id"];
+
 function useCountdown(seconds: number) {
   const [left, setLeft] = useState(seconds);
 
@@ -64,6 +72,7 @@ function cycleDate(c: any): Date | null {
 export default function DashboardPage() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [active, setActive] = useState<SectionId>("sales");
 
   const [token, setToken] = useState("");
   const [books, setBooks] = useState<any[]>([]);
@@ -168,11 +177,6 @@ export default function DashboardPage() {
     return every;
   }, [cycles, payout]);
 
-  /*
-   * Check login exactly like the Publish page.
-   *
-   * The token is only read in the browser.
-   */
   useEffect(() => {
     const currentToken = getToken() || "";
 
@@ -565,10 +569,6 @@ export default function DashboardPage() {
     minPayout > 0 &&
     !payoutBusy;
 
-  /*
-   * Do not render dashboard content until we know
-   * whether a token exists.
-   */
   if (!authChecked) {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
@@ -579,10 +579,6 @@ export default function DashboardPage() {
     );
   }
 
-  /*
-   * Not logged in:
-   * show the same login/signup behavior as Publish.
-   */
   if (!loggedIn) {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
@@ -616,7 +612,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-4 space-y-8">
+    <div className="mx-auto max-w-6xl p-4 space-y-6">
       {msg && (
         <div
           role={
@@ -634,530 +630,580 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <section className="rounded-2xl border p-4 space-y-3">
-        <h2 className="text-xl font-bold">
-          Sales and cut
-        </h2>
-
-        <p className="text-sm text-neutral-600">
-          PlugYard keeps{" "}
-          <b>{cutPercent}%</b>. You keep{" "}
-          <b>{authorPercent}%</b>. Minimum
-          payout is{" "}
-          <b>
-            KES{" "}
-            {minPayout.toLocaleString()}
-          </b>
-          .
-        </p>
-
-        <div className="grid gap-3 sm:grid-cols-4">
-          <div className="rounded-xl border p-3">
-            <p className="text-xs uppercase tracking-wide text-neutral-500">
-              Gross sales
-            </p>
-            <p className="text-lg font-semibold">
-              KES{" "}
-              {computedSalesTotal.toLocaleString()}
-            </p>
-          </div>
-
-          <div className="rounded-xl border p-3">
-            <p className="text-xs uppercase tracking-wide text-neutral-500">
-              Your cut
-            </p>
-            <p className="text-lg font-semibold">
-              KES{" "}
-              {computedAuthorTotal.toLocaleString()}
-            </p>
-          </div>
-
-          <div className="rounded-xl border p-3">
-            <p className="text-xs uppercase tracking-wide text-neutral-500">
-              Available
-            </p>
-            <p className="text-lg font-semibold">
-              KES{" "}
-              {available.toLocaleString()}
-            </p>
-          </div>
-
-          <div className="rounded-xl border p-3">
-            <p className="text-xs uppercase tracking-wide text-neutral-500">
-              Orders
-            </p>
-            <p className="text-lg font-semibold">
-              {sales.length}
-            </p>
-          </div>
-        </div>
-
-        {sales.length === 0 ? (
-          <p className="text-sm text-neutral-600">
-            No sales yet. That is normal for
-            a new title.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {sales.map((row, i) => {
-              const title =
-                row.book_title ||
-                row.title ||
-                `Order #${
-                  row.order_id ||
-                  row.id
-                }`;
-
-              const yourCut = Number(
-                row.author_amount ??
-                  row.net ??
-                  row.amount ??
-                  0
-              );
-
-              const grossAmt = Number(
-                row.gross ??
-                  row.total ??
-                  0
-              );
-
-              return (
-                <li
-                  key={
-                    row.id ||
-                    row.order_id ||
-                    i
-                  }
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
-                >
-                  <span>
-                    <b>{title}</b>
-
-                    <span className="text-neutral-500">
-                      {" "}
-                      · Order #
-                      {row.order_id ||
-                        row.id}
-                      {row.product_type
-                        ? ` · ${row.product_type}`
-                        : ""}
-                    </span>
-                  </span>
-
-                  <span>
-                    Your cut KES{" "}
-                    {yourCut.toLocaleString()}
-                    {grossAmt
-                      ? ` · gross ${grossAmt.toLocaleString()}`
-                      : ""}
-                    {row.cut_percent != null
-                      ? ` · platform ${row.cut_percent}%`
-                      : ""}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        <button
-          type="button"
-          disabled={!canRequest}
-          onClick={onRequestPayout}
-          className="w-full rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-400"
-        >
-          {payoutBusy
-            ? "Requesting…"
-            : `Request payout · KES ${available.toLocaleString()}`}
-        </button>
-
-        <p className="text-xs text-neutral-500">
-          {!hasAccount
-            ? "Save a payout account below before requesting."
-            : available < minPayout
-              ? `You need at least KES ${minPayout.toLocaleString()} available.`
-              : "Paid from Site Settings minimum payout."}
-        </p>
-      </section>
-
-      <section className="rounded-2xl border p-4 space-y-3">
-        <h2 className="text-xl font-bold">
-          Where should we send your money?
-        </h2>
-
-        <p className="text-sm text-neutral-600">
-          Sales are paid every{" "}
-          {payout?.payout_every_days ||
-            PAYOUT_EVERY_DAYS}{" "}
-          days. Add M-Pesa, Airtel Money,
-          or a bank account. Next payout
-          window in about{" "}
-          <b>
-            {Number.isFinite(
-              nextPayoutDays
-            )
-              ? nextPayoutDays
-              : PAYOUT_EVERY_DAYS}{" "}
-            days
-          </b>
-          .
-        </p>
-
-        {hasAccount && (
-          <p className="text-sm">
-            Saved:{" "}
-            <b>
-              {payout.account.method ===
-              "card"
-                ? "bank"
-                : payout.account.method}
-            </b>
-
-            {savedBankName
-              ? ` · ${savedBankName}`
-              : ""}
-
-            {" "}·{" "}
-            {payout.account.account_name}
-            {" "}·{" "}
-            {payout.account.account_number}
-          </p>
-        )}
-
-        <form
-          onSubmit={onSavePayout}
-          className="grid gap-3 sm:grid-cols-2"
-        >
-          <label className="text-sm font-medium sm:col-span-2">
-            How should we pay you?
-
-            <select
-              className="mt-1 w-full border rounded-lg p-2 font-normal"
-              value={methodLabel}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  method:
-                    e.target.value ===
-                    "bank"
-                      ? "card"
-                      : e.target.value,
-                  extra:
-                    e.target.value ===
-                    "bank"
-                      ? form.extra
-                      : "",
-                })
-              }
+      <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+        {/* Mobile: shrinking horizontal tab strip */}
+        <nav className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 sm:hidden">
+          {SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setActive(s.id)}
+              className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                active === s.id
+                  ? "border-black bg-black text-white"
+                  : "border-neutral-300 text-neutral-600"
+              }`}
             >
-              <option value="mpesa">
-                M-Pesa number
-              </option>
+              {s.label}
+            </button>
+          ))}
+        </nav>
 
-              <option value="airtel">
-                Airtel Money number
-              </option>
-
-              <option value="bank">
-                Kenyan bank account
-              </option>
-            </select>
-          </label>
-
-          <label className="text-sm font-medium">
-            Account holder name
-
-            <input
-              className="mt-1 w-full border rounded-lg p-2 font-normal"
-              placeholder="Name on the account"
-              value={
-                form.account_name
-              }
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  account_name:
-                    e.target.value,
-                })
-              }
-            />
-          </label>
-
-          {form.method ===
-            "mpesa" && (
-            <label className="text-sm font-medium">
-              M-Pesa phone number
-
-              <input
-                className="mt-1 w-full border rounded-lg p-2 font-normal"
-                placeholder="07xxxxxxxx"
-                inputMode="tel"
-                value={
-                  form.account_number
-                }
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    account_number:
-                      e.target.value,
-                  })
-                }
-              />
-            </label>
-          )}
-
-          {form.method ===
-            "airtel" && (
-            <label className="text-sm font-medium">
-              Airtel Money number
-
-              <input
-                className="mt-1 w-full border rounded-lg p-2 font-normal"
-                placeholder="07xxxxxxxx"
-                inputMode="tel"
-                value={
-                  form.account_number
-                }
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    account_number:
-                      e.target.value,
-                  })
-                }
-              />
-            </label>
-          )}
-
-          {form.method ===
-            "card" && (
-            <>
-              <label className="text-sm font-medium">
-                Bank
-
-                <select
-                  className="mt-1 w-full border rounded-lg p-2 font-normal"
-                  value={form.extra}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      extra:
-                        e.target.value,
-                    })
-                  }
-                  required
+        {/* Desktop: fixed left nav */}
+        <nav className="hidden w-52 shrink-0 sm:block">
+          <ul className="space-y-1">
+            {SECTIONS.map((s) => (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  onClick={() => setActive(s.id)}
+                  className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                    active === s.id
+                      ? "bg-black text-white"
+                      : "text-neutral-600 hover:bg-neutral-100"
+                  }`}
                 >
-                  <option value="">
-                    Select your bank
-                  </option>
+                  {s.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
 
-                  {banks.map((b) => (
-                    <option
-                      key={b.code}
-                      value={b.code}
-                    >
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+        {/* Content */}
+        <div className="min-w-0 flex-1 space-y-8">
+          {active === "sales" && (
+            <section className="rounded-2xl border p-4 space-y-3">
+              <h2 className="text-xl font-bold">
+                Sales and cut
+              </h2>
 
-              <label className="text-sm font-medium sm:col-span-2">
-                Bank account number
-
-                <input
-                  className="mt-1 w-full border rounded-lg p-2 font-normal"
-                  placeholder="Bank account number"
-                  inputMode="numeric"
-                  value={
-                    form.account_number
-                  }
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      account_number:
-                        e.target.value,
-                    })
-                  }
-                />
-              </label>
-
-              {banks.length === 0 && (
-                <p className="text-xs text-neutral-500 sm:col-span-2">
-                  Bank list is empty. Deploy
-                  the backend banks list, or
-                  use M-Pesa.
-                </p>
-              )}
-            </>
-          )}
-
-          {form.method !==
-            "card" && (
-            <label className="text-sm font-medium">
-              Extra note (optional)
-
-              <input
-                className="mt-1 w-full border rounded-lg p-2 font-normal"
-                placeholder="Branch or note"
-                value={form.extra}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    extra:
-                      e.target.value,
-                  })
-                }
-              />
-            </label>
-          )}
-
-          <button className="sm:col-span-2 bg-black text-white rounded-lg py-2">
-            {hasAccount
-              ? "Update payout account"
-              : "Save payout account"}
-          </button>
-        </form>
-
-        {hasAccount && (
-          <button
-            type="button"
-            onClick={
-              onDeletePayout
-            }
-            className="w-full rounded-lg border border-red-600 px-4 py-2 text-sm font-semibold text-red-700"
-          >
-            Delete payout account
-          </button>
-        )}
-
-        <button
-          type="button"
-          onClick={() =>
-            setHistoryOpen(
-              (v) => !v
-            )
-          }
-          className="w-full rounded-lg border px-4 py-2 text-sm font-semibold"
-        >
-          {historyOpen
-            ? "Hide payment history"
-            : "Payment history"}
-        </button>
-
-        {historyOpen && (
-          <div className="space-y-2">
-            {cycles.length === 0 ? (
               <p className="text-sm text-neutral-600">
-                No payout cycles yet.
+                PlugYard keeps{" "}
+                <b>{cutPercent}%</b>. You keep{" "}
+                <b>{authorPercent}%</b>. Minimum
+                payout is{" "}
+                <b>
+                  KES{" "}
+                  {minPayout.toLocaleString()}
+                </b>
+                .
               </p>
-            ) : (
-              <ul className="space-y-2">
-                {cycles.map(
-                  (
-                    c: any,
-                    i: number
-                  ) => {
-                    const when =
-                      cycleDate(c);
+
+              <div className="grid gap-3 sm:grid-cols-4">
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs uppercase tracking-wide text-neutral-500">
+                    Gross sales
+                  </p>
+                  <p className="text-lg font-semibold">
+                    KES{" "}
+                    {computedSalesTotal.toLocaleString()}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs uppercase tracking-wide text-neutral-500">
+                    Your cut
+                  </p>
+                  <p className="text-lg font-semibold">
+                    KES{" "}
+                    {computedAuthorTotal.toLocaleString()}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs uppercase tracking-wide text-neutral-500">
+                    Available
+                  </p>
+                  <p className="text-lg font-semibold">
+                    KES{" "}
+                    {available.toLocaleString()}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs uppercase tracking-wide text-neutral-500">
+                    Orders
+                  </p>
+                  <p className="text-lg font-semibold">
+                    {sales.length}
+                  </p>
+                </div>
+              </div>
+
+              {sales.length === 0 ? (
+                <p className="text-sm text-neutral-600">
+                  No sales yet. That is normal for
+                  a new title.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {sales.map((row, i) => {
+                    const title =
+                      row.book_title ||
+                      row.title ||
+                      `Order #${
+                        row.order_id ||
+                        row.id
+                      }`;
+
+                    const yourCut = Number(
+                      row.author_amount ??
+                        row.net ??
+                        row.amount ??
+                        0
+                    );
+
+                    const grossAmt = Number(
+                      row.gross ??
+                        row.total ??
+                        0
+                    );
 
                     return (
                       <li
                         key={
-                          c.id || i
+                          row.id ||
+                          row.order_id ||
+                          i
                         }
                         className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
                       >
                         <span>
-                          <b>
-                            {c.period_start ||
-                              "—"}{" "}
-                            –{" "}
-                            {c.period_end ||
-                              "—"}
-                          </b>
+                          <b>{title}</b>
 
                           <span className="text-neutral-500">
                             {" "}
-                            ·{" "}
-                            {c.status ||
-                              "pending"}
-
-                            {when
-                              ? ` · ${when.toLocaleString()}`
+                            · Order #
+                            {row.order_id ||
+                              row.id}
+                            {row.product_type
+                              ? ` · ${row.product_type}`
                               : ""}
                           </span>
                         </span>
 
                         <span>
-                          KES{" "}
-                          {Number(
-                            c.amount ||
-                              0
-                          ).toLocaleString()}
+                          Your cut KES{" "}
+                          {yourCut.toLocaleString()}
+                          {grossAmt
+                            ? ` · gross ${grossAmt.toLocaleString()}`
+                            : ""}
+                          {row.cut_percent != null
+                            ? ` · platform ${row.cut_percent}%`
+                            : ""}
                         </span>
                       </li>
                     );
-                  }
-                )}
-              </ul>
-            )}
-          </div>
-        )}
-      </section>
+                  })}
+                </ul>
+              )}
 
-      <section className="space-y-3">
-        <h2 className="text-xl font-bold">
-          Your books
-        </h2>
+              <button
+                type="button"
+                disabled={!canRequest}
+                onClick={onRequestPayout}
+                className="w-full rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-400"
+              >
+                {payoutBusy
+                  ? "Requesting…"
+                  : `Request payout · KES ${available.toLocaleString()}`}
+              </button>
 
-        {books.length === 0 && (
-          <p className="text-sm text-neutral-600">
-            No books yet. Publish a title
-            to manage it here.
-          </p>
-        )}
+              <p className="text-xs text-neutral-500">
+                {!hasAccount
+                  ? "Save a payout account below before requesting."
+                  : available < minPayout
+                    ? `You need at least KES ${minPayout.toLocaleString()} available.`
+                    : "Paid from Site Settings minimum payout."}
+              </p>
+            </section>
+          )}
 
-        {books.map((book) => (
-          <BookBoostRow
-            key={book.id}
-            book={book}
-            boost={
-              byBook[book.id]
-            }
-            onBoost={onBoost}
-            onUpdated={(next) =>
-              setBooks((list) =>
-                list.map((b) =>
-                  String(b.id) ===
-                  String(next.id)
-                    ? {
-                        ...b,
-                        ...next,
+          {active === "payout" && (
+            <section className="rounded-2xl border p-4 space-y-3">
+              <h2 className="text-xl font-bold">
+                Where should we send your money?
+              </h2>
+
+              <p className="text-sm text-neutral-600">
+                Sales are paid every{" "}
+                {payout?.payout_every_days ||
+                  PAYOUT_EVERY_DAYS}{" "}
+                days. Add M-Pesa, Airtel Money,
+                or a bank account. Next payout
+                window in about{" "}
+                <b>
+                  {Number.isFinite(
+                    nextPayoutDays
+                  )
+                    ? nextPayoutDays
+                    : PAYOUT_EVERY_DAYS}{" "}
+                  days
+                </b>
+                .
+              </p>
+
+              {hasAccount && (
+                <p className="text-sm">
+                  Saved:{" "}
+                  <b>
+                    {payout.account.method ===
+                    "card"
+                      ? "bank"
+                      : payout.account.method}
+                  </b>
+
+                  {savedBankName
+                    ? ` · ${savedBankName}`
+                    : ""}
+
+                  {" "}·{" "}
+                  {payout.account.account_name}
+                  {" "}·{" "}
+                  {payout.account.account_number}
+                </p>
+              )}
+
+              <form
+                onSubmit={onSavePayout}
+                className="grid gap-3 sm:grid-cols-2"
+              >
+                <label className="text-sm font-medium sm:col-span-2">
+                  How should we pay you?
+
+                  <select
+                    className="mt-1 w-full border rounded-lg p-2 font-normal"
+                    value={methodLabel}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        method:
+                          e.target.value ===
+                          "bank"
+                            ? "card"
+                            : e.target.value,
+                        extra:
+                          e.target.value ===
+                          "bank"
+                            ? form.extra
+                            : "",
+                      })
+                    }
+                  >
+                    <option value="mpesa">
+                      M-Pesa number
+                    </option>
+
+                    <option value="airtel">
+                      Airtel Money number
+                    </option>
+
+                    <option value="bank">
+                      Kenyan bank account
+                    </option>
+                  </select>
+                </label>
+
+                <label className="text-sm font-medium">
+                  Account holder name
+
+                  <input
+                    className="mt-1 w-full border rounded-lg p-2 font-normal"
+                    placeholder="Name on the account"
+                    value={
+                      form.account_name
+                    }
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        account_name:
+                          e.target.value,
+                      })
+                    }
+                  />
+                </label>
+
+                {form.method ===
+                  "mpesa" && (
+                  <label className="text-sm font-medium">
+                    M-Pesa phone number
+
+                    <input
+                      className="mt-1 w-full border rounded-lg p-2 font-normal"
+                      placeholder="07xxxxxxxx"
+                      inputMode="tel"
+                      value={
+                        form.account_number
                       }
-                    : b
-                )
-              )
-            }
-            onRemoved={(id) =>
-              setBooks((list) =>
-                list.filter(
-                  (b) =>
-                    String(b.id) !==
-                    String(id)
-                )
-              )
-            }
-            onFlash={(
-              text,
-              ok
-            ) => {
-              setMsgOk(ok);
-              setMsg(text);
-            }}
-          />
-        ))}
-      </section>
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          account_number:
+                            e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                )}
+
+                {form.method ===
+                  "airtel" && (
+                  <label className="text-sm font-medium">
+                    Airtel Money number
+
+                    <input
+                      className="mt-1 w-full border rounded-lg p-2 font-normal"
+                      placeholder="07xxxxxxxx"
+                      inputMode="tel"
+                      value={
+                        form.account_number
+                      }
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          account_number:
+                            e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                )}
+
+                {form.method ===
+                  "card" && (
+                  <>
+                    <label className="text-sm font-medium">
+                      Bank
+
+                      <select
+                        className="mt-1 w-full border rounded-lg p-2 font-normal"
+                        value={form.extra}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            extra:
+                              e.target.value,
+                          })
+                        }
+                        required
+                      >
+                        <option value="">
+                          Select your bank
+                        </option>
+
+                        {banks.map((b) => (
+                          <option
+                            key={b.code}
+                            value={b.code}
+                          >
+                            {b.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="text-sm font-medium sm:col-span-2">
+                      Bank account number
+
+                      <input
+                        className="mt-1 w-full border rounded-lg p-2 font-normal"
+                        placeholder="Bank account number"
+                        inputMode="numeric"
+                        value={
+                          form.account_number
+                        }
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            account_number:
+                              e.target.value,
+                          })
+                        }
+                      />
+                    </label>
+
+                    {banks.length === 0 && (
+                      <p className="text-xs text-neutral-500 sm:col-span-2">
+                        Bank list is empty. Deploy
+                        the backend banks list, or
+                        use M-Pesa.
+                      </p>
+                    )}
+                  </>
+                )}
+
+                {form.method !==
+                  "card" && (
+                  <label className="text-sm font-medium">
+                    Extra note (optional)
+
+                    <input
+                      className="mt-1 w-full border rounded-lg p-2 font-normal"
+                      placeholder="Branch or note"
+                      value={form.extra}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          extra:
+                            e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                )}
+
+                <button className="sm:col-span-2 bg-black text-white rounded-lg py-2">
+                  {hasAccount
+                    ? "Update payout account"
+                    : "Save payout account"}
+                </button>
+              </form>
+
+              {hasAccount && (
+                <button
+                  type="button"
+                  onClick={
+                    onDeletePayout
+                  }
+                  className="w-full rounded-lg border border-red-600 px-4 py-2 text-sm font-semibold text-red-700"
+                >
+                  Delete payout account
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setHistoryOpen(
+                    (v) => !v
+                  )
+                }
+                className="w-full rounded-lg border px-4 py-2 text-sm font-semibold"
+              >
+                {historyOpen
+                  ? "Hide payment history"
+                  : "Payment history"}
+              </button>
+
+              {historyOpen && (
+                <div className="space-y-2">
+                  {cycles.length === 0 ? (
+                    <p className="text-sm text-neutral-600">
+                      No payout cycles yet.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {cycles.map(
+                        (
+                          c: any,
+                          i: number
+                        ) => {
+                          const when =
+                            cycleDate(c);
+
+                          return (
+                            <li
+                              key={
+                                c.id || i
+                              }
+                              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
+                            >
+                              <span>
+                                <b>
+                                  {c.period_start ||
+                                    "—"}{" "}
+                                  –{" "}
+                                  {c.period_end ||
+                                    "—"}
+                                </b>
+
+                                <span className="text-neutral-500">
+                                  {" "}
+                                  ·{" "}
+                                  {c.status ||
+                                    "pending"}
+
+                                  {when
+                                    ? ` · ${when.toLocaleString()}`
+                                    : ""}
+                                </span>
+                              </span>
+
+                              <span>
+                                KES{" "}
+                                {Number(
+                                  c.amount ||
+                                    0
+                                ).toLocaleString()}
+                              </span>
+                            </li>
+                          );
+                        }
+                      )}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {active === "books" && (
+            <section className="space-y-3">
+              <h2 className="text-xl font-bold">
+                Your books
+              </h2>
+
+              {books.length === 0 && (
+                <p className="text-sm text-neutral-600">
+                  No books yet. Publish a title
+                  to manage it here.
+                </p>
+              )}
+
+              {books.map((book) => (
+                <BookBoostRow
+                  key={book.id}
+                  book={book}
+                  boost={
+                    byBook[book.id]
+                  }
+                  onBoost={onBoost}
+                  onUpdated={(next) =>
+                    setBooks((list) =>
+                      list.map((b) =>
+                        String(b.id) ===
+                        String(next.id)
+                          ? {
+                              ...b,
+                              ...next,
+                            }
+                          : b
+                      )
+                    )
+                  }
+                  onRemoved={(id) =>
+                    setBooks((list) =>
+                      list.filter(
+                        (b) =>
+                          String(b.id) !==
+                          String(id)
+                      )
+                    )
+                  }
+                  onFlash={(
+                    text,
+                    ok
+                  ) => {
+                    setMsgOk(ok);
+                    setMsg(text);
+                  }}
+                />
+              ))}
+            </section>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -6,6 +6,10 @@ import Link from 'next/link'
 import { register } from '@/lib/api'
 import { GoogleLoginButton } from '@/components/google-login-button'
 import { LegalAcceptTick } from '@/components/legal-accept'
+import {
+  captureReferralFromLocation,
+  setReferralCode,
+} from '@/lib/referral'
 
 function isLegalError(message: string) {
   const text = message.toLowerCase()
@@ -64,9 +68,16 @@ function SignupInner() {
 
   const nextPath = sp.get('next') || '/'
   const prefillEmail = sp.get('email') || ''
+  const prefillRef = (
+    sp.get('ref') ||
+    sp.get('referral') ||
+    sp.get('referral_code') ||
+    ''
+  ).trim()
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState(prefillEmail)
+  const [referralCode, setReferralCodeField] = useState(prefillRef.toUpperCase())
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
 
@@ -83,6 +94,15 @@ function SignupInner() {
       setEmail(prefillEmail)
     }
   }, [prefillEmail])
+
+  useEffect(() => {
+    const stored = captureReferralFromLocation()
+    const next = (prefillRef || stored).toUpperCase()
+    if (next) {
+      setReferralCodeField(next)
+      setReferralCode(next)
+    }
+  }, [prefillRef])
 
   function safeNext(path: string) {
     if (
@@ -143,6 +163,7 @@ function SignupInner() {
         name,
         confirm,
         true,
+        referralCode,
       )
 
       router.push(
@@ -169,8 +190,16 @@ function SignupInner() {
   return (
     <main className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4">
       <h1 className="text-2xl font-bold">
-        Sign up
+        Create your PlugYard account
       </h1>
+      <p className="mt-2 text-sm leading-relaxed text-foreground/65">
+        A guest can read. An account is why the library can remember you:
+        your page in a book, bookmarks, purchases, and invite rewards stay
+        with you on the next phone. We also email you a personal note when
+        a title matches how you read — or when someone joins with your code.
+        Install the app after this if you want that same shelf one tap from
+        the home screen.
+      </p>
 
       <div
         className={`mt-6 rounded-lg ${
@@ -195,6 +224,7 @@ function SignupInner() {
       <div className="mt-6">
         <GoogleLoginButton
           accepted={accepted}
+          referralCode={referralCode}
           onError={(message) => {
             if (isLegalError(message)) {
               setLegalRequired(true)
@@ -253,6 +283,33 @@ function SignupInner() {
           }
           className="rounded-lg border border-foreground/15 bg-transparent px-3 py-2"
         />
+
+        <div>
+          <input
+            type="text"
+            name="referral_code"
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            placeholder="Referral code (optional)"
+            value={referralCode}
+            onChange={(e) => {
+              const next = e.target.value.toUpperCase()
+              setReferralCodeField(next)
+              setReferralCode(next)
+            }}
+            className="w-full rounded-lg border border-foreground/15 bg-transparent px-3 py-2 tracking-wide"
+          />
+          {referralCode ? (
+            <p className="mt-1 text-xs text-foreground/55">
+              You&apos;ll be linked to the person who shared this code.
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-foreground/45">
+              Have an invite? Paste the code here, or open their invite link.
+            </p>
+          )}
+        </div>
 
         <div className="relative">
           <input

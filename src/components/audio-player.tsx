@@ -530,13 +530,14 @@ export function AudioPlayer({
 
             {!loggedIn ? (
               <p className="max-w-md text-center text-[13px] text-white/60">
-                Log in to resume on another device.{' '}
+                Without an account this timestamp dies with the tab. Register
+                so you can pause here and finish on another phone.{' '}
                 <Link href={loginHref} className="font-semibold text-[#f591ac] underline">
                   Log in
                 </Link>
                 {' · '}
                 <Link href={signupHref} className="font-semibold text-[#f591ac] underline">
-                  Sign up
+                  Create account
                 </Link>
               </p>
             ) : (

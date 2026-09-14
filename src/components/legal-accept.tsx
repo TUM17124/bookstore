@@ -33,40 +33,25 @@ export function LegalAcceptTick({
 
       <span>
         I have read and accept the{' '}
-        <Link
-          href="/terms"
-          className="underline hover:text-foreground"
-          target="_blank"
-        >
+        <Link href="/terms" className="underline hover:text-foreground" target="_blank">
           Terms &amp; Conditions
         </Link>
         ,{' '}
-        <Link
-          href="/terms-of-use"
-          className="underline hover:text-foreground"
-          target="_blank"
-        >
+        <Link href="/terms-of-use" className="underline hover:text-foreground" target="_blank">
           Terms of Use
         </Link>
         ,{' '}
-        <Link
-          href="/privacy"
-          className="underline hover:text-foreground"
-          target="_blank"
-        >
+        <Link href="/privacy" className="underline hover:text-foreground" target="_blank">
           Privacy Policy
         </Link>
         {' '}and{' '}
-        <Link
-          href="/refund-policy"
-          className="underline hover:text-foreground"
-          target="_blank"
-        >
+        <Link href="/refund-policy" className="underline hover:text-foreground" target="_blank">
           Refund Policy
         </Link>
         . This includes uploading ebooks, audiobooks, covers and spines, how
         you are paid when a title sells, PlugYard’s cut (set by the admin),
-        and buying Boost ads.
+        buying Boost ads, and the affiliate programme (invite links, rewards
+        when referred authors are published, and withdrawals).
       </span>
     </label>
   )
