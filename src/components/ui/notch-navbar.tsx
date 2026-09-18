@@ -21,6 +21,7 @@ import {
   LogOut,
   ChevronDown,
   User,
+  FileEdit,
 } from "lucide-react"
 import { BookSearchModal } from "@/components/book-search-modal"
 import { cn } from "@/lib/utils"
@@ -285,6 +286,15 @@ export function NotchNavbar({
                   </button>
 
                   <Link
+                    href="/tools/pdf-editor"
+                    className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-foreground/5 transition-colors text-foreground/70 hover:text-foreground"
+                    aria-label="PDF Editor"
+                    title="PDF Editor"
+                  >
+                    <FileEdit className="w-4 h-4" />
+                  </Link>
+
+                  <Link
                     href="/bookmarks"
                     className="relative flex items-center justify-center w-9 h-9 rounded-full hover:bg-foreground/5 transition-colors text-foreground/70 hover:text-foreground"
                     aria-label={`Bookmarks${bookmarkCount ? ` (${bookmarkCount})` : ""}`}
@@ -399,6 +409,13 @@ export function NotchNavbar({
                   <span className="font-medium text-foreground/90">{category.label}</span>
                 </Link>
               ))}
+
+              <div className="h-px bg-foreground/10 my-3" />
+              <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-foreground/40">Tools</p>
+              <Link href="/tools/pdf-editor" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
+                <FileEdit className="w-5 h-5 opacity-70" />
+                <span className="font-medium text-foreground/90">PDF Editor</span>
+              </Link>
 
               <div className="h-px bg-foreground/10 my-3" />
               <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-foreground/40">Library</p>

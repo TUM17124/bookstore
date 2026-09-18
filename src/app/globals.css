@@ -191,37 +191,40 @@
     margin-top: 0;
     padding-top: 1.25rem;
   }
+}
 
-  body.book-detail-open {
-    overflow: hidden;
-    height: 100dvh;
-  }
+/* With a book open, let the page scroll normally (nav + footer stay
+   reachable) instead of locking to a fixed, clipped viewport. The book
+   view itself (.book-showcase) keeps its own one-screenful height so the
+   3D book + description still fill the screen; .home-shelf-stage becomes
+   a plain auto-height wrapper so Recommendations, appended after it,
+   naturally extends the page rather than being clipped or overlapped.
+   Applies at both breakpoints. */
+body.book-detail-open .home-shelf {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
 
-  body.book-detail-open .site-nav,
-  body.book-detail-open .site-nav header,
-  body.book-detail-open .site-nav nav,
-  body.book-detail-open .site-footer {
-    display: none !important;
-    visibility: hidden !important;
-    pointer-events: none !important;
-  }
+body.book-detail-open .home-shelf-stage {
+  height: auto;
+  min-height: 0;
+  flex: none;
+}
 
-  body.book-detail-open .site-main-offset {
-    padding-top: 0 !important;
-  }
+body.book-detail-open .book-showcase {
+  height: calc(100dvh - 4rem);
+  min-height: calc(100dvh - 4rem);
+  flex-shrink: 0;
+}
 
-  body.book-detail-open .home-shelf,
-  body.book-detail-open .home-shelf-stage {
-    height: 100dvh !important;
-    min-height: 100dvh !important;
-    overflow: hidden;
-  }
-
-  body.book-detail-open .book-close-btn {
-    top: calc(10px + env(safe-area-inset-top)) !important;
-    left: 10px;
-    z-index: 80 !important;
-  }
+/* Pin the close button to the actual top-left corner, clear of any
+   notch/status-bar safe area, instead of the plain fixed offset the
+   @container breakpoint gives it. */
+body.book-detail-open .book-close-btn {
+  top: calc(10px + env(safe-area-inset-top)) !important;
+  left: 10px !important;
+  z-index: 80 !important;
 }
 
 .legal-overlay a,

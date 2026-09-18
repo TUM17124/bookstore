@@ -78,19 +78,19 @@ export function LegalGate() {
 
         <p className="text-sm text-foreground/70">
           Please review the updated{' '}
-          <a className="underline" href="/terms" target="_blank" rel="noopener noreferrer">
+          <a className="underline" href="/terms/" target="_blank" rel="noopener noreferrer">
             Terms &amp; Conditions
           </a>
           {', '}
-          <a className="underline" href="/terms-of-use" target="_blank" rel="noopener noreferrer">
+          <a className="underline" href="/terms-of-use/" target="_blank" rel="noopener noreferrer">
             Terms of Use
           </a>
           {', '}
-          <a className="underline" href="/privacy" target="_blank" rel="noopener noreferrer">
+          <a className="underline" href="/privacy/" target="_blank" rel="noopener noreferrer">
             Privacy Policy
           </a>
           {' and '}
-          <a className="underline" href="/refund-policy" target="_blank" rel="noopener noreferrer">
+          <a className="underline" href="/refund-policy/" target="_blank" rel="noopener noreferrer">
             Refund Policy
           </a>
           .

@@ -24,10 +24,12 @@ export function PdfReader({
   url,
   bookId,
   previewPages,
+  watermark,
 }: {
   url: string
   bookId?: string
   previewPages?: number
+  watermark?: string
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const pdfRef = useRef<any>(null)
@@ -43,6 +45,21 @@ export function PdfReader({
   const [page, setPage] = useState(1)
   const [marked, setMarked] = useState(0)
   const [resumeAt, setResumeAt] = useState(0)
+  const [obscured, setObscured] = useState(false)
+
+  useEffect(() => {
+    const onVisibility = () => setObscured(document.visibilityState !== 'visible')
+    const onBlur = () => setObscured(true)
+    const onFocus = () => setObscured(document.visibilityState !== 'visible')
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('blur', onBlur)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('blur', onBlur)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [])
 
   const nextPath =
   typeof window !== 'undefined'
@@ -224,7 +241,11 @@ const signupHref = `/signup?next=${encodeURIComponent(nextPath)}`
   const numbers = Array.from({ length: total }, (_, i) => i + 1)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[#f4efe4]">
+    <div
+      className="relative flex min-h-0 flex-1 flex-col bg-[#f4efe4]"
+      onContextMenu={(e) => e.preventDefault()}
+      onCopy={(e) => e.preventDefault()}
+    >
       <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-black/10 bg-[#efe8d8] px-2 py-2">
         <button
           type="button"
@@ -270,7 +291,28 @@ const signupHref = `/signup?next=${encodeURIComponent(nextPath)}`
         </p>
       ) : null}
 
-      <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-auto">
+      {obscured && (
+        <div className="pointer-events-none absolute inset-0 z-40 bg-[#f4efe4]/95 backdrop-blur-2xl" />
+      )}
+
+      {watermark && (
+        <div className="pointer-events-none absolute inset-0 z-30 select-none overflow-hidden opacity-[0.08]">
+          <div
+            className="absolute inset-[-50%] grid grid-cols-3 gap-16 rotate-[-24deg] text-[13px] font-bold uppercase tracking-widest text-black"
+            aria-hidden
+          >
+            {Array.from({ length: 60 }, (_, i) => (
+              <span key={i} className="whitespace-nowrap">{watermark}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="min-h-0 flex-1 select-none overflow-auto"
+      >
         {status ? (
           <p className="p-6 text-sm font-semibold text-black/50">{status}</p>
         ) : null}

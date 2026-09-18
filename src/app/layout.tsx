@@ -33,6 +33,9 @@ export const metadata: Metadata = {
     "digital library Kenya",
     "business compliance Kenya",
     "career guides Kenya",
+    "free PDF editor",
+    "edit PDF online",
+    "PDF password protect online",
   ],
   authors: [{ name: "PlugYard", url: SITE }],
   creator: "PlugYard",
@@ -80,9 +83,6 @@ export const metadata: Metadata = {
     description:
       "Kenya statutes and practical guides. Business, career, academic, finance, lifestyle.",
     images: ["/logo.png"],
-  },
-  alternates: {
-    canonical: SITE,
   },
   verification: {
     google: "G5QylOyQKIG9YdPoVnVJAABBv2hONBE7kGmMH7XpdCQ",

@@ -11,8 +11,22 @@ import {
 } from "@/lib/push"
 import { getStoredUser, isLoggedIn } from "@/lib/auth-client"
 import { withReferralQuery } from "@/lib/referral"
+import { getPromptContent, personalize, type PromptCopy } from "@/lib/prompts"
 
 const API = process.env.NEXT_PUBLIC_API_URL!
+
+// Used only if the backend copy hasn't loaded yet (or fails to) — the
+// editable copy itself lives in Django admin under Prompt copy.
+const FALLBACK_GUEST: PromptCopy = {
+  slug: "push-prompt-guest",
+  title: "Hear about a title before it disappears into the shelf",
+  body: "Without an account, PlugYard cannot keep your place or email you. Allow alerts on this phone now, then create a free account so the same personal notes follow you — unfinished pages, titles in your category, and invite rewards — instead of a generic blast.",
+}
+const FALLBACK_ACCOUNT: PromptCopy = {
+  slug: "push-prompt-account",
+  title: "{name}, get a tap when a book is actually yours",
+  body: "Notifications are how PlugYard finds you after you close the site. We send a note written for you — here and by email — when you leave a page unfinished, when a new title matches how you read, or when someone uses your invite. That is the point of an account: the library can remember you.",
+}
 
 async function postPromptEvent(event: string) {
   try {
@@ -52,6 +66,25 @@ export function PushPrompt() {
   const [busy, setBusy] = useState(false)
   const [hasAccount, setHasAccount] = useState(false)
   const [name, setName] = useState("")
+  const [guestCopy, setGuestCopy] = useState<PromptCopy>(FALLBACK_GUEST)
+  const [accountCopy, setAccountCopy] = useState<PromptCopy>(FALLBACK_ACCOUNT)
+
+  useEffect(() => {
+    let cancelled = false
+    getPromptContent("push-prompt-guest")
+      .then((c) => {
+        if (!cancelled && c) setGuestCopy(c)
+      })
+      .catch(() => {})
+    getPromptContent("push-prompt-account")
+      .then((c) => {
+        if (!cancelled && c) setAccountCopy(c)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -98,6 +131,14 @@ export function PushPrompt() {
       const query = endpoint ? `?endpoint=${encodeURIComponent(endpoint)}` : ""
 
       try {
+        const promptRes = await fetch(`${API}/install-prompt/`, {
+          headers,
+          cache: "no-store",
+        })
+        const promptData = await promptRes.json().catch(() => ({}))
+        if (cancelled) return
+        if (promptData.push_enabled === false) return
+
         const response = await fetch(`${API}/push/status/${query}`, {
           headers,
           cache: "no-store",
@@ -134,20 +175,14 @@ export function PushPrompt() {
 
   if (!show) return null
 
-  const title = hasAccount
-    ? name
-      ? `${name}, we can tap you when a book is actually yours`
-      : "Get a tap when a book is actually yours"
-    : "Hear about a title before it disappears into the shelf"
+  const copy = hasAccount ? accountCopy : guestCopy
+  const title = personalize(copy.title, name)
+  const body = personalize(copy.body, name)
 
   return (
     <div className="fixed bottom-4 left-4 right-4 z-[69] mx-auto max-w-md rounded-2xl border bg-background p-4 shadow-lg">
       <p className="font-semibold">{title}</p>
-      <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-        {hasAccount
-          ? "Notifications are how PlugYard finds you after you close the site. We send a note written for you — here and by email — when you leave a page unfinished, when a new title matches how you read, or when someone uses your invite. That is the point of an account: the library can remember you."
-          : "Without an account, PlugYard cannot keep your place or email you. Allow alerts on this phone now, then create a free account so the same personal notes follow you — unfinished pages, titles in your category, and invite rewards — instead of a generic blast."}
-      </p>
+      <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{body}</p>
       {msg ? <p className="mt-2 text-sm text-red-600">{msg}</p> : null}
       <div className="mt-3 flex flex-wrap gap-2">
         <button

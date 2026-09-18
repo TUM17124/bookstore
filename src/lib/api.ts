@@ -1,4 +1,6 @@
 // src/lib/api.ts
+import { splitName } from "@/lib/name"
+
 const API = process.env.NEXT_PUBLIC_API_URL!
 
 export type ApiBook = {
@@ -27,6 +29,8 @@ export type ApiBook = {
   stock?: number
   hasEbook?: boolean
   hasAudiobook?: boolean
+  ebookDownloadable?: boolean
+  audiobookDownloadable?: boolean
   isFree?: boolean
   is_featured?: boolean
   previewPages?: number
@@ -49,6 +53,7 @@ export type PurchaseItem = {
   order_id: number
   book_id: string
   product_type: string
+  downloadable?: boolean
 }
 
 export function getToken(): string | null {
@@ -146,6 +151,13 @@ export async function getBooks(params?: {
   return res.json()
 }
 
+export async function getBook(id: string | number): Promise<ApiBook | null> {
+  if (!API) throw new Error("NEXT_PUBLIC_API_URL is not set")
+  const res = await fetch(`${API}/books/${id}/`)
+  if (!res.ok) return null
+  return res.json()
+}
+
 export async function createCheckout(payload: {
   book_id: number
   product_type: "ebook" | "audiobook"
@@ -196,6 +208,7 @@ export async function register(
   termsAccepted = false,
   referralCode = "",
 ) {
+  const [first_name, last_name] = splitName(name)
   return api("/auth/register/", {
     method: "POST",
     body: JSON.stringify({
@@ -203,6 +216,8 @@ export async function register(
       password,
       confirm_password: confirmPassword || password,
       name,
+      first_name,
+      last_name,
       terms_accepted: termsAccepted,
       referral_code: (referralCode || "").trim(),
       ref: (referralCode || "").trim(),
@@ -657,5 +672,28 @@ export const startEmailChange = (email: string, current_password: string) => api
 export const confirmEmailChange = (code: string) => api("/me/settings/email/confirm/", { method: "POST", body: JSON.stringify({ code }) })
 export const requestAffiliateWithdrawal = (amount: string) => api("/me/affiliate/withdrawals/", { method: "POST", body: JSON.stringify({ amount }) })
 export const deleteAccount = (body: { current_password?: string; google_credential?: string; reason?: string }) => api("/me/settings/delete-account/", { method: "POST", body: JSON.stringify(body) })
+
+export type NotificationPrefs = {
+  push_enabled: boolean
+  email_enabled: boolean
+  active_devices: number
+}
+export const getNotificationPrefs = () => api<NotificationPrefs>("/me/notification-prefs/")
+export const updateNotificationPrefs = (
+  body: Partial<Pick<NotificationPrefs, "push_enabled" | "email_enabled">>,
+) => api<NotificationPrefs>("/me/notification-prefs/", { method: "POST", body: JSON.stringify(body) })
+export async function unsubscribePush(endpoint?: string) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  const token = getToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await fetch(`${API}/push/unsubscribe/`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ endpoint: endpoint || "" }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data as { error?: string }).error || "Could not unsubscribe")
+  return data
+}
 
 export default searchTrack

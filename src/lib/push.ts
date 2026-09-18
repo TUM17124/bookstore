@@ -1,4 +1,4 @@
-import { getToken } from "@/lib/api"
+import { getToken, unsubscribePush } from "@/lib/api"
 
 const API = process.env.NEXT_PUBLIC_API_URL!
 const VAPID = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ""
@@ -71,6 +71,22 @@ export async function bindPushToAccount() {
   }
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
 export async function enablePushNotifications() {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
     throw new Error("This browser cannot receive push notifications")
@@ -82,7 +98,17 @@ export async function enablePushNotifications() {
     throw new Error("Missing NEXT_PUBLIC_VAPID_PUBLIC_KEY")
   }
 
-  const permission = await Notification.requestPermission()
+  if (Notification.permission === "denied") {
+    throw new Error(
+      "Notifications are blocked for this site. Allow them in your browser's site settings, then try again.",
+    )
+  }
+
+  const permission = await withTimeout(
+    Notification.requestPermission(),
+    20000,
+    "Didn't hear back from your browser's permission popup — check near the address bar (or your browser's notification settings), then try again.",
+  )
   if (permission !== "granted") {
     throw new Error("Notifications were blocked")
   }
@@ -99,4 +125,23 @@ export async function enablePushNotifications() {
   }
 
   await savePushSubscription(subscription)
+}
+
+/** Unsubscribe this device from push, and tell the backend to deactivate it. */
+export async function disablePushNotifications() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return
+  const subscription = await getPushSubscription()
+  const endpoint = subscription?.endpoint || ""
+  if (subscription) {
+    try {
+      await subscription.unsubscribe()
+    } catch {
+      // Still tell the backend even if the browser-side unsubscribe fails.
+    }
+  }
+  try {
+    await unsubscribePush(endpoint)
+  } catch {
+    // Best effort — the device-side unsubscribe already took effect.
+  }
 }

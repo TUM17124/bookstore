@@ -88,6 +88,14 @@ export function SiteFooter() {
                   </Link>
                 </li>
               ))}
+              <li>
+                <Link
+                  href="/tools/pdf-editor"
+                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
+                >
+                  PDF Editor
+                </Link>
+              </li>
             </ul>
           </div>
 

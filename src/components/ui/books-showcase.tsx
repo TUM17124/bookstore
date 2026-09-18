@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useBookmarks } from '@/components/bookmarks-context';
 import { BookReviews } from '@/components/book-reviews';
 import { createPortal } from 'react-dom';
-import { getPurchases, downloadOrderUrl, freeBookUrl, searchTrack, previewBookUrl, getRatings } from '@/lib/api';
+import { getPurchases, downloadOrderUrl, freeBookUrl, searchTrack, previewBookUrl, getRatings, getBooks, asBookList, type ApiBook } from '@/lib/api';
 import { getStoredUser } from '@/lib/auth-client';
 import { PdfReader } from '@/components/pdf-reader';
 import { AudioPlayer } from '@/components/audio-player';
@@ -23,11 +24,14 @@ export interface BookCfg {
   audiobookPrice?: number;
   hasEbook?: boolean;
   hasAudiobook?: boolean;
+  ebookDownloadable?: boolean;
+  audiobookDownloadable?: boolean;
   isFree?: boolean;
   isFeatured?: boolean;
   previewPages?: number;
   audioUrl?: string | null;
   pdfUrl?: string | null;
+  category?: string;
   front?: (x: CanvasRenderingContext2D, w: number, h: number) => void;
   back?: (x: CanvasRenderingContext2D, w: number, h: number) => void;
   spine?: (x: CanvasRenderingContext2D, w: number, h: number) => void;
@@ -69,13 +73,11 @@ export interface BooksShowcaseProps {
 }
 
 const OPEN_SLIP_CLASS =
-  'pointer-events-none absolute left-1/2 top-[62%] z-10 -translate-x-1/2 -translate-y-1/2 rotate-[-1.6deg] ' +
-  'px-[22px] pb-[10px] pt-[8px] text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--bs-navy)] ' +
-  'opacity-0 scale-[0.94] transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ' +
-  'group-hover:opacity-100 group-hover:scale-100 group-focus-visible:opacity-100 group-focus-visible:scale-100 ' +
-  '[clip-path:polygon(0%_0.9%,8.3%_0.8%,16.7%_6.3%,25%_3.8%,33.3%_5.5%,41.7%_2.7%,50%_5.2%,58.3%_0.4%,66.7%_5.9%,75%_6.5%,83.3%_1%,91.7%_6.4%,100%_0.7%,97.7%_20%,97%_40%,99.6%_60%,98.7%_80%,100%_96.5%,91.7%_99.8%,83.3%_95.6%,75%_94.9%,66.7%_96.6%,58.3%_93.5%,50%_97.9%,41.7%_99.5%,33.3%_93.2%,25%_93.6%,16.7%_93.2%,8.3%_93.1%,0%_93.5%,0.2%_80%,1.1%_60%,3.9%_40%,3.8%_20%)] ' +
-  '[background:repeating-linear-gradient(92deg,rgba(90,74,40,0.03)_0px_2px,transparent_2px_6px),radial-gradient(125%_150%_at_28%_0%,#fffdf7_0%,#f8f2e3_58%,#ede4cf_100%)] ' +
-  '[filter:drop-shadow(0_2px_1px_rgba(0,0,0,0.16))_drop-shadow(0_10px_18px_rgba(0,0,0,0.35))]';
+  'pointer-events-none absolute left-1/2 top-[62%] z-10 -translate-x-1/2 -translate-y-1/2 ' +
+  'rounded-full px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--bs-navy)] ' +
+  'bg-[var(--bs-cream)] shadow-[0_6px_16px_rgba(0,0,0,0.28)] ' +
+  'opacity-0 scale-[0.94] transition-[opacity,transform] duration-200 ease-out ' +
+  'group-hover:opacity-100 group-hover:scale-100 group-focus-visible:opacity-100 group-focus-visible:scale-100';
 
 function coverSrc(book: BookCfg) {
   return book.images?.front || book.coverURL || '';
@@ -195,8 +197,141 @@ function GridBookCard({
             <span className="text-[11px] text-current/45">{(book.stars || 0).toFixed(1)}</span>
           )}
         </div>
+        <div className="mt-1 flex items-baseline gap-2 text-[12px] leading-tight">
+  {book.isFree ? (
+    <span className="font-bold text-[var(--bs-pink)] uppercase text-[10px] tracking-wider">Free</span>
+  ) : (
+    <>
+      {(book.hasEbook !== false) && Number(book.ebookPrice ?? book.price ?? 0) > 0 && (
+        <span className="font-bold text-[var(--bs-pink)]">
+          <span className="mr-0.5 text-[9px] opacity-70 uppercase">eBook</span>
+          KES {Number(book.ebookPrice ?? book.price ?? 0).toLocaleString()}
+        </span>
+      )}
+      {book.hasAudiobook && Number(book.audiobookPrice ?? book.price ?? 0) > 0 && (
+        <span className="font-bold text-[var(--bs-pink)]">
+          <span className="mr-0.5 text-[9px] opacity-70 uppercase">Audio</span>
+          KES {Number(book.audiobookPrice ?? book.price ?? 0).toLocaleString()}
+        </span>
+      )}
+    </>
+  )}
+</div>
       </div>
     </button>
+  );
+}
+
+function apiBookToMiniCfg(b: ApiBook): BookCfg {
+  return {
+    id: String(b.id),
+    title: b.title,
+    author: b.author || 'Unknown',
+    year: b.year || '',
+    stars: b.stars ?? 5,
+    desc: b.desc || '',
+    images: {
+      front: b.images?.front || undefined,
+      spine: b.images?.spine || undefined,
+      back: b.images?.back || undefined,
+    },
+    price: b.price != null ? Number(b.price) : undefined,
+    ebookPrice: b.ebook_price != null ? Number(b.ebook_price) : undefined,
+    audiobookPrice: b.audiobook_price != null ? Number(b.audiobook_price) : undefined,
+    hasEbook: b.hasEbook !== false,
+    hasAudiobook: !!b.hasAudiobook,
+    isFree: !!b.isFree,
+  };
+}
+
+function RecommendedBooks({ book }: { book: BookCfg }) {
+  const router = useRouter();
+  const [items, setItems] = useState<BookCfg[]>([]);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const byRatingThenTitle = (a: ApiBook, b: ApiBook) =>
+      (b.stars ?? 0) - (a.stars ?? 0) || a.title.localeCompare(b.title);
+
+    async function load() {
+      try {
+        const data = book.category
+          ? await getBooks({ category: book.category, pageSize: 20 })
+          : await getBooks({ featured: true, pageSize: 20 });
+        let candidates = asBookList(data).filter((b) => String(b.id) !== String(book.id));
+        if (candidates.length === 0 && book.category) {
+          const fallback = await getBooks({ featured: true, pageSize: 20 });
+          candidates = asBookList(fallback).filter((b) => String(b.id) !== String(book.id));
+        }
+        // Same category, best-rated first — the closest thing to a real
+        // recommendation we can do without extra rating fetches per card.
+        const list = candidates.sort(byRatingThenTitle).map(apiBookToMiniCfg);
+        if (!cancelled) setItems(list.slice(0, 8));
+      } catch {
+        if (!cancelled) setItems([]);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [book.id, book.category]);
+
+  useEffect(() => {
+    setOpeningId(null);
+  }, [book.id]);
+
+  if (items.length === 0) return null;
+
+  const skip = (dir: 1 | -1) => {
+    scrollRef.current?.scrollBy({ left: dir * 320, behavior: 'smooth' });
+  };
+
+  return (
+    <div className="w-full border-t border-[var(--bs-lav)]/20 bg-[var(--bs-navy)] text-[var(--bs-cream)]">
+      <div className="flex items-center justify-between px-4 pt-5 sm:px-8">
+        <h3 className="text-[13px] font-bold uppercase tracking-wide text-[var(--bs-lav)]/70">Recommendations</h3>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            aria-label="Scroll recommendations left"
+            onClick={() => skip(-1)}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-[var(--bs-cream)] hover:bg-white/20"
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            aria-label="Scroll recommendations right"
+            onClick={() => skip(1)}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-[var(--bs-cream)] hover:bg-white/20"
+          >
+            ›
+          </button>
+        </div>
+      </div>
+      <div
+        ref={scrollRef}
+        className="flex gap-4 overflow-x-auto px-4 py-5 sm:px-8 [scrollbar-width:thin]"
+      >
+        {items.map((b) => (
+          <div key={b.id} className="w-[132px] shrink-0 @min-[768px]:w-[240px]">
+            <GridBookCard
+              book={b}
+              spinning={openingId === b.id}
+              onOpen={() => {
+                setOpeningId(b.id);
+                const params = new URLSearchParams(window.location.search);
+                params.set('book', b.id);
+                router.push(`/?${params.toString()}`);
+              }}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -218,6 +353,8 @@ export function BooksShowcase({
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
   const dpRef = useRef<HTMLDivElement | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const sceneApiRef = useRef<{ openById: (id: string) => void; closeCurrent: () => void } | null>(null);
+  const pendingOpenIdRef = useRef<string | null>(null);
 
   const onBookSelectRef = useRef(onBookSelect);
   useEffect(() => {
@@ -256,6 +393,14 @@ export function BooksShowcase({
   const [previewOpen, setPreviewOpen] = useState(false);
   const shelfActive = uiMode !== 'hero' && !!selectedCfg;
   const showGrid = uiMode === 'hero' || uiMode === 'opening';
+
+  useEffect(() => {
+    // Opening a book (including from Recommendations, while scrolled down
+    // to view them) should show the book itself, not stay scrolled to
+    // wherever the previous book's view was left.
+    if (!selectedCfg?.id) return;
+    rootRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+  }, [selectedCfg?.id]);
 
   useEffect(() => {
     if (uiMode !== 'detail' || !selectedCfg?.id) return;
@@ -346,9 +491,13 @@ export function BooksShowcase({
   }, [selectedCfg?.id]);
 
   function openFromGrid(book: BookCfg) {
-    if (uiMode !== 'hero') return;
-    setSelectedCfg(book);
-    setUiMode('opening');
+    pendingOpenIdRef.current = String(book.id);
+    if (sceneApiRef.current) {
+      sceneApiRef.current.openById(String(book.id));
+    } else {
+      setSelectedCfg(book);
+      setUiMode('opening');
+    }
     onBookSelectRef.current?.(book);
   }
 
@@ -356,8 +505,13 @@ export function BooksShowcase({
     if (!openBookId) return;
     const book = books.find((b) => String(b.id) === String(openBookId));
     if (!book) return;
-    setSelectedCfg(book);
-    setUiMode((m) => (m === 'hero' ? 'opening' : m));
+    pendingOpenIdRef.current = String(book.id);
+    if (sceneApiRef.current) {
+      sceneApiRef.current.openById(String(book.id));
+    } else {
+      setSelectedCfg(book);
+      setUiMode((m) => (m === 'hero' ? 'opening' : m));
+    }
     if (openView === 'reviews') setReviewsOpen(true);
     if (openView === 'read') setReaderOpen(true);
     if (openView === 'listen') setPlayerOpen(true);
@@ -366,7 +520,7 @@ export function BooksShowcase({
   useEffect(() => {
     const root = rootRef.current;
     const canvasEl = canvasRef.current;
-    if (!root || !canvasEl || !selectedCfg?.id || books.length === 0) return;
+    if (!root || !canvasEl || books.length === 0) return;
 
     let cancelled = false;
     const timeouts: ReturnType<typeof setTimeout>[] = [];
@@ -379,7 +533,6 @@ export function BooksShowcase({
     };
 
     const listNow = () => booksRef.current;
-    const selectedId = String(selectedCfg.id);
     const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const IS_PHONE =
       window.matchMedia('(max-width: 760px)').matches || window.matchMedia('(pointer: coarse)').matches;
@@ -498,14 +651,14 @@ export function BooksShowcase({
       const c = mkCanvas(ew, eh),
         x = c.getContext('2d')!;
       const g = x.createLinearGradient(0, 0, 0, eh);
-      g.addColorStop(0, '#5a6ba6');
-      g.addColorStop(0.55, '#262e52');
-      g.addColorStop(1, '#0a0d1d');
+      g.addColorStop(0, '#dfe3ea');
+      g.addColorStop(0.55, '#8b93a3');
+      g.addColorStop(1, '#1c1f26');
       x.fillStyle = g;
       x.fillRect(0, 0, ew, eh);
-      envBlob(x, ew * 0.27, eh * 0.26, eh * 0.37, '255,255,255', 0.95);
-      envBlob(x, ew * 0.79, eh * 0.33, eh * 0.21, '255,214,168', 0.55);
-      envBlob(x, ew * 0.5, eh * 0.59, eh * 0.47, '255,155,185', 0.28);
+      envBlob(x, ew * 0.27, eh * 0.26, eh * 0.37, '255,255,255', 0.9);
+      envBlob(x, ew * 0.79, eh * 0.33, eh * 0.21, '255,255,255', 0.35);
+      envBlob(x, ew * 0.5, eh * 0.59, eh * 0.47, '210,215,225', 0.2);
       const tx = new THREE.CanvasTexture(c);
       tx.mapping = THREE.EquirectangularReflectionMapping;
       const pmrem = new THREE.PMREMGenerator(renderer);
@@ -514,7 +667,7 @@ export function BooksShowcase({
       pmrem.dispose();
     })();
 
-    const hemi = new THREE.HemisphereLight(0x8fa0d8, 0x0d1024, 0.32);
+    const hemi = new THREE.HemisphereLight(0xdfe3ea, 0x14161c, 0.35);
     scene.add(hemi);
     const key = new THREE.DirectionalLight(0xffffff, 0.82);
     key.position.set(3.5, 5, 6);
@@ -529,10 +682,10 @@ export function BooksShowcase({
     key.shadow.bias = -0.0004;
     key.shadow.normalBias = 0.02;
     scene.add(key);
-    const fillLight = new THREE.DirectionalLight(0xa9b6ff, 0.2);
+    const fillLight = new THREE.DirectionalLight(0xd7dbe4, 0.22);
     fillLight.position.set(-4, 1, 4);
     scene.add(fillLight);
-    const rim = new THREE.DirectionalLight(0xff9db8, 0.3);
+    const rim = new THREE.DirectionalLight(0xf5f6f8, 0.24);
     rim.position.set(-2, 3, -5);
     scene.add(rim);
     const bookRoot = new THREE.Group();
@@ -619,7 +772,7 @@ export function BooksShowcase({
       }
       return new THREE.CanvasTexture(c);
     }
-    const laminateBump = noiseTexture(128, 10, true);
+    const laminateBump = noiseTexture(128, 4, false);
     const clothBump = (function () {
       const s = 128,
         c = mkCanvas(s, s),
@@ -637,19 +790,19 @@ export function BooksShowcase({
       const s = 512,
         c = mkCanvas(s, s),
         x = c.getContext('2d')!;
-      x.fillStyle = '#ece4d2';
+      x.fillStyle = '#f3f4f6';
       x.fillRect(0, 0, s, s);
       let p = 0;
       while (p < s) {
         const w = 1 + Math.random() * 2.4,
           tone = Math.random();
-        x.fillStyle = tone < 0.12 ? 'rgba(140,125,95,.5)' : tone < 0.5 ? 'rgba(255,255,252,.55)' : 'rgba(190,178,150,.45)';
+        x.fillStyle = tone < 0.12 ? 'rgba(170,174,182,.35)' : tone < 0.5 ? 'rgba(255,255,255,.5)' : 'rgba(205,209,216,.3)';
         if (vertical) x.fillRect(p, 0, w, s);
         else x.fillRect(0, p, s, w);
         p += w + 0.6 + Math.random() * 1.6;
       }
-      for (let i = 0; i < 2600; i++) {
-        x.fillStyle = 'rgba(120,108,84,' + (Math.random() * 0.1).toFixed(3) + ')';
+      for (let i = 0; i < 900; i++) {
+        x.fillStyle = 'rgba(150,154,162,' + (Math.random() * 0.06).toFixed(3) + ')';
         x.fillRect(Math.random() * s, Math.random() * s, 1.2, 1.2);
       }
       return tex(c);
@@ -660,10 +813,10 @@ export function BooksShowcase({
       const s = 512,
         c = mkCanvas(s, s),
         x = c.getContext('2d')!;
-      x.fillStyle = '#f3edde';
+      x.fillStyle = '#f5f6f8';
       x.fillRect(0, 0, s, s);
-      for (let i = 0; i < 1400; i++) {
-        x.fillStyle = 'rgba(120,105,70,' + (0.04 + Math.random() * 0.08).toFixed(3) + ')';
+      for (let i = 0; i < 500; i++) {
+        x.fillStyle = 'rgba(150,154,162,' + (0.03 + Math.random() * 0.05).toFixed(3) + ')';
         x.fillRect(Math.random() * s, Math.random() * s, 1.4, 1.4);
       }
       const g = x.createLinearGradient(0, 0, s, 0);
@@ -842,12 +995,12 @@ export function BooksShowcase({
     function std(o: THREE.MeshStandardMaterialParameters) {
       return new THREE.MeshStandardMaterial(Object.assign({ metalness: 0.02 }, o));
     }
-    const paperFlat = std({ color: 0xf2ecdd, roughness: 0.95, envMapIntensity: 0.2 });
-    const striMatV = std({ map: striV, bumpMap: striV, bumpScale: 0.0025, roughness: 0.95, envMapIntensity: 0.2 });
-    const striMatH = std({ map: striH, bumpMap: striH, bumpScale: 0.0025, roughness: 0.95, envMapIntensity: 0.2 });
-    const endpaperMat = std({ map: endpaperTex, roughness: 0.9, envMapIntensity: 0.25 });
-    const pageMats = [0xf4eee0, 0xf1ebdb, 0xf6f0e3].map((c) =>
-      std({ color: c, roughness: 0.92, envMapIntensity: 0.22, side: THREE.DoubleSide }),
+    const paperFlat = std({ color: 0xf5f6f8, roughness: 0.85, envMapIntensity: 0.2 });
+    const striMatV = std({ map: striV, bumpMap: striV, bumpScale: 0.0012, roughness: 0.85, envMapIntensity: 0.2 });
+    const striMatH = std({ map: striH, bumpMap: striH, bumpScale: 0.0012, roughness: 0.85, envMapIntensity: 0.2 });
+    const endpaperMat = std({ map: endpaperTex, roughness: 0.8, envMapIntensity: 0.25 });
+    const pageMats = [0xf6f7f9, 0xf3f4f6, 0xf8f9fa].map((c) =>
+      std({ color: c, roughness: 0.85, envMapIntensity: 0.22, side: THREE.DoubleSide }),
     );
 
     type Book = {
@@ -891,11 +1044,11 @@ export function BooksShowcase({
         envMapIntensity: 0.2,
         side: THREE.DoubleSide,
       });
-      const edgeColor = cfg.edge ?? '#eee4cf';
-      const mEdge = std({ color: edgeColor, bumpMap: laminateBump, bumpScale: 0.0035, roughness: 0.68, envMapIntensity: 0.3 });
-      const mFront = std({ bumpMap: laminateBump, bumpScale: 0.0035, roughness: 0.54, envMapIntensity: 0.28 });
-      const mBack = std({ bumpMap: laminateBump, bumpScale: 0.0035, roughness: 0.58, envMapIntensity: 0.26 });
-      const mSpine = std({ bumpMap: clothBump, bumpScale: 0.006, roughness: 0.78, envMapIntensity: 0.22 });
+      const edgeColor = cfg.edge ?? '#eceff2';
+      const mEdge = std({ color: edgeColor, bumpMap: laminateBump, bumpScale: 0.0015, roughness: 0.5, envMapIntensity: 0.32 });
+      const mFront = std({ bumpMap: laminateBump, bumpScale: 0.0012, roughness: 0.4, envMapIntensity: 0.3 });
+      const mBack = std({ bumpMap: laminateBump, bumpScale: 0.0012, roughness: 0.42, envMapIntensity: 0.28 });
+      const mSpine = std({ bumpMap: clothBump, bumpScale: 0.0025, roughness: 0.55, envMapIntensity: 0.26 });
       loadOrPaint(mFront, cfg.images?.front ?? cfg.coverURL ?? null, () => {
         const c = mkCanvas(COVER_W, COVER_H);
         const ctx = c.getContext('2d')!;
@@ -1039,78 +1192,6 @@ export function BooksShowcase({
     }
     const bookByHit = (m: THREE.Object3D) => bookInstances.find((b) => b && b.hit === m)!;
 
-    const leaves = {
-      items: [] as any[],
-      anchor: null as Book | null,
-      activate(book: Book) {
-        this.anchor = book;
-        this.items.forEach((l) => {
-          l.kick.set(-l.hx + (Math.random() - 0.5) * 0.6, -l.hy + (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.5);
-          l.s.t = l.size;
-          l.mesh.visible = true;
-        });
-      },
-      deactivate() {
-        this.items.forEach((l) => {
-          l.s.t = 0;
-        });
-      },
-      push(dx: number, dy: number) {
-        if (!this.anchor) return;
-        this.items.forEach((l) => {
-          l.kick.x += dx * 2.4 * Math.random();
-          l.kick.y += -dy * 2.4 * Math.random();
-        });
-      },
-      update(dt: number, t: number) {
-        if (!this.anchor) return;
-        const ap = this.anchor.root.position;
-        const w = RM ? 0.15 : 1;
-        this.items.forEach((l) => {
-          l.kick.multiplyScalar(Math.exp(-1.15 * dt));
-          l.mesh.position.set(
-            ap.x + l.hx + Math.sin(t * l.sp + l.ph) * 0.4 * w + l.kick.x,
-            ap.y + l.hy + Math.cos(t * l.sp * 0.83 + l.ph * 1.3) * 0.3 * w + l.kick.y,
-            ap.z * 0.4 + l.hz + l.kick.z,
-          );
-          l.mesh.rotation.x += l.rv.x * dt * (0.3 + w);
-          l.mesh.rotation.y += l.rv.y * dt * (0.3 + w);
-          l.mesh.rotation.z += l.rv.z * dt * (0.3 + w);
-          const s = l.s.update(dt);
-          l.mesh.scale.setScalar(Math.max(s, 0.0001));
-          if (l.s.t === 0 && s < 0.01) l.mesh.visible = false;
-        });
-      },
-    };
-    (function buildLeaves() {
-      const shape = new THREE.Shape();
-      shape.moveTo(0, -0.5);
-      shape.bezierCurveTo(0.3, -0.28, 0.3, 0.22, 0, 0.55);
-      shape.bezierCurveTo(-0.3, 0.22, -0.3, -0.28, 0, -0.5);
-      const geo = new THREE.ShapeGeometry(shape, 10);
-      const cols = [0x3e7c3f, 0x57944a, 0x2f6136, 0x6aa557];
-      for (let i = 0; i < 16; i++) {
-        const mat = std({ color: cols[i % 4], roughness: 0.55, envMapIntensity: 0.3, side: THREE.DoubleSide });
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.visible = false;
-        bookRoot.add(mesh);
-        let hx = (Math.random() - 0.5) * 4.6;
-        if (i % 5 === 0) hx += 2.8 * Math.sign(hx || 1);
-        leaves.items.push({
-          mesh,
-          hx,
-          hy: (Math.random() - 0.5) * 3.2,
-          hz: -0.5 + Math.random() * 1.5,
-          sp: 0.25 + Math.random() * 0.5,
-          ph: Math.random() * 6.28,
-          rv: new THREE.Vector3((Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.8),
-          kick: new THREE.Vector3(),
-          size: 0.14 + Math.random() * 0.16,
-          s: new Spring(0, 60, 10),
-        });
-      }
-    })();
-
     const state: {
       mode: 'hero' | 'opening' | 'detail' | 'closing';
       selected: Book | null;
@@ -1191,7 +1272,17 @@ export function BooksShowcase({
     }
 
     function open(book: Book | null) {
-      if (state.mode !== 'hero' || !book) return;
+      if (!book) return;
+      if (state.selected === book && (state.mode === 'opening' || state.mode === 'detail')) return;
+      const switching = state.mode === 'detail' || state.mode === 'opening' || state.mode === 'closing';
+      if (switching && state.selected && state.selected !== book) {
+        const prev = state.selected;
+        prev.root.visible = false;
+        prev.orbTarget = Math.round(prev.orbY / 6.2832) * 6.2832 + 6.2832;
+        prev.orbYv = Math.max(prev.orbYv, 3);
+        prev.orbPhase = 'return';
+        prev.orbXs.t = 0;
+      }
       state.mode = 'opening';
       setUiMode('opening');
       state.selected = book;
@@ -1200,6 +1291,17 @@ export function BooksShowcase({
       setSelectedCfg(book.cfg);
       onBookSelectRef.current?.(book.cfg);
       computeSlots();
+      // The detail panel's real height depends on this book's title/description,
+      // which React hasn't painted yet at this point (setSelectedCfg is async).
+      // Re-measure once the browser has actually laid out the new text so the
+      // book doesn't get stuck at a slot computed from stale panel dimensions.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (state.selected !== book || (state.mode !== 'opening' && state.mode !== 'detail')) return;
+          computeSlots();
+          applyMode();
+        });
+      });
       setT(() => {
         if (state.mode !== 'opening' && state.mode !== 'detail') return;
         book.orbY = RM ? 0 : -6.2832;
@@ -1209,15 +1311,14 @@ export function BooksShowcase({
         book.orbXs.set(0);
         applyMode();
         camTo('detail');
-      }, 200);
-      setT(() => leaves.activate(book), 400);
+      }, switching ? 0 : 200);
       setT(() => {
         if (state.mode === 'opening') {
           root!.classList.add('bs-detail-open');
           state.mode = 'detail';
           setUiMode('detail');
         }
-      }, 700);
+      }, switching ? 350 : 700);
     }
     function close() {
       if (state.mode !== 'detail') return;
@@ -1225,7 +1326,6 @@ export function BooksShowcase({
       setUiMode('closing');
       root!.classList.remove('bs-detail-open');
       onBookSelectRef.current?.(null);
-      leaves.deactivate();
       orbit.drag = false;
       const b = state.selected;
       if (b) {
@@ -1242,14 +1342,12 @@ export function BooksShowcase({
         if (state.mode === 'closing') {
           state.mode = 'hero';
           setUiMode('hero');
+          if (b) b.root.visible = false;
           state.selected = null;
           setSelectedCfg(null);
         }
       }, 900);
     }
-
-    const onCloseClick = () => close();
-    closeBtnRef.current?.addEventListener('click', onCloseClick);
 
     const ptr = {
       ndcX: 0,
@@ -1258,10 +1356,13 @@ export function BooksShowcase({
       cy: 0,
       lastX: 0,
       lastY: 0,
+      downX: 0,
+      downY: 0,
       down: false,
       type: 'mouse',
       seen: false,
       id: null as number | null,
+      pendingTouchRotate: false,
     };
     let rayBook: Book | null = null;
     const orbit = { drag: false, dxAcc: 0, dyAcc: 0 };
@@ -1276,6 +1377,39 @@ export function BooksShowcase({
     const onPointerMove = (e: PointerEvent) => {
       if (ptr.id !== null && e.pointerId !== ptr.id) return;
       const { x: cx, y: cy } = localXY(e);
+      ptr.type = e.pointerType || 'mouse';
+      ptr.seen = true;
+      if (ptr.pendingTouchRotate) {
+        // Touch-and-hold on the book: don't commit to rotate vs. scroll
+        // until the gesture clearly leans one way, so a scroll-down drag
+        // that starts on the book isn't hijacked into a spin.
+        const totalDx = cx - ptr.downX;
+        const totalDy = cy - ptr.downY;
+        if (Math.abs(totalDx) + Math.abs(totalDy) > 6) {
+          ptr.pendingTouchRotate = false;
+          if (Math.abs(totalDx) > Math.abs(totalDy) * 1.15) {
+            ptr.lastX = cx;
+            ptr.lastY = cy;
+            ptr.down = true;
+            orbit.drag = true;
+            orbit.dxAcc = 0;
+            orbit.dyAcc = 0;
+            canvas.setPointerCapture(e.pointerId);
+            // We've committed to a rotate gesture — stop the browser's
+            // native pan-y from also claiming this touch, or the spin
+            // intermittently loses the drag to a page scroll.
+            e.preventDefault();
+          } else {
+            // Vertical drag over the book — let it scroll the page instead.
+            ptr.id = null;
+          }
+        }
+        ptr.cx = cx;
+        ptr.cy = cy;
+        ptr.ndcX = (cx / dims.w) * 2 - 1;
+        ptr.ndcY = -(cy / dims.h) * 2 + 1;
+        return;
+      }
       const dxN = (cx - ptr.lastX) / dims.w;
       const dyN = (cy - ptr.lastY) / dims.h;
       ptr.lastX = cx;
@@ -1284,12 +1418,10 @@ export function BooksShowcase({
       ptr.cy = cy;
       ptr.ndcX = (cx / dims.w) * 2 - 1;
       ptr.ndcY = -(cy / dims.h) * 2 + 1;
-      ptr.type = e.pointerType || 'mouse';
-      ptr.seen = true;
-      if (state.mode === 'detail') leaves.push(dxN, dyN);
       if (ptr.down && orbit.drag) {
         orbit.dxAcc += dxN;
         orbit.dyAcc += dyN;
+        if (ptr.type === 'touch') e.preventDefault();
       }
     };
     canvas.addEventListener('pointermove', onPointerMove);
@@ -1302,23 +1434,31 @@ export function BooksShowcase({
       ptr.cy = cy;
       ptr.lastX = cx;
       ptr.lastY = cy;
+      ptr.downX = cx;
+      ptr.downY = cy;
       ptr.ndcX = (cx / dims.w) * 2 - 1;
       ptr.ndcY = -(cy / dims.h) * 2 + 1;
       ptr.type = e.pointerType || 'mouse';
       ptr.seen = true;
+      ptr.pendingTouchRotate = false;
       castRay();
       if (state.mode === 'detail' && rayBook === state.selected) {
-        ptr.down = true;
-        orbit.drag = true;
-        orbit.dxAcc = 0;
-        orbit.dyAcc = 0;
-        canvas.setPointerCapture(e.pointerId);
+        if (ptr.type === 'touch') {
+          ptr.pendingTouchRotate = true;
+        } else {
+          ptr.down = true;
+          orbit.drag = true;
+          orbit.dxAcc = 0;
+          orbit.dyAcc = 0;
+          canvas.setPointerCapture(e.pointerId);
+        }
       }
     };
     canvas.addEventListener('pointerdown', onPointerDown);
     const onPointerUp = (e: PointerEvent) => {
       if (ptr.id !== null && e.pointerId !== ptr.id) return;
       ptr.id = null;
+      ptr.pendingTouchRotate = false;
       orbit.drag = false;
       ptr.down = false;
     };
@@ -1454,7 +1594,6 @@ export function BooksShowcase({
         screenPos(b);
         tickBook(b, dt, t);
       }
-      leaves.update(dt, t);
       parX.t = RM ? 0 : ptr.ndcX * 0.02;
       parY.t = RM ? 0 : -ptr.ndcY * 0.012;
       bookRoot.rotation.y = parX.update(dt);
@@ -1479,28 +1618,40 @@ export function BooksShowcase({
       camTo(state.mode === 'detail' || state.mode === 'opening' ? 'detail' : 'hero');
     }
     relayout();
-    const idx = listNow().findIndex((b) => String(b.id) === selectedId);
-    const target = ensureBook(idx >= 0 ? idx : 0);
-    if (target) {
+
+    function openById(id: string) {
+      const idx = listNow().findIndex((b) => String(b.id) === id);
+      if (idx < 0) return; // not in the list yet — wait for it to arrive rather than opening the wrong book
+      const wasNew = !bookInstances[idx];
+      const target = ensureBook(idx);
+      if (!target) return;
       target.root.visible = true;
       hitMeshes.length = 0;
       hitMeshes.push(target.hit);
-      const slot = SLOTS.detail || SLOTS.hero[1];
-      if (slot) {
-        target.springs.px.set(slot.p[0]);
-        target.springs.py.set(slot.p[1] - 2.4);
-        target.springs.pz.set(slot.p[2]);
-        target.springs.rx.set(slot.r[0]);
-        target.springs.ry.set(slot.r[1]);
-        target.springs.rz.set(slot.r[2]);
-        target.springs.sc.set(slot.s);
-        target.slotScale = slot.s;
+      if (wasNew) {
+        const slot = SLOTS.detail || SLOTS.hero[1];
+        if (slot) {
+          target.springs.px.set(slot.p[0]);
+          target.springs.py.set(slot.p[1] - 2.4);
+          target.springs.pz.set(slot.p[2]);
+          target.springs.rx.set(slot.r[0]);
+          target.springs.ry.set(slot.r[1]);
+          target.springs.rz.set(slot.r[2]);
+          target.springs.sc.set(slot.s);
+          target.slotScale = slot.s;
+        }
       }
       camTo('hero');
-      animate();
-      setT(() => open(target), 80);
-    } else {
-      animate();
+      open(target);
+    }
+
+    animate();
+    sceneApiRef.current = {
+      openById,
+      closeCurrent: () => close(),
+    };
+    if (pendingOpenIdRef.current) {
+      setT(() => openById(pendingOpenIdRef.current!), 80);
     }
 
     const visibilityObserver = new IntersectionObserver(
@@ -1535,6 +1686,7 @@ export function BooksShowcase({
 
     return () => {
       cancelled = true;
+      if (sceneApiRef.current) sceneApiRef.current = null;
       if (rafId) cancelAnimationFrame(rafId);
       timeouts.forEach((id) => clearTimeout(id));
       visibilityObserver.disconnect();
@@ -1546,7 +1698,6 @@ export function BooksShowcase({
       if (visualViewportHandler && window.visualViewport) window.visualViewport.removeEventListener('resize', visualViewportHandler);
       window.removeEventListener('pointerup', onPointerUp);
       root.removeEventListener('keydown', onKeydown);
-      closeBtnRef.current?.removeEventListener('click', onCloseClick);
       scene.traverse((obj: any) => {
         if (obj.geometry) obj.geometry.dispose();
         if (obj.material) {
@@ -1563,7 +1714,7 @@ export function BooksShowcase({
       scene.environment = null;
       renderer.dispose();
     };
-  }, [selectedCfg?.id, showDetailPanel]);
+  }, [books.length > 0, showDetailPanel]);
 
   const themeVars = {
     '--bs-navy': themeColors?.navy ?? '#141a32',
@@ -1596,6 +1747,7 @@ export function BooksShowcase({
   }
 
   return (
+    <div className="contents" style={themeVars}>
     <div
       ref={rootRef}
       tabIndex={0}
@@ -1606,13 +1758,12 @@ export function BooksShowcase({
         'book-showcase relative isolate h-full min-h-[560px] font-sans outline-none [container-type:size] [-webkit-tap-highlight-color:transparent]',
         'focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--bs-peri)]',
         'transition-colors duration-500 ease-out',
-        uiMode === 'hero' || uiMode === 'opening' ? 'overflow-y-auto overflow-x-hidden' : 'overflow-hidden',
+        uiMode === 'closing' ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden',
         uiMode === 'hero' || uiMode === 'opening'
           ? 'bg-[var(--bs-bg-light)] text-[var(--bs-fg-light)] dark:bg-[var(--bs-bg-dark)] dark:text-[var(--bs-fg-dark)]'
           : 'bg-[var(--bs-navy)] text-[var(--bs-cream)]',
         className,
       )}
-      style={themeVars}
       onScroll={uiMode === 'hero' ? onGridScroll : undefined}
     >
       <style>{`
@@ -1762,18 +1913,47 @@ export function BooksShowcase({
         </div>
       )}
 
-      {shelfActive && <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 z-[2] block h-full w-full touch-none" />}
+      {/* Occupies exactly one screenful in normal flow (unlike its
+          absolutely-positioned children) so Recommendations, appended
+          after it, sits below the fold instead of overlapping the book. */}
+      <div className={cn('relative w-full shrink-0', shelfActive ? 'h-full' : 'h-0 overflow-hidden')}>
+      <canvas
+        ref={canvasRef}
+        aria-hidden="true"
+        className={cn('absolute inset-0 z-[2] block h-full w-full touch-pan-y', !shelfActive && 'pointer-events-none opacity-0')}
+      />
 
       {shelfActive && (
         <button
           ref={closeBtnRef}
           type="button"
           aria-label="Close detail view"
-          className={`book-close-btn absolute left-1/2 top-[30px] z-[80] -translate-x-1/2 inline-flex h-[52px] w-[52px] items-center justify-center rounded-full border-[1.5px] border-[var(--bs-cream)]/40 bg-transparent text-[17px] leading-none text-[var(--bs-cream)] transition-[opacity,border-color] duration-300 delay-150 hover:border-[var(--bs-cream)]/90 @max-[760px]:left-auto @max-[760px]:right-[18px] @max-[760px]:top-[88px] @max-[760px]:translate-x-0 ${
+          onClick={() => sceneApiRef.current?.closeCurrent()}
+          className={`book-close-btn absolute left-[18px] top-[30px] z-[80] inline-flex h-[52px] w-[52px] items-center justify-center rounded-full border-[1.5px] border-[var(--bs-cream)]/40 bg-transparent text-[17px] leading-none text-[var(--bs-cream)] transition-[opacity,border-color] duration-300 delay-150 hover:border-[var(--bs-cream)]/90 @max-[760px]:top-[88px] ${
             uiMode === 'detail' ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
           }`}
         >
           &#10005;
+        </button>
+      )}
+
+      {shelfActive && (
+        <button
+          type="button"
+          aria-label="Scroll down for recommendations"
+          onClick={() => {
+            const root = rootRef.current;
+            if (!root) return;
+            root.scrollTo({ top: root.scrollHeight, behavior: 'smooth' });
+          }}
+          className={`pointer-events-auto absolute bottom-2 left-1/2 z-[20] flex -translate-x-1/2 flex-col items-center gap-0.5 text-[var(--bs-cream)]/75 transition-opacity duration-300 ${
+            uiMode === 'detail' ? 'opacity-100 delay-500' : 'pointer-events-none opacity-0'
+          }`}
+        >
+          <span className="text-[10px] tracking-wide">More below</span>
+          <svg className="h-4 w-4 animate-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
         </button>
       )}
 
@@ -1786,6 +1966,7 @@ export function BooksShowcase({
             @max-[760px]:w-[min(560px,92cqw)] @max-[760px]:max-h-none @max-[760px]:-translate-x-1/2
             ${panelVisible ? 'visible' : 'invisible delay-[500ms]'}`}
         >
+        <div className="pointer-events-auto min-h-0 flex-1 pr-1">
           <h1 className={`m-0 mb-2 line-clamp-2 text-[var(--bs-pink)] text-[clamp(22px,3.2cqw,42px)] font-extrabold leading-[1.12] tracking-[-0.02em] @max-[760px]:text-[clamp(20px,6cqw,32px)] ${dpChild(50)}`}>
             {selectedCfg?.title}
           </h1>
@@ -1840,13 +2021,14 @@ export function BooksShowcase({
                   <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
                     {hasEbook && ebookKes > 0 && (
                       <p className="text-[16px] leading-none">
+                        <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--bs-lav)]/50">eBook</span>
                         <span className="font-extrabold tabular-nums text-[var(--bs-pink)]">KES {ebookKes.toLocaleString()}</span>
                         <span className="ml-1.5 font-bold tabular-nums text-[var(--bs-cream)]/70">≈ ${(ebookKes / rate).toFixed(2)}</span>
                       </p>
                     )}
                     {hasAudiobook && audioKes > 0 && (
                       <p className="text-[16px] leading-none">
-                        <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--bs-lav)]/50">Audio</span>
+                        <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--bs-lav)]/50">Audiobook</span>
                         <span className="font-extrabold tabular-nums text-[var(--bs-pink)]">KES {audioKes.toLocaleString()}</span>
                         <span className="ml-1.5 font-bold tabular-nums text-[var(--bs-cream)]/70">≈ ${(audioKes / rate).toFixed(2)}</span>
                       </p>
@@ -1862,8 +2044,10 @@ export function BooksShowcase({
               const hasEbook = selectedCfg?.hasEbook !== false;
               const hasAudio = selectedCfg?.hasAudiobook === true;
               const canReadEbook = hasEbook && (isFree || !!ownedEbookOrderId);
-              const canDlEbook = hasEbook && (isFree || !!ownedEbookOrderId);
-              const canDlAudio = hasAudio && (isFree || !!ownedAudioOrderId);
+              const ebookDownloadsOff = selectedCfg?.ebookDownloadable === false;
+              const audioDownloadsOff = selectedCfg?.audiobookDownloadable === false;
+              const canDlEbook = hasEbook && !ebookDownloadsOff && (isFree || !!ownedEbookOrderId);
+              const canDlAudio = hasAudio && !audioDownloadsOff && (isFree || !!ownedAudioOrderId);
               return (
                 <>
                   <button
@@ -1892,11 +2076,11 @@ export function BooksShowcase({
                         <p className="px-2 pb-1 text-[11px] uppercase tracking-wider text-white/40">Choose a file</p>
                         <button
                           type="button"
-                          disabled={!hasEbook}
+                          disabled={!hasEbook || ebookDownloadsOff}
                           className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10 disabled:opacity-40"
                           onClick={() => {
                             setDownloadMenu(false);
-                            if (!selectedCfg || !hasEbook) return;
+                            if (!selectedCfg || !hasEbook || ebookDownloadsOff) return;
                             if (isFree) {
                               window.location.href = freeBookUrl(selectedCfg.id, 'ebook', false);
                               return;
@@ -1910,15 +2094,15 @@ export function BooksShowcase({
                             window.location.href = `/checkout?${q}`;
                           }}
                         >
-                          {canDlEbook ? 'Download ebook (PDF)' : hasEbook ? 'Buy ebook to download' : 'Ebook unavailable'}
+                          {ebookDownloadsOff ? 'Downloads off for this book' : canDlEbook ? 'Download ebook (PDF)' : hasEbook ? 'Buy ebook to download' : 'Ebook unavailable'}
                         </button>
                         <button
                           type="button"
-                          disabled={!hasAudio}
+                          disabled={!hasAudio || audioDownloadsOff}
                           className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10 disabled:opacity-40"
                           onClick={() => {
                             setDownloadMenu(false);
-                            if (!selectedCfg || !hasAudio) return;
+                            if (!selectedCfg || !hasAudio || audioDownloadsOff) return;
                             if (isFree) {
                               window.location.href = freeBookUrl(selectedCfg.id, 'audiobook', false);
                               return;
@@ -1932,7 +2116,7 @@ export function BooksShowcase({
                             window.location.href = `/checkout?${q}`;
                           }}
                         >
-                          {canDlAudio ? 'Download audiobook' : hasAudio ? 'Buy audio to download' : 'Audio unavailable'}
+                          {audioDownloadsOff ? 'Downloads off for this book' : canDlAudio ? 'Download audiobook' : hasAudio ? 'Buy audio to download' : 'Audio unavailable'}
                         </button>
                       </div>
                     )}
@@ -2003,7 +2187,9 @@ export function BooksShowcase({
             </button>
           </div>
         </div>
+        </div>
       )}
+      </div>
 
       {reviewsOpen && selectedCfg && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[9999] flex flex-col bg-background">
@@ -2034,6 +2220,7 @@ export function BooksShowcase({
           <PdfReader
             bookId={selectedCfg.id}
             url={selectedCfg.isFree ? selectedCfg.pdfUrl || freeBookUrl(selectedCfg.id, 'ebook', true) : `${downloadOrderUrl(ownedEbookOrderId!, buyerEmail!)}&inline=1`}
+            watermark={buyerEmail}
           />
         </div>,
         document.body,
@@ -2060,10 +2247,15 @@ export function BooksShowcase({
             bookId={selectedCfg.id}
             url={selectedCfg.isFree ? selectedCfg.audioUrl || freeBookUrl(selectedCfg.id, 'audiobook', true) : `${downloadOrderUrl(ownedAudioOrderId!, buyerEmail!)}&inline=1`}
             onClose={() => setPlayerOpen(false)}
+            downloadable={selectedCfg.audiobookDownloadable !== false}
+            watermark={buyerEmail}
           />
         </div>,
         document.body,
       )}
+
+      {shelfActive && selectedCfg && <RecommendedBooks book={selectedCfg} />}
+    </div>
     </div>
   );
 }

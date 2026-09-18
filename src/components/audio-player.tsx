@@ -95,13 +95,32 @@ export function AudioPlayer({
   url,
   bookId,
   onClose,
+  downloadable = true,
+  watermark,
 }: {
   title: string
   url: string
   bookId: string
   onClose: () => void
+  downloadable?: boolean
+  watermark?: string
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [obscured, setObscured] = useState(false)
+
+  useEffect(() => {
+    const onVisibility = () => setObscured(document.visibilityState !== 'visible')
+    const onBlur = () => setObscured(true)
+    const onFocus = () => setObscured(document.visibilityState !== 'visible')
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('blur', onBlur)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('blur', onBlur)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [])
   const sleepEndRef = useRef(0)
   const sleepMinRef = useRef(0)
   const lastSleepMinRef = useRef(0)
@@ -458,7 +477,25 @@ export function AudioPlayer({
   const hasSleepChoice = sleepMin > 0 || lastSleepMinRef.current > 0
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[#0b1020] text-[#fdfbf4]">
+    <div
+      className="relative flex min-h-0 flex-1 flex-col bg-[#0b1020] text-[#fdfbf4]"
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      {obscured && (
+        <div className="pointer-events-none absolute inset-0 z-40 bg-[#0b1020]/95 backdrop-blur-2xl" />
+      )}
+      {watermark && (
+        <div className="pointer-events-none absolute inset-0 z-30 select-none overflow-hidden opacity-[0.06]">
+          <div
+            className="absolute inset-[-50%] grid grid-cols-2 gap-16 rotate-[-24deg] text-[13px] font-bold uppercase tracking-widest text-white"
+            aria-hidden
+          >
+            {Array.from({ length: 40 }, (_, i) => (
+              <span key={i} className="whitespace-nowrap">{watermark}</span>
+            ))}
+          </div>
+        </div>
+      )}
       <audio
         ref={audioRef}
         src={url.split('#')[0]}
@@ -733,14 +770,20 @@ export function AudioPlayer({
               )}
             </div>
 
-            <button
-              type="button"
-              disabled={offlineBusy}
-              onClick={() => void saveOffline()}
-              className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold disabled:opacity-60"
-            >
-              {offlineBusy ? 'Saving offline…' : 'Save offline on this device'}
-            </button>
+            {downloadable ? (
+              <button
+                type="button"
+                disabled={offlineBusy}
+                onClick={() => void saveOffline()}
+                className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                {offlineBusy ? 'Saving offline…' : 'Save offline on this device'}
+              </button>
+            ) : (
+              <p className="text-center text-[12px] text-white/40">
+                Offline saving is off for this audiobook.
+              </p>
+            )}
             {offlineMsg ? (
               <p className="text-center text-[12px] text-white/50">{offlineMsg}</p>
             ) : null}
