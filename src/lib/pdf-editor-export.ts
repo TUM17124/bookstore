@@ -3,6 +3,7 @@ import type {
   EditorPage,
   EditorElement,
   TextElement,
+  TextRun,
   ShapeElement,
   DrawElement,
   NoteElement,
@@ -131,8 +132,7 @@ export async function buildFinalPdf({
 
     for (const el of elements.filter((e) => e.pageId === page.id)) {
       if (el.type === 'text') {
-        const font = await fontFor(el.fontFamily, el.bold, el.italic)
-        drawTextElement(newPage, el, page, font)
+        await drawTextElement(newPage, el, page, fontFor)
         if (el.url?.trim()) {
           addLinkAnnotation(newPage, el.url.trim(), rectFor(el, page))
         }
@@ -208,38 +208,106 @@ function rectFor(el: EditorElement, page: EditorPage) {
   }
 }
 
-function drawTextElement(page: PdfPage, el: TextElement, editorPage: EditorPage, font: PdfFont) {
+type StyledSegment = { text: string; run: TextRun; font: PdfFont }
+
+async function drawTextElement(
+  page: PdfPage,
+  el: TextElement,
+  editorPage: EditorPage,
+  fontFor: (family: FontFamily, bold: boolean, italic: boolean) => Promise<PdfFont>,
+) {
   const r = rectFor(el, editorPage)
-  const lines = wrapText(el.text || '', font, el.fontSizePt, Math.max(1, r.width))
-  const lineHeight = el.fontSizePt * 1.2
+  const runs = el.runs.length ? el.runs : [{ text: '', fontSizePt: el.fontSizePt, color: el.color, fontFamily: el.fontFamily, bold: el.bold, italic: el.italic }]
+
+  if (el.coverColor) {
+    // This element replaced a run of the ORIGINAL page's own text (Phase 2
+    // click-to-edit) — that original content is still baked into the
+    // copied page underneath (copyPages() brought the whole page's content
+    // stream along), so it has to be painted over before the new text goes
+    // down, not just visually covered in the live editor.
+    page.drawRectangle({ x: r.x, y: r.y, width: r.width, height: r.height, color: hexToRgb(el.coverColor) })
+  }
+
+  // Resolve each distinct (family, bold, italic) combination appearing in
+  // this block's runs once, up front — runs can carry different fonts
+  // from each other now that styling is per-run, not one font per block.
+  const fontCache = new Map<string, PdfFont>()
+  for (const run of runs) {
+    const key = `${run.fontFamily}:${run.bold ? 1 : 0}:${run.italic ? 1 : 0}`
+    if (!fontCache.has(key)) fontCache.set(key, await fontFor(run.fontFamily, run.bold, run.italic))
+  }
+  const fontForRun = (run: TextRun) => fontCache.get(`${run.fontFamily}:${run.bold ? 1 : 0}:${run.italic ? 1 : 0}`)!
+
+  const lines = wrapRuns(runs, fontForRun, Math.max(1, r.width))
+  const lineHeight = Math.max(...runs.map((rn) => rn.fontSizePt), 12) * 1.2
   const totalHeight = lines.length * lineHeight
-  let y = r.y + r.height - Math.max(0, (r.height - totalHeight) / 2) - el.fontSizePt
+  const hasLink = !!el.url?.trim()
+  let y = r.y + r.height - Math.max(0, (r.height - totalHeight) / 2) - lineHeight * 0.85
+
   for (const line of lines) {
-    const lineWidth = font.widthOfTextAtSize(line, el.fontSizePt)
+    const lineWidth = line.reduce((sum, seg) => sum + seg.font.widthOfTextAtSize(seg.text, seg.run.fontSizePt), 0)
     let x = r.x
     if (el.align === 'center') x = r.x + Math.max(0, (r.width - lineWidth) / 2)
     else if (el.align === 'right') x = r.x + Math.max(0, r.width - lineWidth)
-    page.drawText(line, { x, y, size: el.fontSizePt, font, color: hexToRgb(el.color) })
+
+    for (const seg of line) {
+      const segWidth = seg.font.widthOfTextAtSize(seg.text, seg.run.fontSizePt)
+      if (seg.text.trim()) {
+        page.drawText(seg.text, { x, y, size: seg.run.fontSizePt, font: seg.font, color: hexToRgb(seg.run.color) })
+        if (hasLink) {
+          // Matches the editor's on-canvas link preview (underline) so the
+          // exported PDF doesn't visually diverge from what was edited.
+          const underlineY = y - seg.run.fontSizePt * 0.12
+          page.drawLine({
+            start: { x, y: underlineY },
+            end: { x: x + segWidth, y: underlineY },
+            thickness: Math.max(0.5, seg.run.fontSizePt * 0.05),
+            color: hexToRgb(seg.run.color),
+          })
+        }
+      }
+      x += segWidth
+    }
     y -= lineHeight
   }
 }
 
-function wrapText(text: string, font: PdfFont, size: number, maxWidth: number): string[] {
-  const lines: string[] = []
-  for (const paragraph of text.split('\n')) {
-    const words = paragraph.split(' ')
-    let line = ''
-    for (const word of words) {
-      const candidate = line ? `${line} ${word}` : word
-      if (font.widthOfTextAtSize(candidate, size) > maxWidth && line) {
-        lines.push(line)
-        line = word
-      } else {
-        line = candidate
-      }
-    }
-    lines.push(line)
+/** Wraps styled runs into lines, each line an ordered list of same-style
+ * segments — a "word" wrapping decision is made against whichever run it
+ * currently belongs to, so mixed-style text within one paragraph still
+ * wraps correctly at the actual rendered width of each piece. */
+function wrapRuns(
+  runs: TextRun[],
+  fontForRun: (run: TextRun) => PdfFont,
+  maxWidth: number,
+): StyledSegment[][] {
+  const lines: StyledSegment[][] = []
+  let current: StyledSegment[] = []
+  let currentWidth = 0
+
+  function pushLine() {
+    lines.push(current)
+    current = []
+    currentWidth = 0
   }
+
+  for (const run of runs) {
+    const font = fontForRun(run)
+    const paragraphs = run.text.split('\n')
+    paragraphs.forEach((paragraph, pIdx) => {
+      if (pIdx > 0) pushLine()
+      const tokens = paragraph.match(/\S+|\s+/g) || []
+      for (const token of tokens) {
+        const tokenWidth = font.widthOfTextAtSize(token, run.fontSizePt)
+        if (currentWidth + tokenWidth > maxWidth && current.length > 0 && token.trim()) {
+          pushLine()
+        }
+        current.push({ text: token, run, font })
+        currentWidth += tokenWidth
+      }
+    })
+  }
+  lines.push(current)
   return lines
 }
 
@@ -490,3 +558,5 @@ function drawOcrTextLayer(page: PdfPage, editorPage: EditorPage, ocr: OcrPageRes
     }
   }
 }
+
+

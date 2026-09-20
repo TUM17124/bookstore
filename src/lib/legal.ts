@@ -67,3 +67,4 @@ export async function acceptLegal(token: string) {
 
   return data
 }
+

@@ -44,3 +44,5 @@ export function withReferralQuery(href: string) {
   if (!url.searchParams.get("ref")) url.searchParams.set("ref", code)
   return `${url.pathname}${url.search}${url.hash}`
 }
+
+

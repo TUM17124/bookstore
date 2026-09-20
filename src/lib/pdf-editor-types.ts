@@ -14,9 +14,28 @@ export type ElementBase = {
 
 export type TextAlign = 'left' | 'center' | 'right'
 
+/** One contiguous run of same-styled text within a text block. A block's
+ * actual content is `runs`, not a single flat string — this is what lets
+ * one word in the middle of a sentence carry its own font/size/color
+ * independent of the rest, instead of one style applying to the whole
+ * block. See rich-text-editor.tsx for how the contenteditable surface
+ * reads/writes this array. */
+export type TextRun = {
+  text: string
+  fontSizePt: number
+  color: string
+  fontFamily: FontFamily
+  bold: boolean
+  italic: boolean
+}
+
 export type TextElement = ElementBase & {
   type: 'text'
-  text: string
+  runs: TextRun[]
+  /** Style for a brand-new empty block (its first run) and the toolbar's
+   * fallback when no run can be resolved (e.g. a totally empty editor) —
+   * NOT applied to existing content. Live editing always reads/writes
+   * per-run style via the runs above. */
   fontSizePt: number
   color: string
   fontFamily: FontFamily
@@ -25,6 +44,24 @@ export type TextElement = ElementBase & {
   align: TextAlign
   /** Optional — when set, the text becomes a clickable link on export. */
   url: string
+  /** Set when this element was created by clicking into a DETECTED run of
+   * existing page content (an uploaded PDF's own text — see
+   * pdf-editor-text-layer.ts) rather than inserted fresh. The original
+   * glyphs are still baked into the copied page underneath, so export must
+   * paint a rectangle in this sampled background color behind the new text
+   * first, to actually hide them — not just draw over them visually in the
+   * live editor. Undefined for elements the user placed on blank space. */
+  coverColor?: string
+  /** Set for a block created by clicking blank page space (Part G) — its
+   * height grows automatically to fit typed content instead of showing
+   * the overflow hint a fixed-size block would. Its width is still bounded
+   * by the page's right margin from creation, so long lines wrap there
+   * rather than growing the block wider. */
+  autoGrow?: boolean
+}
+
+export function runsToPlainText(runs: TextRun[]): string {
+  return runs.map((r) => r.text).join('')
 }
 
 export type ImageElement = ElementBase & {
@@ -176,3 +213,5 @@ export const A4_HEIGHT_PT = 841.89
 
 export const MAX_PDF_BYTES = 25 * 1024 * 1024 // 25MB
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024 // 8MB
+
+

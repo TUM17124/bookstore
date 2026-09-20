@@ -52,3 +52,5 @@ export async function terminateOcrWorker() {
   workerPromise = null
   await worker.terminate()
 }
+
+

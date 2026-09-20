@@ -50,3 +50,5 @@ function clone(snapshot: EditorSnapshot): EditorSnapshot {
   // it's supported in all evergreen browsers this tool targets.
   return structuredClone(snapshot)
 }
+
+

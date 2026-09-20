@@ -7,3 +7,5 @@ export function splitName(full: string): [string, string] {
   const [first, ...rest] = parts
   return [first, rest.join(" ")]
 }
+
+

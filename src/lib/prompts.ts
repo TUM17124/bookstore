@@ -22,3 +22,5 @@ export function personalize(text: string, name: string) {
   if (name) return text.replace("{name}", name)
   return text.replace(/\{name\}, /, "").replace(/^./, (c) => c.toUpperCase())
 }
+
+

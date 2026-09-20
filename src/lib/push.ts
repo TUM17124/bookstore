@@ -71,6 +71,36 @@ export async function bindPushToAccount() {
   }
 }
 
+/** Error thrown when pushManager.subscribe() itself fails — this is expected,
+ * routine behavior in some browsers (Brave disables Google's push service by
+ * default) rather than a real app bug, so callers can degrade gracefully
+ * instead of treating it like a hard failure. */
+export class PushSubscribeError extends Error {
+  isBrave: boolean
+  constructor(message: string, isBrave: boolean) {
+    super(message)
+    this.name = "PushSubscribeError"
+    this.isBrave = isBrave
+  }
+}
+
+declare global {
+  interface Navigator {
+    brave?: { isBrave: () => Promise<boolean> }
+  }
+}
+
+export async function isBraveBrowser(): Promise<boolean> {
+  try {
+    if (navigator.brave && typeof navigator.brave.isBrave === "function") {
+      return await navigator.brave.isBrave()
+    }
+  } catch {
+    // fall through
+  }
+  return false
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(message)), ms)
@@ -118,10 +148,24 @@ export async function enablePushNotifications() {
 
   let subscription = await registration.pushManager.getSubscription()
   if (!subscription) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID),
-    })
+    try {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID),
+      })
+    } catch {
+      // pushManager.subscribe() failing here is routine in some browsers
+      // (e.g. Brave disables Google's push service unless the user opts in
+      // under brave://settings/privacy) — never let this look like a app
+      // bug, and never fall through to sending anything to the backend.
+      const brave = await isBraveBrowser()
+      throw new PushSubscribeError(
+        brave
+          ? "Brave blocks push alerts by default. You can enable them in Brave's settings (brave://settings/privacy), or just continue without them."
+          : "This browser couldn't register for push alerts. You can still continue — alerts can be turned on later from Settings.",
+        brave,
+      )
+    }
   }
 
   await savePushSubscription(subscription)
@@ -145,3 +189,5 @@ export async function disablePushNotifications() {
     // Best effort — the device-side unsubscribe already took effect.
   }
 }
+
+

@@ -54,3 +54,5 @@ export async function compressPdfByRasterizing(bytes: Uint8Array, scale: number,
   }
   return out.save()
 }
+
+

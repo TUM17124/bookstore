@@ -34,3 +34,4 @@ export function clientLogout() {
   setStoredUser(null)
   window.dispatchEvent(new Event('auth-changed'))
 }
+

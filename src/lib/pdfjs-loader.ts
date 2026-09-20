@@ -71,3 +71,5 @@ export async function renderPdfPageToDataUrl(
   const canvas = await renderPdfPageToCanvas(bytes, pageNumber, scale)
   return canvas.toDataURL('image/png')
 }
+
+

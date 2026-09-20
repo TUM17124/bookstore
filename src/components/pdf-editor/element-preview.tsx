@@ -1,6 +1,6 @@
 'use client'
 
-import { StickyNote, EyeOff, CheckSquare, ChevronDown } from 'lucide-react'
+import { StickyNote, EyeOff, CheckSquare, ChevronDown, CaseSensitive } from 'lucide-react'
 import type { DrawElement, ShapeElement, NoteElement, FormFieldElement } from '@/lib/pdf-editor-types'
 
 export function DrawPreview({ el }: { el: DrawElement }) {
@@ -58,15 +58,20 @@ export function RedactPreview() {
   )
 }
 
+/** A compact icon marker at the field's placed position — NOT a rendered
+ * preview of its filled-in content (no "Option 1 / Option 2" text, no
+ * field-name label sitting on the page). Matches Acrobat's Prepare Form
+ * tool: the page shows just enough to say "there's a field here"; actual
+ * configuration (name, options, default state) lives in FormFieldPanel
+ * once this marker is selected. */
 export function FormFieldPreview({ el }: { el: FormFieldElement }) {
+  const Icon = el.fieldKind === 'checkbox' ? CheckSquare : el.fieldKind === 'dropdown' ? ChevronDown : CaseSensitive
   return (
-    <div className="flex h-full w-full items-center gap-1 overflow-hidden rounded border-2 border-dashed border-sky-500 bg-sky-500/10 px-1.5 text-[10px] text-sky-700 dark:text-sky-300">
-      {el.fieldKind === 'checkbox' ? (
-        <CheckSquare className="h-3 w-3 shrink-0" />
-      ) : el.fieldKind === 'dropdown' ? (
-        <ChevronDown className="h-3 w-3 shrink-0" />
-      ) : null}
-      <span className="truncate">{el.name || `Untitled ${el.fieldKind} field`}</span>
+    <div
+      title={el.name || `Untitled ${el.fieldKind} field`}
+      className="flex h-full w-full items-center justify-center rounded border-2 border-dashed border-sky-500 bg-sky-500/10 text-sky-700 dark:text-sky-300"
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" />
     </div>
   )
 }
@@ -82,3 +87,5 @@ export function NotePreview({ el }: { el: NoteElement }) {
     </div>
   )
 }
+
+

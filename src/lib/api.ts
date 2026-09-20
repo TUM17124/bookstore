@@ -75,6 +75,44 @@ export function setToken(access: string) {
   setTokens(access)
 }
 
+export function getRefreshToken(): string | null {
+  if (typeof window === "undefined") return null
+  return localStorage.getItem("refresh_token")
+}
+
+export class SessionEvictedError extends Error {
+  constructor() {
+    super("You've been signed out because you logged in on another device.")
+    this.name = "SessionEvictedError"
+  }
+}
+
+/** Exchanges the stored refresh token for a new access token — the access
+ * token is intentionally short-lived (see backend SIMPLE_JWT comment), so
+ * this has to run periodically in the background or every page reload
+ * would eventually hit a stale token. Throws SessionEvictedError
+ * specifically when this session was the one silently evicted by the
+ * concurrent-session cap (its refresh token got blacklisted), so callers
+ * can show that distinctly rather than a generic "please log in again." */
+export async function refreshAccessToken(): Promise<string> {
+  const refresh = getRefreshToken()
+  if (!refresh) throw new Error("No refresh token")
+  const res = await fetch(`${API}/auth/refresh/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    if ((data as { code?: string }).code === "session_evicted") throw new SessionEvictedError()
+    throw new Error((data as { error?: string; detail?: string }).error || "Session expired")
+  }
+  const access = (data as { access?: string }).access
+  if (!access) throw new Error("Refresh response had no access token")
+  setTokens(access)
+  return access
+}
+
 export function clearTokens() {
   localStorage.removeItem("access_token")
   localStorage.removeItem("access")
@@ -158,15 +196,187 @@ export async function getBook(id: string | number): Promise<ApiBook | null> {
   return res.json()
 }
 
+/** "You might also like" for a single book — item-similarity + collaborative
+ * "also bought/rated/bookmarked" + (when logged in) personal affinity. See
+ * shop/recommend.py:related_books_for on the backend. Sends the auth token
+ * when present so the personal-affinity signal actually applies. */
+export async function getRelatedBooks(
+  bookId: string | number,
+  limit = 10,
+): Promise<ApiBook[]> {
+  if (!API) throw new Error("NEXT_PUBLIC_API_URL is not set")
+  const token = getToken()
+  const headers: Record<string, string> = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await fetch(`${API}/books/${bookId}/related/?limit=${limit}`, { headers })
+  if (!res.ok) return []
+  const data = await res.json().catch(() => [])
+  return Array.isArray(data) ? data : []
+}
+
+export type ProStatus = {
+  is_pro: boolean
+  subscription: {
+    id: number
+    status: string
+    amount: string
+    started_at: string | null
+    expires_at: string | null
+  } | null
+}
+
+export async function getProStatus(): Promise<ProStatus> {
+  const token = getToken()
+  if (!token) return { is_pro: false, subscription: null }
+  const res = await fetch(`${API}/pro/status/`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) return { is_pro: false, subscription: null }
+  return res.json()
+}
+
+/** Public — no auth required, so the /pro page can show the real
+ * admin-configured price to logged-out visitors too. Never hardcode
+ * this value in frontend code; SiteSettings.pro_price_monthly is the
+ * single source of truth. */
+export async function getProPricing(): Promise<{ price_monthly: string }> {
+  const res = await fetch(`${API}/pro/pricing/`)
+  if (!res.ok) return { price_monthly: "0" }
+  return res.json()
+}
+
+export async function subscribePro(): Promise<{
+  subscription_id: number
+  checkout_url: string
+  reference: string
+  amount: string
+}> {
+  const token = getToken()
+  if (!token) throw new Error("Log in required")
+  const res = await fetch(`${API}/pro/subscribe/`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data as { error?: string }).error || "Could not start subscription")
+  return data
+}
+
+export async function confirmProPayment(reference: string): Promise<{
+  ok: boolean
+  paid?: boolean
+  already_paid?: boolean
+  error?: string
+  subscription?: ProStatus["subscription"]
+}> {
+  const token = getToken()
+  if (!token) return { ok: false, error: "Log in required" }
+  const res = await fetch(`${API}/pro/confirm/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ reference }),
+  })
+  return res.json()
+}
+
+export type TtsVoice = {
+  id: string
+  label: string
+  gender: string
+  description: string
+}
+
+export async function getTtsVoices(): Promise<TtsVoice[]> {
+  const res = await fetch(`${API}/tts/voices/`)
+  if (!res.ok) return []
+  const data = await res.json().catch(() => ({}))
+  return Array.isArray(data.voices) ? data.voices : []
+}
+
+export type TtsTimepoint = { mark: string; time_seconds: number }
+
+export type TtsResult = {
+  token: string
+  sentences: string[]
+  timepoints: TtsTimepoint[]
+  cached: boolean
+}
+
+/** Synthesizes (or reuses cached) audio for one reading-view page — Pro
+ * "robot reader" feature. Throws with `.proRequired` set if the caller
+ * isn't an active Pro subscriber, so the UI can show an upsell instead of
+ * a generic error. */
+export class TtsError extends Error {
+  proRequired: boolean
+  constructor(message: string, proRequired = false) {
+    super(message)
+    this.name = "TtsError"
+    this.proRequired = proRequired
+  }
+}
+
+export async function synthesizePage(
+  bookId: string | number,
+  page: number,
+  voice: string,
+  text: string,
+): Promise<TtsResult> {
+  const token = getToken()
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await fetch(`${API}/books/${bookId}/tts/`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ page, voice, text }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new TtsError(data.error || "Could not read this page aloud", !!data.pro_required)
+  }
+  return data as TtsResult
+}
+
+export function ttsAudioUrl(token: string) {
+  return `${API}/tts-audio/?token=${encodeURIComponent(token)}`
+}
+
+/** Thrown by createCheckout — carries `legalRequired` so the checkout page
+ * can show the "accept the terms" message inline instead of a generic
+ * error (the generic `api()` helper above discards extra response fields,
+ * so this endpoint parses its own response instead of using it). */
+export class CheckoutError extends Error {
+  legalRequired: boolean
+  constructor(message: string, legalRequired = false) {
+    super(message)
+    this.name = "CheckoutError"
+    this.legalRequired = legalRequired
+  }
+}
+
 export async function createCheckout(payload: {
   book_id: number
   product_type: "ebook" | "audiobook"
   email: string
+  terms_accepted?: boolean
 }) {
-  return api<{ order_id: number; checkout_url: string; dev_mode?: boolean }>(
-    "/checkout/",
-    { method: "POST", body: JSON.stringify(payload) },
-  )
+  const token = getToken()
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  const res = await fetch(`${API}/checkout/`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const body = data as { error?: string; legal_required?: boolean }
+    throw new CheckoutError(body.error || "Checkout failed", !!body.legal_required)
+  }
+  return data as { order_id: number; checkout_url: string; dev_mode?: boolean }
 }
 
 export async function confirmOrderPayment(
@@ -697,3 +907,5 @@ export async function unsubscribePush(endpoint?: string) {
 }
 
 export default searchTrack
+
+

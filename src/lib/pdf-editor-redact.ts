@@ -23,3 +23,5 @@ export async function rasterizePageWithRedactions(
   )
   return new Uint8Array(await blob.arrayBuffer())
 }
+
+
