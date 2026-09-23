@@ -7,6 +7,7 @@ import {
   bindPushToAccount,
   enablePushNotifications,
   getPushSubscription,
+  PushSubscribeError,
   savePushSubscription,
 } from "@/lib/push"
 import { getStoredUser, isLoggedIn } from "@/lib/auth-client"
@@ -63,6 +64,7 @@ function isAuthPath() {
 export function PushPrompt() {
   const [show, setShow] = useState(false)
   const [msg, setMsg] = useState("")
+  const [msgIsSoft, setMsgIsSoft] = useState(false)
   const [busy, setBusy] = useState(false)
   const [hasAccount, setHasAccount] = useState(false)
   const [name, setName] = useState("")
@@ -138,6 +140,15 @@ export function PushPrompt() {
         const promptData = await promptRes.json().catch(() => ({}))
         if (cancelled) return
         if (promptData.push_enabled === false) return
+        if (promptData.installed) {
+          await postPromptEvent("installed")
+          return
+        }
+        // The backend's `ask` flag is the authoritative answer (cooldown,
+        // dismissed status, and the prompt_count cap all factor in) — a
+        // local "not subscribed yet" check alone would keep re-showing the
+        // prompt after "Later" forever, since dismissing never subscribes.
+        if (!promptData.ask) return
 
         const response = await fetch(`${API}/push/status/${query}`, {
           headers,
@@ -183,7 +194,13 @@ export function PushPrompt() {
     <div className="fixed bottom-4 left-4 right-4 z-[69] mx-auto max-w-md rounded-2xl border bg-background p-4 shadow-lg">
       <p className="font-semibold">{title}</p>
       <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{body}</p>
-      {msg ? <p className="mt-2 text-sm text-red-600">{msg}</p> : null}
+      {msg ? (
+        <p
+          className={`mt-2 text-sm ${msgIsSoft ? "text-neutral-500 dark:text-neutral-400" : "text-red-600"}`}
+        >
+          {msg}
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           disabled={busy}
@@ -191,15 +208,21 @@ export function PushPrompt() {
           onClick={async () => {
             setBusy(true)
             setMsg("")
+            setMsgIsSoft(false)
             try {
               await enablePushNotifications()
               await postPromptEvent("installed")
               setShow(false)
             } catch (error) {
+              // A failed push subscription (e.g. Brave blocking it by
+              // default) is routine, not a blocking error — surface it as
+              // a quiet note and leave Create account / Later fully usable.
+              const soft = error instanceof PushSubscribeError
+              setMsgIsSoft(soft)
               setMsg(
                 error instanceof Error
                   ? error.message
-                  : "Failed to enable notifications",
+                  : "Could not enable notifications on this device.",
               )
             } finally {
               setBusy(false)

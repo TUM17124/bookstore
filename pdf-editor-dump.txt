@@ -1,3 +1,2141 @@
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\components\pdf-editor\annotation-toolbar.tsx ==========
+
+'use client'
+
+import {
+  MousePointer2,
+  Pencil,
+  Square,
+  Circle,
+  Minus,
+  ArrowUpRight,
+  Highlighter,
+  Underline as UnderlineIcon,
+  Strikethrough as StrikethroughIcon,
+  StickyNote,
+  EyeOff,
+} from 'lucide-react'
+import type { ShapeKind } from '@/lib/pdf-editor-types'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+
+export type AnnotationTool = 'select' | 'pen' | ShapeKind | 'note' | 'redact'
+
+const TOOLS: { key: AnnotationTool; label: string; icon: typeof MousePointer2 }[] = [
+  { key: 'select', label: 'Select', icon: MousePointer2 },
+  { key: 'pen', label: 'Pen', icon: Pencil },
+  { key: 'rect', label: 'Rectangle', icon: Square },
+  { key: 'ellipse', label: 'Ellipse', icon: Circle },
+  { key: 'line', label: 'Line', icon: Minus },
+  { key: 'arrow', label: 'Arrow', icon: ArrowUpRight },
+  { key: 'highlight', label: 'Highlight', icon: Highlighter },
+  { key: 'underline', label: 'Underline', icon: UnderlineIcon },
+  { key: 'strikethrough', label: 'Strikethrough', icon: StrikethroughIcon },
+  { key: 'note', label: 'Sticky note', icon: StickyNote },
+  { key: 'redact', label: 'Redact (permanent)', icon: EyeOff },
+]
+
+/** A compact, always-visible horizontal tool strip — the annotate/markup
+ * tool palette real editors (Figma, Acrobat) keep pinned, as opposed to a
+ * one-click "insert" command buried in a menu. */
+export function AnnotationToolbar({
+  tool,
+  onToolChange,
+  color,
+  onColorChange,
+  strokeWidth,
+  onStrokeWidthChange,
+}: {
+  tool: AnnotationTool
+  onToolChange: (t: AnnotationTool) => void
+  color: string
+  onColorChange: (c: string) => void
+  strokeWidth: number
+  onStrokeWidthChange: (w: number) => void
+}) {
+  const showColor = tool !== 'select' && tool !== 'redact'
+  const showStroke = showColor && tool !== 'note' && tool !== 'highlight'
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto">
+      {TOOLS.map((t) => (
+        <Tooltip key={t.key}>
+          <TooltipTrigger
+            type="button"
+            aria-label={t.label}
+            onClick={() => onToolChange(t.key)}
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
+              tool === t.key ? 'border-foreground bg-foreground/10' : 'border-foreground/15 hover:bg-foreground/5'
+            }`}
+          >
+            <t.icon className="h-4 w-4" />
+          </TooltipTrigger>
+          <TooltipContent>{t.label}</TooltipContent>
+        </Tooltip>
+      ))}
+
+      {showColor && (
+        <>
+          <div className="mx-1 h-6 w-px shrink-0 bg-foreground/10" />
+          <input
+            type="color"
+            value={color}
+            onChange={(e) => onColorChange(e.target.value)}
+            aria-label="Color"
+            title="Color"
+            className="h-8 w-8 shrink-0 rounded-lg border border-foreground/15 bg-transparent p-0.5"
+          />
+        </>
+      )}
+      {showStroke && (
+        <label className="flex shrink-0 items-center gap-1.5 text-xs text-foreground/55">
+          <span className="hidden sm:inline">Width</span>
+          <input
+            type="range"
+            min={1}
+            max={12}
+            value={strokeWidth}
+            onChange={(e) => onStrokeWidthChange(Number(e.target.value))}
+            className="w-20"
+          />
+        </label>
+      )}
+
+      {tool === 'pen' && <span className="hidden shrink-0 text-[11px] text-foreground/45 md:inline">Drag to draw.</span>}
+      {tool === 'note' && <span className="hidden shrink-0 text-[11px] text-foreground/45 md:inline">Click to drop a note.</span>}
+      {tool !== 'select' && tool !== 'pen' && tool !== 'note' && tool !== 'redact' && (
+        <span className="hidden shrink-0 text-[11px] text-foreground/45 md:inline">Drag to draw the shape.</span>
+      )}
+      {tool === 'redact' && (
+        <span className="shrink-0 rounded-full bg-red-500/10 px-2 py-1 text-[11px] font-medium text-red-600 dark:text-red-400">
+          Permanent — flattens the page on export
+        </span>
+      )}
+    </div>
+  )
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\components\pdf-editor\detected-field-overlay.tsx ==========
+
+'use client'
+
+import type { DetectedField } from '@/lib/pdf-editor-forms'
+
+/** Interactive inputs positioned directly over an uploaded PDF's own
+ * (already-rendered) form field appearances, so the user can type/check/
+ * select values in place. Values are baked into the page as flattened
+ * content at export time — see pdf-editor-forms.ts. */
+export function DetectedFieldOverlay({
+  fields,
+  onChange,
+}: {
+  fields: DetectedField[]
+  onChange: (id: string, patch: Partial<DetectedField>) => void
+}) {
+  return (
+    <>
+      {fields.map((f) => (
+        <div
+          key={f.id}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="absolute z-10"
+          style={{
+            left: `${f.xf * 100}%`,
+            top: `${f.yf * 100}%`,
+            width: `${f.wf * 100}%`,
+            height: `${f.hf * 100}%`,
+          }}
+        >
+          {f.kind === 'text' && (
+            <input
+              type="text"
+              value={f.value}
+              onChange={(e) => onChange(f.id, { value: e.target.value })}
+              className="h-full w-full rounded border border-sky-500 bg-sky-50/90 px-1 text-[11px] text-black outline-none dark:bg-sky-950/70 dark:text-white"
+            />
+          )}
+          {f.kind === 'checkbox' && (
+            <input
+              type="checkbox"
+              checked={f.checked}
+              onChange={(e) => onChange(f.id, { checked: e.target.checked })}
+              className="h-full w-full accent-sky-500"
+            />
+          )}
+          {(f.kind === 'dropdown' || f.kind === 'radio') && (
+            <select
+              value={f.value}
+              onChange={(e) => onChange(f.id, { value: e.target.value })}
+              className="h-full w-full rounded border border-sky-500 bg-sky-50/90 px-0.5 text-[11px] text-black outline-none dark:bg-sky-950/70 dark:text-white"
+            >
+              {f.options.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      ))}
+    </>
+  )
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\components\pdf-editor\detected-text-overlay.tsx ==========
+
+'use client'
+
+import type { DetectedTextRun } from '@/lib/pdf-editor-text-layer'
+
+/** Invisible click targets over an uploaded PDF's own existing text runs —
+ * hovering reveals a subtle highlight so the user can see what's editable
+ * before clicking, matching Adobe/Sejda's Edit-PDF hover cue. Clicking one
+ * hands off to startEditingDetectedRun in the editor page, which converts
+ * it into a live, editable TextElement seeded with the detected content/
+ * position/font. */
+export function DetectedTextOverlay({
+  runs,
+  onEdit,
+}: {
+  runs: DetectedTextRun[]
+  onEdit: (run: DetectedTextRun) => void
+}) {
+  return (
+    <>
+      {runs.map((r) => (
+        <button
+          key={r.id}
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => onEdit(r)}
+          aria-label={`Edit text: ${r.text}`}
+          title="Click to edit this text"
+          className="absolute z-[5] cursor-text rounded-sm hover:bg-sky-400/25 hover:outline hover:outline-1 hover:outline-sky-500"
+          style={{
+            left: `${r.xf * 100}%`,
+            top: `${r.yf * 100}%`,
+            width: `${r.wf * 100}%`,
+            height: `${r.hf * 100}%`,
+          }}
+        />
+      ))}
+    </>
+  )
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\components\pdf-editor\drawing-layer.tsx ==========
+
+'use client'
+
+import { useState } from 'react'
+import type { AnnotationTool } from './annotation-toolbar'
+
+export function DrawingLayer({
+  tool,
+  containerRef,
+  color,
+  onCreateShape,
+  onCreateDraw,
+  onCreateNote,
+}: {
+  tool: AnnotationTool
+  containerRef: React.RefObject<HTMLDivElement | null>
+  color: string
+  onCreateShape: (kind: Exclude<AnnotationTool, 'select' | 'pen' | 'note'>, xf: number, yf: number, wf: number, hf: number) => void
+  onCreateDraw: (points: { x: number; y: number }[], xf: number, yf: number, wf: number, hf: number) => void
+  onCreateNote: (xf: number, yf: number) => void
+}) {
+  const [start, setStart] = useState<{ x: number; y: number } | null>(null)
+  const [current, setCurrent] = useState<{ x: number; y: number } | null>(null)
+  const [penPoints, setPenPoints] = useState<{ x: number; y: number }[]>([])
+
+  if (tool === 'select') return null
+
+  function toFrac(e: React.PointerEvent): { x: number; y: number } {
+    const box = containerRef.current
+    if (!box) return { x: 0, y: 0 }
+    const rect = box.getBoundingClientRect()
+    return {
+      x: Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)),
+      y: Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height)),
+    }
+  }
+
+  function onPointerDown(e: React.PointerEvent) {
+    e.preventDefault()
+    const p = toFrac(e)
+    if (tool === 'note') {
+      onCreateNote(p.x, p.y)
+      return
+    }
+    setStart(p)
+    setCurrent(p)
+    if (tool === 'pen') setPenPoints([p])
+    ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    if (!start) return
+    const p = toFrac(e)
+    setCurrent(p)
+    if (tool === 'pen') setPenPoints((prev) => [...prev, p])
+  }
+
+  function finish() {
+    if (!start || !current) {
+      reset()
+      return
+    }
+    if (tool === 'pen') {
+      const pts = penPoints
+      if (pts.length < 2) {
+        reset()
+        return
+      }
+      const xs = pts.map((p) => p.x)
+      const ys = pts.map((p) => p.y)
+      const xf = Math.min(...xs)
+      const yf = Math.min(...ys)
+      const wf = Math.max(0.01, Math.max(...xs) - xf)
+      const hf = Math.max(0.01, Math.max(...ys) - yf)
+      const local = pts.map((p) => ({ x: (p.x - xf) / wf, y: (p.y - yf) / hf }))
+      onCreateDraw(local, xf, yf, wf, hf)
+    } else {
+      const xf = Math.min(start.x, current.x)
+      const yf = Math.min(start.y, current.y)
+      const wf = Math.max(0.02, Math.abs(current.x - start.x))
+      const hf = Math.max(0.02, Math.abs(current.y - start.y))
+      onCreateShape(tool as Exclude<AnnotationTool, 'select' | 'pen' | 'note'>, xf, yf, wf, hf)
+    }
+    reset()
+  }
+
+  function reset() {
+    setStart(null)
+    setCurrent(null)
+    setPenPoints([])
+  }
+
+  return (
+    <div
+      className="absolute inset-0 z-20 touch-none"
+      style={{ cursor: 'crosshair' }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={finish}
+    >
+      <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+        {tool === 'pen' && penPoints.length > 1 && (
+          <polyline
+            points={penPoints.map((p) => `${p.x * 100},${p.y * 100}`).join(' ')}
+            fill="none"
+            stroke={color}
+            strokeWidth={0.6}
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
+        {tool !== 'pen' && start && current && (
+          <rect
+            x={Math.min(start.x, current.x) * 100}
+            y={Math.min(start.y, current.y) * 100}
+            width={Math.abs(current.x - start.x) * 100}
+            height={Math.abs(current.y - start.y) * 100}
+            fill="none"
+            stroke={color}
+            strokeDasharray="2,1"
+            strokeWidth={0.4}
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
+      </svg>
+    </div>
+  )
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\components\pdf-editor\element-preview.tsx ==========
+
+'use client'
+
+import { StickyNote, EyeOff, CheckSquare, ChevronDown, CaseSensitive } from 'lucide-react'
+import type { DrawElement, ShapeElement, NoteElement, FormFieldElement } from '@/lib/pdf-editor-types'
+
+export function DrawPreview({ el }: { el: DrawElement }) {
+  return (
+    <svg className="h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <polyline
+        points={el.points.map((p) => `${p.x * 100},${p.y * 100}`).join(' ')}
+        fill="none"
+        stroke={el.color}
+        strokeWidth={0.6}
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  )
+}
+
+export function ShapePreview({ el }: { el: ShapeElement }) {
+  const stroke = el.color
+  const fill = el.shapeKind === 'highlight' ? el.color : 'none'
+  const fillOpacity = el.shapeKind === 'highlight' ? el.fillOpacity || 0.4 : 0
+
+  return (
+    <svg className="h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
+      {el.shapeKind === 'rect' && (
+        <rect x={0} y={0} width={100} height={100} fill={fill} fillOpacity={fillOpacity} stroke={stroke} strokeWidth={0.6} vectorEffect="non-scaling-stroke" />
+      )}
+      {el.shapeKind === 'ellipse' && (
+        <ellipse cx={50} cy={50} rx={50} ry={50} fill={fill} fillOpacity={fillOpacity} stroke={stroke} strokeWidth={0.6} vectorEffect="non-scaling-stroke" />
+      )}
+      {el.shapeKind === 'highlight' && <rect x={0} y={0} width={100} height={100} fill={fill} fillOpacity={fillOpacity} />}
+      {el.shapeKind === 'line' && (
+        <line x1={0} y1={50} x2={100} y2={50} stroke={stroke} strokeWidth={0.8} vectorEffect="non-scaling-stroke" />
+      )}
+      {el.shapeKind === 'underline' && (
+        <line x1={0} y1={95} x2={100} y2={95} stroke={stroke} strokeWidth={0.8} vectorEffect="non-scaling-stroke" />
+      )}
+      {el.shapeKind === 'strikethrough' && (
+        <line x1={0} y1={50} x2={100} y2={50} stroke={stroke} strokeWidth={0.8} vectorEffect="non-scaling-stroke" />
+      )}
+      {el.shapeKind === 'arrow' && (
+        <>
+          <line x1={0} y1={50} x2={90} y2={50} stroke={stroke} strokeWidth={0.8} vectorEffect="non-scaling-stroke" />
+          <polygon points="90,42 100,50 90,58" fill={stroke} />
+        </>
+      )}
+    </svg>
+  )
+}
+
+export function RedactPreview() {
+  return (
+    <div className="flex h-full w-full items-center justify-center gap-1 bg-black text-white">
+      <EyeOff className="h-3.5 w-3.5 shrink-0 opacity-80" />
+    </div>
+  )
+}
+
+/** A compact icon marker at the field's placed position — NOT a rendered
+ * preview of its filled-in content (no "Option 1 / Option 2" text, no
+ * field-name label sitting on the page). Matches Acrobat's Prepare Form
+ * tool: the page shows just enough to say "there's a field here"; actual
+ * configuration (name, options, default state) lives in FormFieldPanel
+ * once this marker is selected. */
+export function FormFieldPreview({ el }: { el: FormFieldElement }) {
+  const Icon = el.fieldKind === 'checkbox' ? CheckSquare : el.fieldKind === 'dropdown' ? ChevronDown : CaseSensitive
+  return (
+    <div
+      title={el.name || `Untitled ${el.fieldKind} field`}
+      className="flex h-full w-full items-center justify-center rounded border-2 border-dashed border-sky-500 bg-sky-500/10 text-sky-700 dark:text-sky-300"
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" />
+    </div>
+  )
+}
+
+export function NotePreview({ el }: { el: NoteElement }) {
+  return (
+    <div
+      title={el.text}
+      className="flex h-full w-full items-center justify-center rounded"
+      style={{ backgroundColor: el.color, opacity: 0.85 }}
+    >
+      <StickyNote className="h-3/5 w-3/5 text-black/70" />
+    </div>
+  )
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\components\pdf-editor\export-gate-modal.tsx ==========
+
+'use client'
+
+import Link from 'next/link'
+import { withReferralQuery } from '@/lib/referral'
+
+export function ExportGateModal({
+  open,
+  onClose,
+}: {
+  open: boolean
+  onClose: () => void
+}) {
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 sm:items-center">
+      <div className="w-full max-w-md rounded-2xl bg-background p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-lg font-bold">Create a free account to download</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-foreground/10"
+          >
+            ×
+          </button>
+        </div>
+        <p className="mt-2 text-sm leading-relaxed text-foreground/70">
+          Your edits stay right here in your browser — nothing was uploaded.
+          We just ask for an account before the download, so this tool stays
+          free to run.
+        </p>
+        <p className="mt-3 text-sm leading-relaxed text-foreground/70">
+          <strong className="text-foreground">It also pays to invite people.</strong>{' '}
+          Every account gets an affiliate link — invite others to PlugYard and
+          earn a reward when they join.
+        </p>
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+          <Link
+            href={withReferralQuery('/signup?next=/tools/pdf-editor')}
+            onClick={onClose}
+            className="inline-flex flex-1 items-center justify-center rounded-full bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
+          >
+            Create a free account
+          </Link>
+          <Link
+            href="/login?next=/tools/pdf-editor"
+            onClick={onClose}
+            className="inline-flex flex-1 items-center justify-center rounded-full border border-foreground/15 px-4 py-2.5 text-sm font-semibold"
+          >
+            I already have one
+          </Link>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-3 w-full text-center text-xs text-foreground/45"
+        >
+          Not now
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\components\pdf-editor\form-field-panel.tsx ==========
+
+'use client'
+
+import type { FormFieldElement, FormFieldKind } from '@/lib/pdf-editor-types'
+
+export function FormFieldPanel({
+  element,
+  onChange,
+}: {
+  element: FormFieldElement
+  onChange: (patch: Partial<FormFieldElement>) => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto">
+      <select
+        value={element.fieldKind}
+        onChange={(e) => onChange({ fieldKind: e.target.value as FormFieldKind })}
+        aria-label="Field type"
+        className="h-8 shrink-0 rounded-lg border border-foreground/15 bg-transparent px-2 text-sm text-foreground"
+      >
+        <option value="text" className="text-black">
+          Text field
+        </option>
+        <option value="checkbox" className="text-black">
+          Checkbox
+        </option>
+        <option value="dropdown" className="text-black">
+          Dropdown
+        </option>
+      </select>
+
+      <input
+        type="text"
+        value={element.name}
+        onChange={(e) => onChange({ name: e.target.value })}
+        placeholder="Field name (e.g. full_name)"
+        aria-label="Field name"
+        className="h-8 w-40 shrink-0 rounded-lg border border-foreground/15 bg-transparent px-2 text-sm text-foreground"
+      />
+
+      {element.fieldKind === 'text' && (
+        <input
+          type="text"
+          value={element.value}
+          onChange={(e) => onChange({ value: e.target.value })}
+          placeholder="Default value"
+          aria-label="Default value"
+          className="h-8 w-40 shrink-0 rounded-lg border border-foreground/15 bg-transparent px-2 text-sm text-foreground"
+        />
+      )}
+
+      {element.fieldKind === 'checkbox' && (
+        <label className="flex h-8 shrink-0 items-center gap-2 rounded-lg border border-foreground/15 px-2 text-sm text-foreground/70">
+          <input
+            type="checkbox"
+            checked={element.checked}
+            onChange={(e) => onChange({ checked: e.target.checked })}
+            className="h-4 w-4"
+          />
+          Checked by default
+        </label>
+      )}
+
+      {element.fieldKind === 'dropdown' && (
+        <>
+          <input
+            type="text"
+            value={element.options.join(', ')}
+            onChange={(e) =>
+              onChange({ options: e.target.value.split(',').map((o) => o.trim()).filter(Boolean) })
+            }
+            placeholder="Options (comma-separated)"
+            aria-label="Options"
+            className="h-8 w-52 shrink-0 rounded-lg border border-foreground/15 bg-transparent px-2 text-sm text-foreground"
+          />
+          <select
+            value={element.value}
+            onChange={(e) => onChange({ value: e.target.value })}
+            aria-label="Default selection"
+            className="h-8 shrink-0 rounded-lg border border-foreground/15 bg-transparent px-2 text-sm text-foreground"
+          >
+            {element.options.map((o) => (
+              <option key={o} value={o} className="text-black">
+                {o}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+    </div>
+  )
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\components\pdf-editor\overlay-element.tsx ==========
+
+'use client'
+
+import { useRef, useState } from 'react'
+import type { EditorElement } from '@/lib/pdf-editor-types'
+
+const MIN_FRACTION = 0.02
+
+export function OverlayElement({
+  element,
+  containerRef,
+  selected,
+  onSelect,
+  onChange,
+  onCommit,
+  onDelete,
+  onEditText,
+  children,
+}: {
+  element: EditorElement
+  containerRef: React.RefObject<HTMLDivElement | null>
+  selected: boolean
+  onSelect: () => void
+  onChange: (patch: Partial<EditorElement>) => void
+  onCommit?: () => void
+  onDelete: () => void
+  onEditText?: () => void
+  children: React.ReactNode
+}) {
+  const dragState = useRef<{
+    mode: 'move' | 'resize'
+    startX: number
+    startY: number
+    startXf: number
+    startYf: number
+    startWf: number
+    startHf: number
+  } | null>(null)
+  const [, forceRender] = useState(0)
+
+  function onPointerDown(e: React.PointerEvent, mode: 'move' | 'resize') {
+    e.stopPropagation()
+    e.preventDefault()
+    onSelect()
+    ;(e.target as Element).setPointerCapture(e.pointerId)
+    dragState.current = {
+      mode,
+      startX: e.clientX,
+      startY: e.clientY,
+      startXf: element.xf,
+      startYf: element.yf,
+      startWf: element.wf,
+      startHf: element.hf,
+    }
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    const d = dragState.current
+    const box = containerRef.current
+    if (!d || !box) return
+    const rect = box.getBoundingClientRect()
+    const dxf = (e.clientX - d.startX) / rect.width
+    const dyf = (e.clientY - d.startY) / rect.height
+
+    if (d.mode === 'move') {
+      const xf = clamp(d.startXf + dxf, 0, 1 - d.startWf)
+      const yf = clamp(d.startYf + dyf, 0, 1 - d.startHf)
+      onChange({ xf, yf })
+    } else {
+      const wf = clamp(d.startWf + dxf, MIN_FRACTION, 1 - d.startXf)
+      const hf = clamp(d.startHf + dyf, MIN_FRACTION, 1 - d.startYf)
+      onChange({ wf, hf })
+    }
+    forceRender((n) => n + 1)
+  }
+
+  function onPointerUp(e: React.PointerEvent) {
+    if (dragState.current) {
+      try {
+        ;(e.target as Element).releasePointerCapture(e.pointerId)
+      } catch {}
+      onCommit?.()
+    }
+    dragState.current = null
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onPointerDown={(e) => onPointerDown(e, 'move')}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onDoubleClick={onEditText}
+      className={`absolute select-none touch-none ${
+        selected ? 'outline outline-2 outline-offset-2 outline-sky-500' : 'outline outline-1 outline-dashed outline-foreground/25'
+      }`}
+      style={{
+        left: `${element.xf * 100}%`,
+        top: `${element.yf * 100}%`,
+        width: `${element.wf * 100}%`,
+        height: `${element.hf * 100}%`,
+        cursor: 'grab',
+      }}
+    >
+      {children}
+
+      {selected && (
+        <>
+          <button
+            type="button"
+            aria-label="Delete"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
+            className="absolute -right-2.5 -top-2.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[11px] font-bold leading-none text-white shadow"
+          >
+            ×
+          </button>
+          <div
+            role="presentation"
+            onPointerDown={(e) => onPointerDown(e, 'resize')}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            className="absolute -bottom-1.5 -right-1.5 h-4 w-4 cursor-nwse-resize rounded-full border-2 border-background bg-sky-500 touch-none"
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
+function clamp(v: number, min: number, max: number) {
+  return Math.min(Math.max(v, min), Math.max(min, max))
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\components\pdf-editor\pages-sidebar.tsx ==========
+
+'use client'
+
+import { useState } from 'react'
+import { Plus, Trash2, RotateCw, Copy, CheckSquare, Square } from 'lucide-react'
+import type { EditorPage } from '@/lib/pdf-editor-types'
+
+export function PagesSidebar({
+  pages,
+  activePageId,
+  onSelect,
+  onReorder,
+  onAdd,
+  onRemove,
+  onDuplicate,
+  onRotate,
+  selectMode,
+  selectedForSplit,
+  onToggleSelectForSplit,
+}: {
+  pages: EditorPage[]
+  activePageId: string | null
+  onSelect: (id: string) => void
+  onReorder: (fromId: string, toId: string) => void
+  onAdd: () => void
+  onRemove: (id: string) => void
+  onDuplicate: (id: string) => void
+  onRotate: (id: string) => void
+  selectMode: boolean
+  selectedForSplit: string[]
+  onToggleSelectForSplit: (id: string) => void
+}) {
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [overId, setOverId] = useState<string | null>(null)
+
+  return (
+    <div className="flex gap-2 overflow-x-auto rounded-2xl border border-foreground/10 p-3 lg:flex-col lg:overflow-x-visible lg:overflow-y-auto lg:max-h-[70vh]">
+      {pages.map((p, i) => {
+        const isChecked = selectedForSplit.includes(p.id)
+        return (
+          <div
+            key={p.id}
+            draggable
+            onDragStart={() => setDragId(p.id)}
+            onDragOver={(e) => {
+              e.preventDefault()
+              setOverId(p.id)
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              if (dragId && dragId !== p.id) onReorder(dragId, p.id)
+              setDragId(null)
+              setOverId(null)
+            }}
+            onDragEnd={() => {
+              setDragId(null)
+              setOverId(null)
+            }}
+            className={`flex shrink-0 flex-col items-center gap-1 rounded-lg p-1 transition-colors ${
+              overId === p.id ? 'bg-sky-500/10' : ''
+            } ${dragId === p.id ? 'opacity-40' : ''}`}
+          >
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => (selectMode ? onToggleSelectForSplit(p.id) : onSelect(p.id))}
+                className={`relative flex h-20 w-14 items-center justify-center overflow-hidden rounded-md border-2 bg-white text-[10px] text-black/40 ${
+                  p.id === activePageId ? 'border-sky-500' : 'border-foreground/15'
+                }`}
+                style={{ transform: `rotate(${p.rotationDeg}deg)` }}
+              >
+                {p.previewDataUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.previewDataUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span>{i + 1}</span>
+                )}
+              </button>
+              {selectMode && (
+                <button
+                  type="button"
+                  onClick={() => onToggleSelectForSplit(p.id)}
+                  className="absolute -left-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-background shadow"
+                  aria-label={isChecked ? 'Deselect page' : 'Select page'}
+                >
+                  {isChecked ? (
+                    <CheckSquare className="h-4 w-4 text-sky-500" />
+                  ) : (
+                    <Square className="h-4 w-4 text-foreground/40" />
+                  )}
+                </button>
+              )}
+            </div>
+            <span className="text-[10px] text-foreground/45">{i + 1}</span>
+            {!selectMode && (
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  aria-label="Rotate page"
+                  onClick={() => onRotate(p.id)}
+                  className="rounded p-0.5 hover:bg-foreground/10"
+                >
+                  <RotateCw className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Duplicate page"
+                  onClick={() => onDuplicate(p.id)}
+                  className="rounded p-0.5 hover:bg-foreground/10"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Delete page"
+                  onClick={() => onRemove(p.id)}
+                  disabled={pages.length <= 1}
+                  className="rounded p-0.5 hover:bg-foreground/10 disabled:opacity-30"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        )
+      })}
+      {!selectMode && (
+        <button
+          type="button"
+          onClick={onAdd}
+          className="flex h-20 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed border-foreground/20 text-foreground/50 hover:border-foreground/40 hover:text-foreground/70"
+        >
+          <Plus className="h-4 w-4" />
+          <span className="text-[10px]">Page</span>
+        </button>
+      )}
+    </div>
+  )
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\components\pdf-editor\rich-text-editor.tsx ==========
+
+'use client'
+
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
+import type { TextRun } from '@/lib/pdf-editor-types'
+import { familyOption, type FontFamily } from '@/lib/pdf-editor-fonts'
+
+export type RunStyle = Omit<TextRun, 'text'>
+
+export type RichTextEditorHandle = {
+  focus(): void
+  /** Re-applies the last selection this editor had before focus left it —
+   * lets a toolbar control (font/size/color/bold/italic) run its own
+   * click without permanently stealing the user's place in the text. */
+  restoreSelection(): void
+  /** Applies a style patch to the current selection (if any characters are
+   * highlighted) or arms it as the style newly-typed characters will use
+   * from the current caret position onward (if the caret is just
+   * collapsed, nothing highlighted). Never touches text outside that.
+   * Returns the resulting full runs array synchronously (React state
+   * updates are async, so a caller that needs the new value right away —
+   * e.g. to push an undo-history entry — can't just read the `runs` prop
+   * back immediately after calling this). */
+  applyStyle(patch: Partial<RunStyle>): TextRun[]
+  /** The style the toolbar should currently display — the active
+   * selection's style, or the style at the caret, or the block default. */
+  getActiveStyle(): RunStyle
+}
+
+const ZERO_WIDTH = '​'
+
+function styleToCss(style: RunStyle): React.CSSProperties {
+  return {
+    fontFamily: familyOption(style.fontFamily).cssFamily,
+    // Matches the page canvas's own convention (it renders at ~1 CSS px
+    // per PDF point, not true 96dpi pt-to-px, since the container is
+    // deliberately sized to the page's point-width in px) — same 0.9
+    // empirical factor the old textarea-based renderer used, so switching
+    // editors doesn't change the on-screen text size.
+    fontSize: `${Math.max(8, style.fontSizePt * 0.9)}px`,
+    color: style.color,
+    fontWeight: style.bold ? 'bold' : 'normal',
+    fontStyle: style.italic ? 'italic' : 'normal',
+  }
+}
+
+function makeSpan(run: TextRun): HTMLSpanElement {
+  const span = document.createElement('span')
+  span.dataset.run = '1'
+  span.dataset.fontFamily = run.fontFamily
+  span.dataset.fontSizePt = String(run.fontSizePt)
+  span.dataset.color = run.color
+  span.dataset.bold = run.bold ? '1' : '0'
+  span.dataset.italic = run.italic ? '1' : '0'
+  Object.assign(span.style, styleToCss(run))
+  span.textContent = run.text
+  return span
+}
+
+function styleFromSpan(span: HTMLElement): RunStyle {
+  return {
+    fontFamily: (span.dataset.fontFamily as FontFamily) || 'Helvetica',
+    fontSizePt: Number(span.dataset.fontSizePt) || 12,
+    color: span.dataset.color || '#111111',
+    bold: span.dataset.bold === '1',
+    italic: span.dataset.italic === '1',
+  }
+}
+
+function sameStyle(a: RunStyle, b: RunStyle) {
+  return (
+    a.fontFamily === b.fontFamily &&
+    a.fontSizePt === b.fontSizePt &&
+    a.color === b.color &&
+    a.bold === b.bold &&
+    a.italic === b.italic
+  )
+}
+
+/** Walks the container's direct children, turning each run span (and any
+ * stray bare text node the browser inserted) back into a TextRun, merging
+ * adjacent runs that ended up with identical style so repeated edits don't
+ * fragment into an ever-growing pile of one-character spans. */
+function domToRuns(container: HTMLElement, fallback: RunStyle): TextRun[] {
+  const runs: TextRun[] = []
+  for (const node of Array.from(container.childNodes)) {
+    let text = ''
+    let style = fallback
+    if (node.nodeType === Node.TEXT_NODE) {
+      text = node.textContent || ''
+      const prevSpan = node.previousSibling
+      if (prevSpan instanceof HTMLElement && prevSpan.dataset.run) style = styleFromSpan(prevSpan)
+    } else if (node instanceof HTMLElement) {
+      text = node.textContent || ''
+      style = node.dataset.run ? styleFromSpan(node) : fallback
+    }
+    text = text.replace(new RegExp(ZERO_WIDTH, 'g'), '')
+    if (!text) continue
+    const last = runs[runs.length - 1]
+    if (last && sameStyle(last, style)) last.text += text
+    else runs.push({ text, ...style })
+  }
+  return runs
+}
+
+function rebuildDom(container: HTMLElement, runs: TextRun[]) {
+  container.innerHTML = ''
+  const source = runs.length ? runs : []
+  for (const run of source) container.appendChild(makeSpan(run))
+}
+
+function isWithin(container: HTMLElement, node: Node | null) {
+  return !!node && container.contains(node)
+}
+
+/** Inserts `node` as a genuine TOP-LEVEL child of `container`, at the
+ * position given by a (boundaryNode, boundaryOffset) pair — the same pair
+ * Range.startContainer/startOffset give you. Range.insertNode() alone is
+ * NOT enough for this: when the boundary sits inside an existing run
+ * span's text, insertNode() splits that text node but inserts the new
+ * node AS A SIBLING WITHIN THAT SAME SPAN, not as a sibling of the span
+ * itself — so a style change silently nests inside (and gets visually
+ * absorbed by) the old run instead of taking effect as its own run. This
+ * showed up as: a per-word color/size change looked right while the
+ * editor stayed focused (nested inline styles still render), then
+ * reverted the moment focus left and the non-editing preview re-read
+ * `runs` from state — because domToRuns() only walks direct children, so
+ * the nested span's text got folded into its OLD-styled parent when read
+ * back, discarding the new style entirely. Used by BOTH the collapsed-
+ * caret and text-selection branches of applyStyle, since both hit this
+ * exact same nesting hazard. */
+function insertTopLevelAt(container: HTMLElement, boundaryNode: Node, boundaryOffset: number, node: Node) {
+  if (boundaryNode.nodeType === Node.TEXT_NODE) {
+    const parent = boundaryNode.parentElement
+    if (parent === container) {
+      // A bare text node directly in the container — split it in place.
+      const text = boundaryNode.textContent || ''
+      const before = text.slice(0, boundaryOffset)
+      const after = text.slice(boundaryOffset)
+      if (before) container.insertBefore(document.createTextNode(before), boundaryNode)
+      container.insertBefore(node, boundaryNode)
+      if (after) container.insertBefore(document.createTextNode(after), boundaryNode)
+      container.removeChild(boundaryNode)
+      return
+    }
+    if (parent instanceof HTMLElement && parent.dataset.run) {
+      // Inside a run span's text — split the span into "before"/"after"
+      // runs of its own style, with the new node as a top-level sibling
+      // sitting between them.
+      const fullText = parent.textContent || ''
+      const hostStyle = styleFromSpan(parent)
+      const before = fullText.slice(0, boundaryOffset)
+      const after = fullText.slice(boundaryOffset)
+      const beforeSpan = before ? makeSpan({ text: before, ...hostStyle }) : null
+      const afterSpan = after ? makeSpan({ text: after, ...hostStyle }) : null
+      if (beforeSpan) container.insertBefore(beforeSpan, parent)
+      container.insertBefore(node, parent)
+      if (afterSpan) container.insertBefore(afterSpan, parent)
+      container.removeChild(parent)
+      return
+    }
+  }
+  if (boundaryNode === container) {
+    // Boundary already expressed as a top-level child index — insertNode
+    // semantics are safe here since there's no run-span to nest inside.
+    const ref = container.childNodes[boundaryOffset] || null
+    container.insertBefore(node, ref)
+    return
+  }
+  container.appendChild(node)
+}
+
+export const RichTextEditor = forwardRef<
+  RichTextEditorHandle,
+  {
+    runs: TextRun[]
+    align: 'left' | 'center' | 'right'
+    defaultStyle: RunStyle
+    onRunsChange: (runs: TextRun[]) => void
+    onBlurEditor: (relatedTarget: Node | null) => void
+    onEscape: () => void
+    className?: string
+    style?: React.CSSProperties
+    /** When provided, this block auto-grows instead of showing the
+     * overflow outline: called with the content's current pixel height
+     * whenever it changes, so the caller can grow the block's own height
+     * to match (see startBlankTextAt/autoGrow in the editor page). Omit
+     * for blocks with a meaningful fixed size (Insert-Text-Box-style or a
+     * Phase 2 edit of existing page content), which should overflow +
+     * hint instead of silently resizing themselves. */
+    onContentHeightChange?: (heightPx: number) => void
+  }
+>(function RichTextEditor(
+  { runs, align, defaultStyle, onRunsChange, onBlurEditor, onEscape, className, style, onContentHeightChange },
+  ref,
+) {
+  const elRef = useRef<HTMLDivElement>(null)
+  const savedRangeRef = useRef<Range | null>(null)
+  const mountedForRef = useRef<string | null>(null)
+
+  // Rebuild the DOM from `runs` only when this is a fresh mount (switching
+  // to a different element) — NOT on every keystroke. Typing already
+  // mutates the DOM directly (that's the source of truth while an edit
+  // session is live); rebuilding on every React re-render here would fight
+  // the live cursor and reset it after every character.
+  useEffect(() => {
+    const el = elRef.current
+    if (!el) return
+    rebuildDom(el, runs)
+    mountedForRef.current = 'mounted'
+    checkOverflow()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Two different answers to "content is taller than the box," depending
+  // on why the box has the size it does:
+  //  - A block with a meaningful fixed size (Insert-Text-Box-style, or a
+  //    Phase 2 edit of existing page content) visibly overflows past it
+  //    (approved approach: never silently clip — that reads as data loss)
+  //    rather than reflowing the rest of the page. The dashed outline is a
+  //    heads-up that only shows while actively editing; it goes away the
+  //    moment you click elsewhere, so it never clutters the export
+  //    preview — export itself already draws all wrapped lines
+  //    unconditionally, so an overflowing block exports exactly as shown
+  //    here.
+  //  - A block created by clicking blank space has no such fixed size to
+  //    respect — it's supposed to grow. onContentHeightChange hands the
+  //    caller the content's real height so IT can grow the block instead.
+  function checkOverflow() {
+    const el = elRef.current
+    if (!el) return
+    if (onContentHeightChange) {
+      onContentHeightChange(el.scrollHeight)
+      return
+    }
+    const overflowing = el.scrollHeight > el.clientHeight + 1
+    el.style.outline = overflowing ? '1px dashed #f59e0b' : ''
+    el.style.outlineOffset = overflowing ? '2px' : ''
+  }
+
+  function syncFromDom(): TextRun[] {
+    const el = elRef.current
+    if (!el) return runs
+    const next = domToRuns(el, defaultStyle)
+    const final = next.length ? next : [{ text: '', ...defaultStyle }]
+    onRunsChange(final)
+    checkOverflow()
+    return final
+  }
+
+  function saveSelectionIfWithin() {
+    const el = elRef.current
+    const sel = window.getSelection()
+    if (!el || !sel || sel.rangeCount === 0) return
+    const range = sel.getRangeAt(0)
+    if (isWithin(el, range.startContainer)) savedRangeRef.current = range.cloneRange()
+  }
+
+  useImperativeHandle(ref, () => ({
+    focus() {
+      elRef.current?.focus()
+    },
+    restoreSelection() {
+      const el = elRef.current
+      const range = savedRangeRef.current
+      if (!el || !range) return
+      el.focus()
+      try {
+        const sel = window.getSelection()
+        sel?.removeAllRanges()
+        sel?.addRange(range)
+      } catch {
+        // stale range (DOM changed since it was saved) — just focus instead
+      }
+    },
+    applyStyle(patch) {
+      const el = elRef.current
+      if (!el) return runs
+      const range = savedRangeRef.current
+      if (!range || !isWithin(el, range.startContainer)) return runs
+
+      if (range.collapsed) {
+        // Nothing highlighted — arm a zero-width marker span at the caret
+        // so only characters typed FROM HERE ON use the new style; text
+        // already there, before or after the caret, is untouched.
+        const base = resolveStyleAt(el, range, defaultStyle)
+        const marker = makeSpan({ text: ZERO_WIDTH, ...base, ...patch })
+        insertTopLevelAt(el, range.startContainer, range.startOffset, marker)
+
+        const sel = window.getSelection()
+        const newRange = document.createRange()
+        newRange.setStart(marker.firstChild!, 1)
+        newRange.collapse(true)
+        sel?.removeAllRanges()
+        sel?.addRange(newRange)
+        savedRangeRef.current = newRange.cloneRange()
+        mergeAdjacentRuns(el)
+        return syncFromDom()
+      }
+
+      const startSpan = range.startContainer instanceof HTMLElement
+        ? range.startContainer
+        : range.startContainer.parentElement
+      const baseStyle = startSpan instanceof HTMLElement && startSpan.dataset.run
+        ? styleFromSpan(startSpan)
+        : defaultStyle
+
+      // Capture the start boundary BEFORE extraction — extractContents()
+      // only removes/splits content AT OR AFTER this point, so the
+      // (node, offset) pair for the range's start is still meaningful
+      // afterward (e.g. a text node that had "world" cut from its end
+      // still ends exactly at this same offset).
+      const boundaryNode = range.startContainer
+      const boundaryOffset = range.startOffset
+
+      const frag = range.extractContents()
+      const text = frag.textContent || ''
+      const newSpan = makeSpan({ text, ...baseStyle, ...patch })
+      insertTopLevelAt(el, boundaryNode, boundaryOffset, newSpan)
+
+      // Collapse the selection to just after the newly styled run — matches
+      // how a toolbar pick behaves elsewhere in this app (focus returns,
+      // selection doesn't linger highlighted).
+      const sel = window.getSelection()
+      const newRange = document.createRange()
+      newRange.setStartAfter(newSpan)
+      newRange.collapse(true)
+      sel?.removeAllRanges()
+      sel?.addRange(newRange)
+      savedRangeRef.current = newRange.cloneRange()
+
+      mergeAdjacentRuns(el)
+      return syncFromDom()
+    },
+    getActiveStyle() {
+      const el = elRef.current
+      const range = savedRangeRef.current
+      if (!el || !range || !isWithin(el, range.startContainer)) return defaultStyle
+      return resolveStyleAt(el, range, defaultStyle)
+    },
+  }))
+
+  return (
+    <div
+      ref={elRef}
+      contentEditable
+      suppressContentEditableWarning
+      onInput={syncFromDom}
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseUp={saveSelectionIfWithin}
+      onKeyUp={saveSelectionIfWithin}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.currentTarget.blur()
+          onEscape()
+          return
+        }
+        if (e.key === 'Enter') {
+          // A plain literal "\n" text character (not a <div>/<br> block
+          // split) — matches the export wrapper's existing split('\n')
+          // convention and renders correctly under whitespace-pre-wrap,
+          // so line breaks survive the DOM<->runs round trip untouched.
+          e.preventDefault()
+          const sel = window.getSelection()
+          if (!sel || sel.rangeCount === 0) return
+          const range = sel.getRangeAt(0)
+          range.deleteContents()
+          const nl = document.createTextNode('\n')
+          range.insertNode(nl)
+          range.setStartAfter(nl)
+          range.collapse(true)
+          sel.removeAllRanges()
+          sel.addRange(range)
+          savedRangeRef.current = range.cloneRange()
+          syncFromDom()
+        }
+      }}
+      onBlur={(e) => {
+        saveSelectionIfWithin()
+        onBlurEditor(e.relatedTarget as Node | null)
+      }}
+      className={className}
+      style={{ ...style, textAlign: align }}
+    />
+  )
+})
+
+/** The style that should apply if the user starts typing right now: the
+ * run immediately before the caret (matches how every mainstream editor
+ * continues in the style of what you just typed), falling back to the run
+ * immediately after, falling back to the block default. */
+function resolveStyleAt(container: HTMLElement, range: Range, fallback: RunStyle): RunStyle {
+  const node = range.startContainer
+  const findSpan = (n: Node | null): HTMLElement | null => {
+    if (!n) return null
+    if (n instanceof HTMLElement && n.dataset.run) return n
+    if (n.nodeType === Node.TEXT_NODE) {
+      const parent = n.parentElement
+      if (parent && parent !== container && parent.dataset.run) return parent
+    }
+    return null
+  }
+
+  if (node.nodeType === Node.TEXT_NODE) {
+    const span = findSpan(node)
+    if (span) return styleFromSpan(span)
+  } else if (node instanceof HTMLElement) {
+    const children = Array.from(node.childNodes)
+    const before = children[range.startOffset - 1]
+    const after = children[range.startOffset]
+    const span = findSpan(before || null) || findSpan(after || null)
+    if (span) return styleFromSpan(span)
+  }
+  return fallback
+}
+
+function mergeAdjacentRuns(container: HTMLElement) {
+  let node = container.firstChild
+  while (node && node.nextSibling) {
+    const next = node.nextSibling
+    if (
+      node instanceof HTMLElement &&
+      next instanceof HTMLElement &&
+      node.dataset.run &&
+      next.dataset.run &&
+      sameStyle(styleFromSpan(node), styleFromSpan(next))
+    ) {
+      node.textContent = (node.textContent || '') + (next.textContent || '')
+      next.remove()
+      continue
+    }
+    node = next
+  }
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\components\pdf-editor\security-panel.tsx ==========
+
+'use client'
+
+import type { SecurityPermissions } from '@/lib/pdf-editor-types'
+
+export function SecurityPanel({
+  enabled,
+  onEnabledChange,
+  openPassword,
+  onOpenPasswordChange,
+  openPasswordConfirm,
+  onOpenPasswordConfirmChange,
+  ownerPassword,
+  onOwnerPasswordChange,
+  ownerPasswordConfirm,
+  onOwnerPasswordConfirmChange,
+  permissions,
+  onPermissionsChange,
+}: {
+  enabled: boolean
+  onEnabledChange: (v: boolean) => void
+  openPassword: string
+  onOpenPasswordChange: (v: string) => void
+  openPasswordConfirm: string
+  onOpenPasswordConfirmChange: (v: string) => void
+  ownerPassword: string
+  onOwnerPasswordChange: (v: string) => void
+  ownerPasswordConfirm: string
+  onOwnerPasswordConfirmChange: (v: string) => void
+  permissions: SecurityPermissions
+  onPermissionsChange: (patch: Partial<SecurityPermissions>) => void
+}) {
+  const openMismatch = openPassword !== '' && openPasswordConfirm !== '' && openPassword !== openPasswordConfirm
+  const ownerMismatch =
+    ownerPassword !== '' && ownerPasswordConfirm !== '' && ownerPassword !== ownerPasswordConfirm
+
+  return (
+    <div className="rounded-2xl border border-foreground/10 p-4">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/40">Security</h2>
+      <label className="mt-3 flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={enabled} onChange={(e) => onEnabledChange(e.target.checked)} />
+        Restrict this PDF
+      </label>
+
+      {enabled && (
+        <div className="mt-3 space-y-4">
+          <div>
+            <p className="text-xs font-medium text-foreground/70">Open password</p>
+            <p className="text-[11px] text-foreground/45">Required to view the PDF at all. Leave blank to let anyone open it.</p>
+            <input
+              type="password"
+              value={openPassword}
+              onChange={(e) => onOpenPasswordChange(e.target.value)}
+              placeholder="Open password (optional)"
+              className="mt-1.5 w-full rounded-lg border border-foreground/15 bg-transparent px-2 py-1.5 text-sm text-foreground"
+            />
+            <input
+              type="password"
+              value={openPasswordConfirm}
+              onChange={(e) => onOpenPasswordConfirmChange(e.target.value)}
+              placeholder="Confirm open password"
+              className="mt-1.5 w-full rounded-lg border border-foreground/15 bg-transparent px-2 py-1.5 text-sm text-foreground"
+            />
+            {openMismatch && <p className="mt-1 text-xs text-red-500">Passwords do not match.</p>}
+          </div>
+
+          <div>
+            <p className="text-xs font-medium text-foreground/70">Owner password</p>
+            <p className="text-[11px] text-foreground/45">Required to change permissions, edit, or print/copy if restricted below.</p>
+            <input
+              type="password"
+              value={ownerPassword}
+              onChange={(e) => onOwnerPasswordChange(e.target.value)}
+              placeholder="Owner password (optional)"
+              className="mt-1.5 w-full rounded-lg border border-foreground/15 bg-transparent px-2 py-1.5 text-sm text-foreground"
+            />
+            <input
+              type="password"
+              value={ownerPasswordConfirm}
+              onChange={(e) => onOwnerPasswordConfirmChange(e.target.value)}
+              placeholder="Confirm owner password"
+              className="mt-1.5 w-full rounded-lg border border-foreground/15 bg-transparent px-2 py-1.5 text-sm text-foreground"
+            />
+            {ownerMismatch && <p className="mt-1 text-xs text-red-500">Passwords do not match.</p>}
+          </div>
+
+          <div>
+            <p className="text-xs font-medium text-foreground/70">Permissions</p>
+            <div className="mt-1.5 space-y-1.5">
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={permissions.printing}
+                  onChange={(e) => onPermissionsChange({ printing: e.target.checked })}
+                />
+                Allow printing
+              </label>
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={permissions.copying}
+                  onChange={(e) => onPermissionsChange({ copying: e.target.checked })}
+                />
+                Allow copying text
+              </label>
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={permissions.modifying}
+                  onChange={(e) => onPermissionsChange({ modifying: e.target.checked })}
+                />
+                Allow editing
+              </label>
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={permissions.annotating}
+                  onChange={(e) => onPermissionsChange({ annotating: e.target.checked })}
+                />
+                Allow annotations
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\components\pdf-editor\signature-modal.tsx ==========
+
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import { Eraser } from 'lucide-react'
+
+const SIGNATURE_FONTS = [
+  { key: 'dancing', label: 'Cursive', css: "'Dancing Script', cursive" },
+  { key: 'great-vibes', label: 'Script', css: "'Great Vibes', cursive" },
+] as const
+
+let fontsLoaded = false
+function ensureSignatureFonts() {
+  if (fontsLoaded || typeof document === 'undefined') return
+  fontsLoaded = true
+  const link = document.createElement('link')
+  link.rel = 'stylesheet'
+  link.href = 'https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&family=Great+Vibes&display=swap'
+  document.head.appendChild(link)
+}
+
+function bytesFromDataUrl(dataUrl: string): Uint8Array {
+  const base64 = dataUrl.split(',')[1] || ''
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes
+}
+
+export function SignatureModal({
+  open,
+  onClose,
+  onInsert,
+}: {
+  open: boolean
+  onClose: () => void
+  onInsert: (result: { dataUrl: string; bytes: Uint8Array; naturalAspect: number }) => void
+}) {
+  const [mode, setMode] = useState<'draw' | 'type'>('draw')
+  const [typedName, setTypedName] = useState('')
+  const [fontKey, setFontKey] = useState<(typeof SIGNATURE_FONTS)[number]['key']>('dancing')
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const drawing = useRef(false)
+  const [hasStrokes, setHasStrokes] = useState(false)
+
+  useEffect(() => {
+    if (open) ensureSignatureFonts()
+  }, [open])
+
+  useEffect(() => {
+    if (!open || mode !== 'draw') return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.lineWidth = 3
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = '#111111'
+    setHasStrokes(false)
+  }, [open, mode])
+
+  if (!open) return null
+
+  function canvasPoint(e: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current!
+    const rect = canvas.getBoundingClientRect()
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+    }
+  }
+
+  function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
+    const ctx = canvasRef.current?.getContext('2d')
+    if (!ctx) return
+    drawing.current = true
+    const p = canvasPoint(e)
+    ctx.beginPath()
+    ctx.moveTo(p.x, p.y)
+    ;(e.target as Element).setPointerCapture(e.pointerId)
+  }
+
+  function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!drawing.current) return
+    const ctx = canvasRef.current?.getContext('2d')
+    if (!ctx) return
+    const p = canvasPoint(e)
+    ctx.lineTo(p.x, p.y)
+    ctx.stroke()
+    setHasStrokes(true)
+  }
+
+  function onPointerUp() {
+    drawing.current = false
+  }
+
+  function clearCanvas() {
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext('2d')
+    if (!canvas || !ctx) return
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    setHasStrokes(false)
+  }
+
+  function insertDrawn() {
+    const canvas = canvasRef.current
+    if (!canvas || !hasStrokes) return
+    const dataUrl = canvas.toDataURL('image/png')
+    onInsert({ dataUrl, bytes: bytesFromDataUrl(dataUrl), naturalAspect: canvas.width / canvas.height })
+  }
+
+  function insertTyped() {
+    const name = typedName.trim()
+    if (!name) return
+    const font = SIGNATURE_FONTS.find((f) => f.key === fontKey) || SIGNATURE_FONTS[0]
+    const canvas = document.createElement('canvas')
+    canvas.width = 800
+    canvas.height = 240
+    const ctx = canvas.getContext('2d')!
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.fillStyle = '#111111'
+    ctx.font = `64px ${font.css}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(name, canvas.width / 2, canvas.height / 2)
+    const dataUrl = canvas.toDataURL('image/png')
+    onInsert({ dataUrl, bytes: bytesFromDataUrl(dataUrl), naturalAspect: canvas.width / canvas.height })
+  }
+
+  return (
+    <div className="fixed inset-0 z-[85] flex items-end justify-center bg-black/40 p-4 sm:items-center">
+      <div className="w-full max-w-lg rounded-2xl bg-background p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-lg font-bold">Add your signature</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-foreground/10"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="mt-4 flex gap-1 rounded-lg border border-foreground/10 p-1">
+          <button
+            type="button"
+            onClick={() => setMode('draw')}
+            className={`flex-1 rounded-md py-1.5 text-sm font-medium ${mode === 'draw' ? 'bg-foreground text-background' : 'hover:bg-foreground/5'}`}
+          >
+            Draw
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('type')}
+            className={`flex-1 rounded-md py-1.5 text-sm font-medium ${mode === 'type' ? 'bg-foreground text-background' : 'hover:bg-foreground/5'}`}
+          >
+            Type
+          </button>
+        </div>
+
+        {mode === 'draw' ? (
+          <>
+            <div className="mt-4 overflow-hidden rounded-xl border border-foreground/15 bg-white">
+              <canvas
+                ref={canvasRef}
+                width={600}
+                height={220}
+                className="h-[180px] w-full touch-none"
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+              />
+            </div>
+            <div className="mt-2 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={clearCanvas}
+                className="inline-flex items-center gap-1.5 text-xs text-foreground/55 hover:text-foreground"
+              >
+                <Eraser className="h-3.5 w-3.5" />
+                Clear
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={insertDrawn}
+              disabled={!hasStrokes}
+              className="mt-4 w-full rounded-full bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-50"
+            >
+              Use this signature
+            </button>
+          </>
+        ) : (
+          <>
+            <input
+              type="text"
+              value={typedName}
+              onChange={(e) => setTypedName(e.target.value)}
+              placeholder="Type your name"
+              className="mt-4 w-full rounded-lg border border-foreground/15 bg-transparent px-3 py-2 text-sm"
+            />
+            <div className="mt-2 flex gap-2">
+              {SIGNATURE_FONTS.map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setFontKey(f.key)}
+                  className={`rounded-lg border px-3 py-1.5 text-xs ${fontKey === f.key ? 'border-foreground bg-foreground/10' : 'border-foreground/15'}`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex h-[100px] items-center justify-center rounded-xl border border-foreground/15 bg-white px-4">
+              <span
+                className="text-4xl text-black"
+                style={{ fontFamily: SIGNATURE_FONTS.find((f) => f.key === fontKey)?.css }}
+              >
+                {typedName || 'Your name'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={insertTyped}
+              disabled={!typedName.trim()}
+              className="mt-4 w-full rounded-full bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-50"
+            >
+              Use this signature
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\components\pdf-editor\text-panel.tsx ==========
+
+'use client'
+
+import { useEffect, useState } from 'react'
+import { Bold, Italic, AlignLeft, AlignCenter, AlignRight, Link2, X } from 'lucide-react'
+import type { TextElement, TextAlign } from '@/lib/pdf-editor-types'
+import { FONT_FAMILIES, type FontFamily } from '@/lib/pdf-editor-fonts'
+import { normalizeLinkUrl, LINK_ACCENT_COLOR } from '@/lib/pdf-editor-links'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import type { RunStyle } from '@/components/pdf-editor/rich-text-editor'
+
+// Buttons use onMouseDown+preventDefault (not onClick alone) so the browser
+// never shifts focus away from the on-canvas textarea being edited — the
+// same technique rich-text toolbars (Slate/TipTap/Draft.js) use to avoid
+// interrupting an active edit/keyboard session.
+function preventFocusSteal(e: React.MouseEvent) {
+  e.preventDefault()
+}
+
+function LinkControl({
+  element,
+  onChange,
+  onRefocusEditor,
+}: {
+  element: TextElement
+  onChange: (patch: Partial<TextElement>) => void
+  onRefocusEditor?: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState(element.url)
+  const [error, setError] = useState('')
+  const hasLink = !!element.url
+
+  // Reset the draft to the element's current link whenever a different
+  // element becomes selected, or when the popover is freshly reopened —
+  // otherwise a leftover draft from editing a previous text box's link
+  // could leak into this one.
+  useEffect(() => {
+    setDraft(element.url)
+    setError('')
+  }, [element.id, element.url])
+
+  function apply() {
+    if (!draft.trim()) {
+      onChange({ url: '' })
+      setOpen(false)
+      onRefocusEditor?.()
+      return
+    }
+    const normalized = normalizeLinkUrl(draft)
+    if (!normalized) {
+      setError('Enter a valid web address, e.g. plugyard.com')
+      return
+    }
+    // First time this text gets a link — nudge it to look like one, the
+    // same way Docs/Word auto-style newly-linked text. The color is still
+    // just the element's ordinary `color` field, so it stays editable
+    // afterward like any other text.
+    onChange({ url: normalized, color: hasLink ? element.color : LINK_ACCENT_COLOR })
+    setOpen(false)
+    onRefocusEditor?.()
+  }
+
+  function remove() {
+    onChange({ url: '' })
+    setOpen(false)
+    onRefocusEditor?.()
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) onRefocusEditor?.()
+      }}
+    >
+      <PopoverTrigger
+        onMouseDown={preventFocusSteal}
+        aria-label={hasLink ? 'Edit link' : 'Add link'}
+        aria-pressed={hasLink}
+        className={`flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2 text-sm ${hasLink ? 'border-foreground bg-foreground/10' : 'border-foreground/15'}`}
+      >
+        <Link2 className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">{hasLink ? 'Link' : 'Add link'}</span>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72">
+        <label className="text-xs font-medium text-muted-foreground" htmlFor="pdf-text-link-url">
+          Link to
+        </label>
+        <div className="flex items-center gap-1.5">
+          <input
+            id="pdf-text-link-url"
+            type="text"
+            autoFocus
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              if (error) setError('')
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                apply()
+              }
+            }}
+            placeholder="plugyard.com or https://…"
+            aria-label="Link URL"
+            className="h-8 min-w-0 flex-1 rounded-lg border border-foreground/15 bg-transparent px-2 text-sm text-foreground outline-none"
+          />
+          {hasLink && (
+            <button
+              type="button"
+              onClick={remove}
+              aria-label="Remove link"
+              title="Remove link"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-foreground/15 text-foreground/60 hover:bg-foreground/5"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        <button
+          type="button"
+          onClick={apply}
+          className="h-8 rounded-lg bg-foreground text-sm font-semibold text-background"
+        >
+          {hasLink ? 'Update link' : 'Apply'}
+        </button>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+export function TextPanel({
+  element,
+  activeStyle,
+  onStyleChange,
+  onChange,
+  onRefocusEditor,
+}: {
+  element: TextElement
+  /** The font/size/color/bold/italic that should show as "current" right
+   * now — the active selection's style if any text is highlighted, else
+   * the style at the caret, else the block's own default. */
+  activeStyle: RunStyle
+  /** Applies a style patch to exactly the active selection, or arms it as
+   * the style for what's typed next if nothing is selected — never the
+   * whole block or document. See applyTextStyle in the editor page. */
+  onStyleChange: (patch: Partial<RunStyle>) => void
+  /** Still block-level: alignment and the link URL apply to the whole
+   * text box, not a sub-selection — same as any word processor. */
+  onChange: (patch: Partial<TextElement>) => void
+  /** Called after a one-shot pick (font) or when a field blurs ambiguously,
+   * so focus returns to the text being edited. */
+  onRefocusEditor?: () => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto">
+      <select
+        value={activeStyle.fontFamily}
+        onChange={(e) => {
+          onStyleChange({ fontFamily: e.target.value as FontFamily })
+          onRefocusEditor?.()
+        }}
+        aria-label="Font"
+        className="h-8 shrink-0 rounded-lg border border-foreground/15 bg-transparent px-2 text-sm text-foreground"
+      >
+        {FONT_FAMILIES.map((f) => (
+          <option key={f.key} value={f.key} className="text-black">
+            {f.label}
+          </option>
+        ))}
+      </select>
+
+      <button
+        type="button"
+        onMouseDown={preventFocusSteal}
+        onClick={() => onStyleChange({ bold: !activeStyle.bold })}
+        aria-pressed={activeStyle.bold}
+        aria-label="Bold"
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${activeStyle.bold ? 'border-foreground bg-foreground/10' : 'border-foreground/15'}`}
+      >
+        <Bold className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        onMouseDown={preventFocusSteal}
+        onClick={() => onStyleChange({ italic: !activeStyle.italic })}
+        aria-pressed={activeStyle.italic}
+        aria-label="Italic"
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${activeStyle.italic ? 'border-foreground bg-foreground/10' : 'border-foreground/15'}`}
+      >
+        <Italic className="h-3.5 w-3.5" />
+      </button>
+
+      <div className="mx-0.5 h-6 w-px shrink-0 bg-foreground/10" />
+
+      {([
+        ['left', AlignLeft],
+        ['center', AlignCenter],
+        ['right', AlignRight],
+      ] as [TextAlign, typeof AlignLeft][]).map(([align, Icon]) => (
+        <button
+          key={align}
+          type="button"
+          onMouseDown={preventFocusSteal}
+          onClick={() => onChange({ align })}
+          aria-pressed={element.align === align}
+          aria-label={`Align ${align}`}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${element.align === align ? 'border-foreground bg-foreground/10' : 'border-foreground/15'}`}
+        >
+          <Icon className="h-3.5 w-3.5" />
+        </button>
+      ))}
+
+      <div className="mx-0.5 h-6 w-px shrink-0 bg-foreground/10" />
+
+      <input
+        type="number"
+        min={6}
+        max={120}
+        value={activeStyle.fontSizePt}
+        onChange={(e) => onStyleChange({ fontSizePt: Number(e.target.value) || 12 })}
+        onBlur={(e) => {
+          if (!e.relatedTarget) onRefocusEditor?.()
+        }}
+        aria-label="Font size"
+        className="h-8 w-14 shrink-0 rounded-lg border border-foreground/15 bg-transparent px-2 text-sm text-foreground"
+      />
+      <input
+        type="color"
+        value={activeStyle.color}
+        onChange={(e) => onStyleChange({ color: e.target.value })}
+        onBlur={(e) => {
+          if (!e.relatedTarget) onRefocusEditor?.()
+        }}
+        aria-label="Color"
+        title="Color"
+        className="h-8 w-8 shrink-0 rounded-lg border border-foreground/15 bg-transparent p-0.5"
+      />
+
+      <LinkControl element={element} onChange={onChange} onRefocusEditor={onRefocusEditor} />
+    </div>
+  )
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\components\pdf-editor\watermark-panel.tsx ==========
+
+'use client'
+
+import { ImagePlus } from 'lucide-react'
+import type { WatermarkConfig, WatermarkPosition } from '@/lib/pdf-editor-types'
+import { FONT_FAMILIES, type FontFamily } from '@/lib/pdf-editor-fonts'
+
+const POSITIONS: { key: WatermarkPosition; label: string }[] = [
+  { key: 'diagonal', label: 'Diagonal' },
+  { key: 'center', label: 'Center' },
+  { key: 'top-left', label: 'Top left' },
+  { key: 'top-right', label: 'Top right' },
+  { key: 'bottom-left', label: 'Bottom left' },
+  { key: 'bottom-right', label: 'Bottom right' },
+]
+
+export function WatermarkPanel({
+  watermark,
+  onChange,
+  onPickImage,
+  pageCount,
+}: {
+  watermark: WatermarkConfig
+  onChange: (patch: Partial<WatermarkConfig>) => void
+  onPickImage: (file: File) => void
+  pageCount: number
+}) {
+  return (
+    <div className="rounded-2xl border border-foreground/10 p-4">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/40">Watermark</h2>
+      <label className="mt-3 flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={watermark.enabled}
+          onChange={(e) => onChange({ enabled: e.target.checked })}
+        />
+        Add a watermark
+      </label>
+
+      {watermark.enabled && (
+        <div className="mt-3 space-y-3">
+          <div className="flex gap-1 rounded-lg border border-foreground/10 p-1">
+            <button
+              type="button"
+              onClick={() => onChange({ kind: 'text' })}
+              className={`flex-1 rounded-md py-1 text-xs font-medium ${watermark.kind === 'text' ? 'bg-foreground text-background' : 'hover:bg-foreground/5'}`}
+            >
+              Text
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange({ kind: 'image' })}
+              className={`flex-1 rounded-md py-1 text-xs font-medium ${watermark.kind === 'image' ? 'bg-foreground text-background' : 'hover:bg-foreground/5'}`}
+            >
+              Image
+            </button>
+          </div>
+
+          {watermark.kind === 'text' ? (
+            <>
+              <input
+                type="text"
+                value={watermark.text}
+                onChange={(e) => onChange({ text: e.target.value })}
+                placeholder="Watermark text"
+                className="w-full rounded-lg border border-foreground/15 bg-transparent px-2 py-1.5 text-sm"
+              />
+              <select
+                value={watermark.fontFamily}
+                onChange={(e) => onChange({ fontFamily: e.target.value as FontFamily })}
+                className="w-full rounded-lg border border-foreground/15 bg-transparent px-2 py-1.5 text-sm"
+              >
+                {FONT_FAMILIES.map((f) => (
+                  <option key={f.key} value={f.key} className="text-black">
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="color"
+                value={watermark.color}
+                onChange={(e) => onChange({ color: e.target.value })}
+                className="h-9 w-full rounded-lg border border-foreground/15 bg-transparent"
+              />
+            </>
+          ) : (
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-foreground/20 px-3 py-3 text-xs text-foreground/60 hover:border-foreground/40">
+              <ImagePlus className="h-4 w-4" />
+              {watermark.imageDataUrl ? 'Image selected — click to change' : 'Choose an image'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  e.target.value = ''
+                  if (f) onPickImage(f)
+                }}
+              />
+            </label>
+          )}
+
+          <label className="block text-xs text-foreground/55">
+            Position
+            <select
+              value={watermark.position}
+              onChange={(e) => onChange({ position: e.target.value as WatermarkPosition })}
+              className="mt-1 w-full rounded-lg border border-foreground/15 bg-transparent px-2 py-1.5 text-sm text-foreground"
+            >
+              {POSITIONS.map((p) => (
+                <option key={p.key} value={p.key} className="text-black">
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block text-xs text-foreground/55">
+            Opacity ({Math.round(watermark.opacity * 100)}%)
+            <input
+              type="range"
+              min={0.05}
+              max={1}
+              step={0.05}
+              value={watermark.opacity}
+              onChange={(e) => onChange({ opacity: Number(e.target.value) })}
+              className="mt-1 w-full"
+            />
+          </label>
+
+          <label className="block text-xs text-foreground/55">
+            Size
+            <input
+              type="range"
+              min={0.4}
+              max={2.5}
+              step={0.1}
+              value={watermark.scale}
+              onChange={(e) => onChange({ scale: Number(e.target.value) })}
+              className="mt-1 w-full"
+            />
+          </label>
+
+          <label className="block text-xs text-foreground/55">
+            Apply to
+            <select
+              value={watermark.scope}
+              onChange={(e) => onChange({ scope: e.target.value as 'all' | 'selected' })}
+              className="mt-1 w-full rounded-lg border border-foreground/15 bg-transparent px-2 py-1.5 text-sm text-foreground"
+            >
+              <option value="all" className="text-black">
+                All {pageCount} pages
+              </option>
+              <option value="selected" className="text-black">
+                Only the current page
+              </option>
+            </select>
+          </label>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\app\tools\pdf-editor\page-client.tsx ==========
+
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'

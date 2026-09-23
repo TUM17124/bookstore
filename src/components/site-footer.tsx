@@ -1,10 +1,12 @@
+"use client"
+
 import Link from "next/link"
 import { BookOpen, Mail } from "lucide-react"
 
 const policyLinks = [
   { href: "/terms", label: "Terms & Conditions" },
   { href: "/terms-of-use", label: "Terms of Use" },
-   { href: "/privacy", label: "Privacy Policy" },
+  { href: "/privacy", label: "Privacy Policy" },
   { href: "/refund-policy", label: "Refund Policy" },
 ]
 
@@ -88,14 +90,6 @@ export function SiteFooter() {
                   </Link>
                 </li>
               ))}
-              <li>
-                <Link
-                  href="/tools/pdf-editor"
-                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
-                >
-                  PDF Editor
-                </Link>
-              </li>
             </ul>
           </div>
 

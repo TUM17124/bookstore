@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { NotchNavbar } from "@/components/ui/notch-navbar"
+import { MainOffset } from "@/components/main-offset"
 import { BookmarksProvider } from "@/components/bookmarks-context"
 import { SiteFooter } from "@/components/site-footer"
 import { PwaRegister } from "@/components/pwa-register"
@@ -105,7 +106,7 @@ export default function RootLayout({
               <NotchNavbar />
               <PushPrompt />
             </div>
-            <div className="site-main-offset">{children}</div>
+            <MainOffset>{children}</MainOffset>
              <LegalGate />
              <InstallAndPush />
             <PublishInviteModal />

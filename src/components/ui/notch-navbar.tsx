@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import {
   Home,
   BookOpen,
@@ -21,7 +22,7 @@ import {
   LogOut,
   ChevronDown,
   User,
-  FileEdit,
+  Crown,
 } from "lucide-react"
 import { BookSearchModal } from "@/components/book-search-modal"
 import { cn } from "@/lib/utils"
@@ -37,6 +38,7 @@ import {
   type AuthUser,
 } from "@/lib/auth-client"
 import { getReferralCode } from "@/lib/referral"
+import { getProStatus, refreshAccessToken, SessionEvictedError } from "@/lib/api"
 
 const NavLink = ({
   href,
@@ -96,16 +98,26 @@ export function NotchNavbar({
 
   const [user, setUser] = useState<AuthUser | null>(null)
   const [authReady, setAuthReady] = useState(false)
+  const [isPro, setIsPro] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
   const [referralCode, setReferralCode] = useState("")
+  const [evictedNotice, setEvictedNotice] = useState(false)
   const accountRef = useRef<HTMLDivElement>(null)
+  const pathname = usePathname()
 
   useEffect(() => {
     const sync = () => {
-      if (isLoggedIn()) setUser(getStoredUser())
-      else setUser(null)
+      if (isLoggedIn()) {
+        setUser(getStoredUser())
+        getProStatus()
+          .then((s) => setIsPro(s.is_pro))
+          .catch(() => setIsPro(false))
+      } else {
+        setUser(null)
+        setIsPro(false)
+      }
       setAuthReady(true)
       void refreshBookmarks?.()
     }
@@ -118,6 +130,40 @@ export function NotchNavbar({
       window.removeEventListener("storage", sync)
     }
   }, [refreshBookmarks])
+
+  // The access token is intentionally short-lived now (1 hour — see the
+  // backend SIMPLE_JWT comment on why), so a tab left open needs to
+  // proactively refresh it in the background or the user gets silently
+  // logged out mid-session. This also doubles as how a session that was
+  // evicted by the concurrent-session cap (Part I) finds out: its refresh
+  // token comes back blacklisted, and we show that specific reason instead
+  // of a generic "please log in again."
+  useEffect(() => {
+    if (!isLoggedIn()) return
+    let cancelled = false
+
+    async function tick() {
+      try {
+        await refreshAccessToken()
+      } catch (err) {
+        if (cancelled) return
+        if (err instanceof SessionEvictedError) {
+          setEvictedNotice(true)
+          clientLogout()
+        }
+        // Any other failure (offline, refresh token itself expired after
+        // 30 days) — let the user carry on until they hit a real 401
+        // somewhere and re-log in normally, rather than force it here.
+      }
+    }
+
+    void tick()
+    const interval = window.setInterval(tick, 45 * 60 * 1000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [user])
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -133,6 +179,11 @@ export function NotchNavbar({
       document.removeEventListener("keydown", onKey)
     }
   }, [])
+
+  // The PDF editor is a fixed-viewport workspace with its own compact
+  // toolbar (logo + account link folded in) — the full site nav would
+  // compete with it for vertical space, so it's hidden on that route only.
+  
 
   const handleLogout = () => {
     clientLogout()
@@ -155,6 +206,24 @@ export function NotchNavbar({
       <div className="px-3 py-2 text-xs text-foreground/50 truncate max-w-[220px]">
         {user?.name || user?.email}
       </div>
+      {!isPro && (
+        <Link
+          href="/pro"
+          onClick={() => setAccountOpen(false)}
+          className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-[#a3811f] hover:bg-[#d4af37]/10"
+        >
+          <Crown className="w-4 h-4" />
+          Upgrade to Pro
+        </Link>
+      )}
+      <Link
+        href="/purchases"
+        onClick={() => setAccountOpen(false)}
+        className="flex items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5"
+      >
+        <BookOpen className="w-4 h-4" />
+        Purchases
+      </Link>
       <Link
         href="/publish"
         onClick={() => setAccountOpen(false)}
@@ -196,6 +265,12 @@ export function NotchNavbar({
         <span className="hidden xl:inline max-w-[90px] truncate">
           {user.name || user.email}
         </span>
+        {isPro && (
+          <span className="flex items-center gap-0.5 rounded-full bg-[#d4af37]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#a3811f]">
+            <Crown className="w-2.5 h-2.5" />
+            PRO
+          </span>
+        )}
         <ChevronDown className={`w-3.5 h-3.5 transition ${accountOpen ? "rotate-180" : ""}`} />
       </button>
       {accountOpen && (
@@ -261,8 +336,12 @@ export function NotchNavbar({
                   <img src="/logo.png" alt="Logo" className="h-8 w-8 rounded-lg object-contain" />
                 </Link>
 
-                <nav className="flex items-center gap-3 xl:gap-4 min-w-0 overflow-hidden">
-                  <NavLink href="/" icon={Home} label="Home" />
+                <NavLink href="/" icon={Home} label="Home" />
+
+                {/* Categories scroll instead of clipping when the row is
+                   too narrow to fit all of them — overflow-hidden here
+                   was silently cutting off the last category link. */}
+                <nav className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto xl:gap-4">
                   {categories.map((category) => (
                     <NavLink
                       key={category.label}
@@ -272,8 +351,6 @@ export function NotchNavbar({
                     />
                   ))}
                 </nav>
-
-                <div className="flex-1 min-w-2" aria-hidden />
 
                 <div className="flex gap-1 pl-3 border-l border-foreground/10 shrink-0 items-center">
                   <button
@@ -286,18 +363,10 @@ export function NotchNavbar({
                   </button>
 
                   <Link
-                    href="/tools/pdf-editor"
-                    className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-foreground/5 transition-colors text-foreground/70 hover:text-foreground"
-                    aria-label="PDF Editor"
-                    title="PDF Editor"
-                  >
-                    <FileEdit className="w-4 h-4" />
-                  </Link>
-
-                  <Link
                     href="/bookmarks"
                     className="relative flex items-center justify-center w-9 h-9 rounded-full hover:bg-foreground/5 transition-colors text-foreground/70 hover:text-foreground"
                     aria-label={`Bookmarks${bookmarkCount ? ` (${bookmarkCount})` : ""}`}
+                    title="Bookmarks"
                   >
                     <Bookmark className="w-4 h-4" />
                     {bookmarkCount > 0 && (
@@ -307,15 +376,15 @@ export function NotchNavbar({
                     )}
                   </Link>
 
-                  <Link
-                    href="/purchases"
-                    className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-foreground/5 text-foreground/70 hover:text-foreground"
-                    aria-label="Purchases"
-                    title="Purchases"
-                  >
-                    <BookOpen className="w-4 h-4" />
-                  </Link>
-
+                  {authReady && !user && (
+                    <Link
+                      href="/pro"
+                      className="flex items-center gap-1 rounded-full bg-[#d4af37]/15 px-2.5 py-1 text-xs font-bold text-[#a3811f] hover:bg-[#d4af37]/25 transition-colors whitespace-nowrap shrink-0"
+                    >
+                      <Crown className="w-3.5 h-3.5" />
+                      Upgrade
+                    </Link>
+                  )}
                   <NotificationBell />
                   <ThemeToggle />
                   {authDesktop}
@@ -383,6 +452,19 @@ export function NotchNavbar({
         </div>
       </header>
 
+      {evictedNotice && (
+        <div className="fixed inset-x-0 top-16 z-40 flex items-center justify-center gap-3 bg-amber-500/15 px-4 py-2.5 text-center text-sm text-amber-800 dark:text-amber-300">
+          <span>You&apos;ve been signed out because you logged in on another device.</span>
+          <button
+            type="button"
+            onClick={() => setEvictedNotice(false)}
+            className="shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <BookSearchModal open={searchOpen} onOpenChange={setSearchOpen} />
 
       <AnimatePresence>
@@ -411,13 +493,6 @@ export function NotchNavbar({
               ))}
 
               <div className="h-px bg-foreground/10 my-3" />
-              <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-foreground/40">Tools</p>
-              <Link href="/tools/pdf-editor" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
-                <FileEdit className="w-5 h-5 opacity-70" />
-                <span className="font-medium text-foreground/90">PDF Editor</span>
-              </Link>
-
-              <div className="h-px bg-foreground/10 my-3" />
               <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-foreground/40">Library</p>
               <Link href="/purchases" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
                 <BookOpen className="w-5 h-5 opacity-70" />
@@ -433,9 +508,21 @@ export function NotchNavbar({
 
               {!authReady ? null : user ? (
                 <>
-                  <div className="px-3 py-2 text-sm text-foreground/70 truncate">
+                  <div className="px-3 py-2 flex items-center gap-2 text-sm text-foreground/70 truncate">
                     {user.name || user.email}
+                    {isPro && (
+                      <span className="flex items-center gap-0.5 rounded-full bg-[#d4af37]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#a3811f]">
+                        <Crown className="w-2.5 h-2.5" />
+                        PRO
+                      </span>
+                    )}
                   </div>
+                  {!isPro && (
+                    <Link href="/pro" className="flex items-center gap-3 p-3 rounded-lg bg-[#d4af37]/15 hover:bg-[#d4af37]/25 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
+                      <Crown className="w-5 h-5 text-[#a3811f]" />
+                      <span className="font-medium text-[#a3811f]">Upgrade to Pro</span>
+                    </Link>
+                  )}
                   <Link href="/publish" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
                     <Upload className="w-5 h-5 opacity-70" />
                     <span className="font-medium text-foreground/90">Publish</span>
@@ -459,6 +546,10 @@ export function NotchNavbar({
                 </>
               ) : (
                 <>
+                  <Link href="/pro" className="flex items-center gap-3 p-3 rounded-lg bg-[#d4af37]/15 hover:bg-[#d4af37]/25 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
+                    <Crown className="w-5 h-5 text-[#a3811f]" />
+                    <span className="font-medium text-[#a3811f]">PlugYard Pro</span>
+                  </Link>
                   <Link href="/login" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors font-medium text-foreground/90" onClick={() => setIsMobileMenuOpen(false)}>
                     Log in
                   </Link>

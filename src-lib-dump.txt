@@ -1,0 +1,2994 @@
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\api.ts ==========
+
+// src/lib/api.ts
+import { splitName } from "@/lib/name"
+
+const API = process.env.NEXT_PUBLIC_API_URL!
+
+export type ApiBook = {
+  id: string
+  title: string
+  author: string
+  year: string
+  stars: number
+  desc: string
+  images?: {
+    front?: string | null
+    spine?: string | null
+    back?: string | null
+  }
+  edge?: string
+  spineBg?: string
+  spineInk?: string
+  spineFont?: string
+  backBg?: string
+  backInk?: string
+  chapters?: string[]
+  category?: string
+  price?: number
+  ebook_price?: number
+  audiobook_price?: number
+  stock?: number
+  hasEbook?: boolean
+  hasAudiobook?: boolean
+  ebookDownloadable?: boolean
+  audiobookDownloadable?: boolean
+  isFree?: boolean
+  is_featured?: boolean
+  previewPages?: number
+  audioUrl?: string | null
+  pdfUrl?: string | null
+}
+
+export type Paginated<T> = {
+  count: number
+  next: string | null
+  previous: string | null
+  results: T[]
+}
+
+export function asBookList(data: Paginated<ApiBook> | ApiBook[]): ApiBook[] {
+  return Array.isArray(data) ? data : data.results ?? []
+}
+
+export type PurchaseItem = {
+  order_id: number
+  book_id: string
+  product_type: string
+  downloadable?: boolean
+}
+
+export function getToken(): string | null {
+  if (typeof window === "undefined") return null
+  return (
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("access") ||
+    localStorage.getItem("token")
+  )
+}
+
+export function setTokens(access: string, refresh?: string) {
+  localStorage.setItem("access_token", access)
+  localStorage.setItem("access", access)
+  if (refresh) localStorage.setItem("refresh_token", refresh)
+}
+
+export function setToken(access: string) {
+  setTokens(access)
+}
+
+export function getRefreshToken(): string | null {
+  if (typeof window === "undefined") return null
+  return localStorage.getItem("refresh_token")
+}
+
+export class SessionEvictedError extends Error {
+  constructor() {
+    super("You've been signed out because you logged in on another device.")
+    this.name = "SessionEvictedError"
+  }
+}
+
+/** Exchanges the stored refresh token for a new access token — the access
+ * token is intentionally short-lived (see backend SIMPLE_JWT comment), so
+ * this has to run periodically in the background or every page reload
+ * would eventually hit a stale token. Throws SessionEvictedError
+ * specifically when this session was the one silently evicted by the
+ * concurrent-session cap (its refresh token got blacklisted), so callers
+ * can show that distinctly rather than a generic "please log in again." */
+export async function refreshAccessToken(): Promise<string> {
+  const refresh = getRefreshToken()
+  if (!refresh) throw new Error("No refresh token")
+  const res = await fetch(`${API}/auth/refresh/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    if ((data as { code?: string }).code === "session_evicted") throw new SessionEvictedError()
+    throw new Error((data as { error?: string; detail?: string }).error || "Session expired")
+  }
+  const access = (data as { access?: string }).access
+  if (!access) throw new Error("Refresh response had no access token")
+  setTokens(access)
+  return access
+}
+
+export function clearTokens() {
+  localStorage.removeItem("access_token")
+  localStorage.removeItem("access")
+  localStorage.removeItem("token")
+  localStorage.removeItem("refresh_token")
+}
+
+function bearer(token?: string) {
+  return token || getToken() || ""
+}
+
+export async function api<T = unknown>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  }
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  const res = await fetch(`${API}${path}`, { ...options, headers })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const msg =
+      (data as { error?: string; detail?: string }).error ||
+      (data as { detail?: string }).detail ||
+      "Request failed"
+    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg))
+  }
+  return data as T
+}
+
+export async function getPurchases(email: string): Promise<{
+  ebooks: PurchaseItem[]
+  audiobooks: PurchaseItem[]
+}> {
+  if (!email) return { ebooks: [], audiobooks: [] }
+  const res = await fetch(
+    `${API}/orders/purchases/?email=${encodeURIComponent(email)}`,
+  )
+  if (res.status === 429) {
+    throw new Error("Too many lookups. Wait a minute and try again.")
+  }
+  if (!res.ok) return { ebooks: [], audiobooks: [] }
+  return res.json()
+}
+
+export function downloadOrderUrl(orderId: number, email: string) {
+  return `${API}/orders/${orderId}/download/?email=${encodeURIComponent(email)}`
+}
+
+export async function getBooks(params?: {
+  featured?: boolean
+  category?: string
+  search?: string
+  page?: number
+  pageSize?: number
+}): Promise<Paginated<ApiBook> | ApiBook[]> {
+  if (!API) throw new Error("NEXT_PUBLIC_API_URL is not set")
+
+  const q = new URLSearchParams()
+  if (params?.featured) q.set("featured", "1")
+  if (params?.category) q.set("category", params.category)
+  if (params?.search) q.set("search", params.search)
+  if (params?.page) q.set("page", String(params.page))
+  if (params?.pageSize) q.set("page_size", String(params.pageSize))
+
+  const qs = q.toString()
+  const url = `${API}/books/${qs ? `?${qs}` : ""}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error("Failed to load books")
+  return res.json()
+}
+
+export async function getBook(id: string | number): Promise<ApiBook | null> {
+  if (!API) throw new Error("NEXT_PUBLIC_API_URL is not set")
+  const res = await fetch(`${API}/books/${id}/`)
+  if (!res.ok) return null
+  return res.json()
+}
+
+/** "You might also like" for a single book — item-similarity + collaborative
+ * "also bought/rated/bookmarked" + (when logged in) personal affinity. See
+ * shop/recommend.py:related_books_for on the backend. Sends the auth token
+ * when present so the personal-affinity signal actually applies. */
+export async function getRelatedBooks(
+  bookId: string | number,
+  limit = 10,
+): Promise<ApiBook[]> {
+  if (!API) throw new Error("NEXT_PUBLIC_API_URL is not set")
+  const token = getToken()
+  const headers: Record<string, string> = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await fetch(`${API}/books/${bookId}/related/?limit=${limit}`, { headers })
+  if (!res.ok) return []
+  const data = await res.json().catch(() => [])
+  return Array.isArray(data) ? data : []
+}
+
+export type ProStatus = {
+  is_pro: boolean
+  subscription: {
+    id: number
+    status: string
+    amount: string
+    started_at: string | null
+    expires_at: string | null
+  } | null
+}
+
+export async function getProStatus(): Promise<ProStatus> {
+  const token = getToken()
+  if (!token) return { is_pro: false, subscription: null }
+  const res = await fetch(`${API}/pro/status/`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) return { is_pro: false, subscription: null }
+  return res.json()
+}
+
+/** Public — no auth required, so the /pro page can show the real
+ * admin-configured price to logged-out visitors too. Never hardcode
+ * this value in frontend code; SiteSettings.pro_price_monthly is the
+ * single source of truth. */
+export async function getProPricing(): Promise<{ price_monthly: string }> {
+  const res = await fetch(`${API}/pro/pricing/`)
+  if (!res.ok) return { price_monthly: "0" }
+  return res.json()
+}
+
+export async function subscribePro(): Promise<{
+  subscription_id: number
+  checkout_url: string
+  reference: string
+  amount: string
+}> {
+  const token = getToken()
+  if (!token) throw new Error("Log in required")
+  const res = await fetch(`${API}/pro/subscribe/`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data as { error?: string }).error || "Could not start subscription")
+  return data
+}
+
+export async function confirmProPayment(reference: string): Promise<{
+  ok: boolean
+  paid?: boolean
+  already_paid?: boolean
+  error?: string
+  subscription?: ProStatus["subscription"]
+}> {
+  const token = getToken()
+  if (!token) return { ok: false, error: "Log in required" }
+  const res = await fetch(`${API}/pro/confirm/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ reference }),
+  })
+  return res.json()
+}
+
+export type TtsVoice = {
+  id: string
+  label: string
+  gender: string
+  description: string
+}
+
+export async function getTtsVoices(): Promise<TtsVoice[]> {
+  const res = await fetch(`${API}/tts/voices/`)
+  if (!res.ok) return []
+  const data = await res.json().catch(() => ({}))
+  return Array.isArray(data.voices) ? data.voices : []
+}
+
+export type TtsTimepoint = { mark: string; time_seconds: number }
+
+export type TtsResult = {
+  token: string
+  sentences: string[]
+  timepoints: TtsTimepoint[]
+  cached: boolean
+}
+
+/** Synthesizes (or reuses cached) audio for one reading-view page — Pro
+ * "robot reader" feature. Throws with `.proRequired` set if the caller
+ * isn't an active Pro subscriber, so the UI can show an upsell instead of
+ * a generic error. */
+export class TtsError extends Error {
+  proRequired: boolean
+  constructor(message: string, proRequired = false) {
+    super(message)
+    this.name = "TtsError"
+    this.proRequired = proRequired
+  }
+}
+
+export async function synthesizePage(
+  bookId: string | number,
+  page: number,
+  voice: string,
+  text: string,
+): Promise<TtsResult> {
+  const token = getToken()
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await fetch(`${API}/books/${bookId}/tts/`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ page, voice, text }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new TtsError(data.error || "Could not read this page aloud", !!data.pro_required)
+  }
+  return data as TtsResult
+}
+
+export function ttsAudioUrl(token: string) {
+  return `${API}/tts-audio/?token=${encodeURIComponent(token)}`
+}
+
+/** Thrown by createCheckout — carries `legalRequired` so the checkout page
+ * can show the "accept the terms" message inline instead of a generic
+ * error (the generic `api()` helper above discards extra response fields,
+ * so this endpoint parses its own response instead of using it). */
+export class CheckoutError extends Error {
+  legalRequired: boolean
+  constructor(message: string, legalRequired = false) {
+    super(message)
+    this.name = "CheckoutError"
+    this.legalRequired = legalRequired
+  }
+}
+
+export async function createCheckout(payload: {
+  book_id: number
+  product_type: "ebook" | "audiobook"
+  email: string
+  terms_accepted?: boolean
+}) {
+  const token = getToken()
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  const res = await fetch(`${API}/checkout/`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const body = data as { error?: string; legal_required?: boolean }
+    throw new CheckoutError(body.error || "Checkout failed", !!body.legal_required)
+  }
+  return data as { order_id: number; checkout_url: string; dev_mode?: boolean }
+}
+
+export async function confirmOrderPayment(
+  orderId: string,
+  payload: { reference?: string; email: string },
+) {
+  const res = await fetch(`${API}/orders/${orderId}/confirm/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error || "Confirm failed")
+  }
+  return res.json()
+}
+
+export function freeBookUrl(
+  bookId: string | number,
+  type: "ebook" | "audiobook" = "ebook",
+  inline = false,
+) {
+  const q = new URLSearchParams({ type })
+  if (inline) q.set("inline", "1")
+  return `${API}/books/${bookId}/free/?${q}`
+}
+
+export async function getOrder(orderId: string, email?: string) {
+  const q = email ? `?email=${encodeURIComponent(email)}` : ""
+  return api(`/orders/${orderId}/${q}`)
+}
+
+export async function register(
+  email: string,
+  password: string,
+  name = "",
+  confirmPassword = "",
+  termsAccepted = false,
+  referralCode = "",
+) {
+  const [first_name, last_name] = splitName(name)
+  return api("/auth/register/", {
+    method: "POST",
+    body: JSON.stringify({
+      email,
+      password,
+      confirm_password: confirmPassword || password,
+      name,
+      first_name,
+      last_name,
+      terms_accepted: termsAccepted,
+      referral_code: (referralCode || "").trim(),
+      ref: (referralCode || "").trim(),
+    }),
+  })
+}
+
+export async function verifyEmail(email: string, code: string) {
+  const data = await api<{
+    access?: string
+    refresh?: string
+    user?: { email?: string; name?: string }
+  }>("/auth/verify-email/", {
+    method: "POST",
+    body: JSON.stringify({ email, code }),
+  })
+  if (data.access) setTokens(data.access, data.refresh)
+  return data
+}
+
+export async function resendCode(
+  email: string,
+  purpose: "verify" | "reset" = "verify",
+) {
+  return api("/auth/resend-code/", {
+    method: "POST",
+    body: JSON.stringify({ email, purpose }),
+  })
+}
+
+export async function forgotPassword(email: string) {
+  return api("/auth/forgot-password/", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  })
+}
+
+export async function resetPassword(
+  email: string,
+  code: string,
+  password: string,
+  confirmPassword: string,
+) {
+  const data = await api<{
+    access?: string
+    refresh?: string
+    user?: { email?: string; name?: string }
+  }>("/auth/reset-password/", {
+    method: "POST",
+    body: JSON.stringify({
+      email,
+      code,
+      password,
+      confirm_password: confirmPassword,
+    }),
+  })
+  if (data.access) setTokens(data.access, data.refresh)
+  return data
+}
+
+export async function googleLogin(
+  credential: string,
+  termsAccepted = false,
+  referralCode = "",
+) {
+  const data = await api<{
+    access?: string
+    refresh?: string
+    user?: { email?: string; name?: string; terms_accepted?: boolean }
+    new_user?: boolean
+  }>("/auth/google/", {
+    method: "POST",
+    body: JSON.stringify({
+      credential,
+      terms_accepted: termsAccepted,
+      referral_code: (referralCode || "").trim(),
+      ref: (referralCode || "").trim(),
+    }),
+  })
+  if (data.access) setTokens(data.access, data.refresh)
+  return data
+}
+
+export async function login(email: string, password: string, termsAccepted = false) {
+  const data = await api<{
+    access: string
+    refresh: string
+    user?: { email?: string; name?: string; terms_accepted?: boolean }
+  }>("/auth/login/", {
+    method: "POST",
+    body: JSON.stringify({
+      username: email,
+      email,
+      password,
+      terms_accepted: termsAccepted,
+    }),
+  })
+  setTokens(data.access, data.refresh)
+  return data
+}
+
+export function logout() {
+  clearTokens()
+}
+
+export async function getAudioProgress(bookId: string) {
+  return api<{ position: number; duration: number }>(
+    `/books/${bookId}/audio-progress/`,
+  )
+}
+
+export async function saveAudioProgress(
+  bookId: string,
+  position: number,
+  duration: number,
+) {
+  return api(`/books/${bookId}/audio-progress/`, {
+    method: "POST",
+    body: JSON.stringify({ position, duration }),
+  })
+}
+
+export async function getAudioNotes(bookId: string) {
+  return api<Array<{ id: number; position: number; note: string }>>(
+    `/books/${bookId}/audio-notes/`,
+  )
+}
+
+export async function addAudioNote(
+  bookId: string,
+  position: number,
+  note: string,
+) {
+  return api(`/books/${bookId}/audio-notes/`, {
+    method: "POST",
+    body: JSON.stringify({ position, note }),
+  })
+}
+
+export async function deleteAudioNote(id: number) {
+  return api(`/audio-notes/${id}/`, { method: "DELETE" })
+}
+
+export async function getPdfProgress(bookId: string) {
+  return api<{ page: number }>(`/books/${bookId}/pdf-progress/`)
+}
+
+export async function savePdfProgress(bookId: string, page: number) {
+  return api(`/books/${bookId}/pdf-progress/`, {
+    method: "PUT",
+    body: JSON.stringify({ page }),
+  })
+}
+
+export type SearchTrackKind = "search" | "click" | "preview" | "view"
+
+export async function searchTrack(payload: {
+  event_type?: SearchTrackKind
+  kind?: SearchTrackKind
+  query?: string
+  book_id?: number | string | null
+  book_slug?: string
+  source?: string
+  path?: string
+}) {
+  try {
+    await fetch(`${API}/track/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        event_type: payload.event_type || payload.kind || "search",
+        query: payload.query ?? "",
+        book_id: payload.book_id ?? null,
+        book_slug: payload.book_slug ?? "",
+        source: payload.source ?? "",
+        path:
+          payload.path ||
+          (typeof window !== "undefined" ? window.location.pathname : ""),
+      }),
+    })
+  } catch {
+    // never block UI
+  }
+}
+
+export function previewBookUrl(bookId: string | number) {
+  return `${API}/books/${bookId}/preview/?inline=1`
+}
+
+export type BookmarkRow = {
+  id: number
+  book: ApiBook
+  created_at?: string
+}
+
+export async function fetchBookmarks(page = 1): Promise<
+  Paginated<BookmarkRow> | BookmarkRow[]
+> {
+  const q = page > 1 ? `?page=${page}` : ""
+  return api(`/bookmarks/${q}`)
+}
+
+export async function addBookmarkApi(bookId: string | number) {
+  return api("/bookmarks/", {
+    method: "POST",
+    body: JSON.stringify({ book_id: Number(bookId) }),
+  })
+}
+
+export async function removeBookmarkApi(bookId: string | number) {
+  return api(`/bookmarks/${bookId}/`, { method: "DELETE" })
+}
+
+export async function getRatings(bookId: string) {
+  return api<{ average: number; count: number; myRating: number | null }>(
+    `/books/${bookId}/ratings/`,
+  )
+}
+
+export async function postRating(bookId: string, value: number) {
+  return api(`/books/${bookId}/ratings/`, {
+    method: "POST",
+    body: JSON.stringify({ value }),
+  })
+}
+
+export async function getComments(bookId: string) {
+  return api<
+    Array<{
+      id: number
+      body: string
+      parentId: number | null
+      created_at: string
+      user_name: string
+      user_email: string
+      userRating: number | null
+    }>
+  >(`/books/${bookId}/comments/`)
+}
+
+export async function postComment(
+  bookId: string,
+  body: string,
+  parentId?: number | string | null,
+) {
+  return api(`/books/${bookId}/comments/`, {
+    method: "POST",
+    body: JSON.stringify({
+      body,
+      parentId: parentId != null ? Number(parentId) : null,
+    }),
+  })
+}
+
+export async function getMySales() {
+  const token = bearer()
+  const res = await fetch(`${API}/me/sales/`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) return { ok: true, sales: [], books: [] }
+  return res.json()
+}
+
+export async function requestPayout() {
+  const token = bearer()
+  const res = await fetch(`${API}/me/payouts/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  })
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}))
+    throw new Error(e.error || "Payout failed")
+  }
+  return res.json()
+}
+
+export async function createBoost(book_id: number, days = 7) {
+  return initBoost(bearer(), book_id, days)
+}
+
+export async function publishBook(form: FormData) {
+  const token = bearer()
+  const res = await fetch(`${API}/me/books/`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || "Could not submit book")
+  return data
+}
+
+export async function myBooks(_token?: string) {
+  const token = bearer(_token)
+  const res = await fetch(`${API}/me/books/`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) throw new Error("Could not load your books")
+  return res.json()
+}
+
+export async function updateMyBook(bookId: string | number, form: FormData) {
+  const token = bearer()
+  const res = await fetch(`${API}/me/books/${bookId}/`, {
+    method: "PATCH",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || "Could not update book")
+  return data
+}
+
+export async function deleteMyBook(bookId: string | number) {
+  const token = bearer()
+  const res = await fetch(`${API}/me/books/${bookId}/`, {
+    method: "DELETE",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || "Could not delete book")
+  return data
+}
+
+export async function initBoost(token: string, bookId: number, days = 7) {
+  const r = await fetch(`${API}/me/boost/init/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${bearer(token)}`,
+    },
+    body: JSON.stringify({ book_id: bookId, days }),
+  })
+  return r.json()
+}
+
+export async function confirmBoost(token: string, reference: string) {
+  const r = await fetch(`${API}/me/boost/confirm/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${bearer(token)}`,
+    },
+    body: JSON.stringify({ reference }),
+  })
+  return r.json()
+}
+
+export async function myBoosts(token?: string) {
+  const r = await fetch(`${API}/me/boosts/`, {
+    headers: { Authorization: `Bearer ${bearer(token)}` },
+  })
+  return r.json()
+}
+
+export async function payoutAccount(token?: string) {
+  const r = await fetch(`${API}/me/payout-account/`, {
+    headers: { Authorization: `Bearer ${bearer(token)}` },
+  })
+  return r.json()
+}
+
+export async function savePayoutAccount(
+  token: string,
+  body: {
+    method: string
+    account_name?: string
+    account_number?: string
+    extra?: string
+  },
+) {
+  const r = await fetch(`${API}/me/payout-account/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${bearer(token)}`,
+    },
+    body: JSON.stringify(body),
+  })
+  return r.json()
+}
+
+export async function deletePayoutAccount(token?: string) {
+  const t =
+    token ||
+    (typeof window !== "undefined"
+      ? localStorage.getItem("access_token") ||
+        localStorage.getItem("access") ||
+        localStorage.getItem("token") ||
+        ""
+      : "")
+  const API = process.env.NEXT_PUBLIC_API_URL!
+  const r = await fetch(`${API}/me/payout-account/`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${t}` },
+  })
+  return r.json().catch(() => ({ ok: r.ok }))
+}
+
+export async function getLegalPages(slug?: string) {
+  const q = slug ? `?slug=${encodeURIComponent(slug)}` : ""
+
+  const r = await fetch(`${API}/legal/${q}`, {
+    cache: "no-store",
+  })
+
+  return r.json()
+}
+
+export async function getLegalStatus(token?: string) {
+  const r = await fetch(`${API}/legal/status/`, {
+    headers: token
+      ? {
+          Authorization: `Bearer ${token}`,
+        }
+      : {},
+    cache: "no-store",
+  })
+
+  return r.json()
+}
+
+export async function acceptLegal(
+  token: string,
+  source = "reaccept",
+) {
+  const r = await fetch(`${API}/legal/accept/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ source }),
+  })
+
+  return r.json()
+}
+
+export const getSettings = () => api<any>("/me/settings/")
+export const changeUsername = (username: string) => api("/me/settings/username/", { method: "POST", body: JSON.stringify({ username }) })
+export async function changeName(first_name: string, last_name: string) {
+  return api("/settings/name/", {
+    method: "POST",
+    body: JSON.stringify({ first_name, last_name }),
+  })
+}
+export const startEmailChange = (email: string, current_password: string) => api("/me/settings/email/", { method: "POST", body: JSON.stringify({ email, current_password }) })
+export const confirmEmailChange = (code: string) => api("/me/settings/email/confirm/", { method: "POST", body: JSON.stringify({ code }) })
+export const requestAffiliateWithdrawal = (amount: string) => api("/me/affiliate/withdrawals/", { method: "POST", body: JSON.stringify({ amount }) })
+export const deleteAccount = (body: { current_password?: string; google_credential?: string; reason?: string }) => api("/me/settings/delete-account/", { method: "POST", body: JSON.stringify(body) })
+
+export type NotificationPrefs = {
+  push_enabled: boolean
+  email_enabled: boolean
+  active_devices: number
+}
+export const getNotificationPrefs = () => api<NotificationPrefs>("/me/notification-prefs/")
+export const updateNotificationPrefs = (
+  body: Partial<Pick<NotificationPrefs, "push_enabled" | "email_enabled">>,
+) => api<NotificationPrefs>("/me/notification-prefs/", { method: "POST", body: JSON.stringify(body) })
+export async function unsubscribePush(endpoint?: string) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  const token = getToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await fetch(`${API}/push/unsubscribe/`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ endpoint: endpoint || "" }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data as { error?: string }).error || "Could not unsubscribe")
+  return data
+}
+
+export default searchTrack
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\auth-client.ts ==========
+
+'use client'
+
+import { clearTokens, getToken } from '@/lib/api'
+
+const USER_KEY = 'bookstore_user'
+
+export type AuthUser = {
+  email: string
+  name?: string
+}
+
+export function getStoredUser(): AuthUser | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(USER_KEY)
+    return raw ? (JSON.parse(raw) as AuthUser) : null
+  } catch {
+    return null
+  }
+}
+
+export function setStoredUser(user: AuthUser | null) {
+  if (typeof window === 'undefined') return
+  if (!user) localStorage.removeItem(USER_KEY)
+  else localStorage.setItem(USER_KEY, JSON.stringify(user))
+}
+
+export function isLoggedIn() {
+  return !!getToken()
+}
+
+export function clientLogout() {
+  clearTokens()
+  setStoredUser(null)
+  window.dispatchEvent(new Event('auth-changed'))
+}
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\legal.ts ==========
+
+export async function getLegalPages(slug?: string) {
+  const q = slug ? `?slug=${encodeURIComponent(slug)}` : ""
+  const r = await fetch(`${API}/legal/${q}`, { cache: "no-store" })
+  return r.json()
+}
+
+
+const API = process.env.NEXT_PUBLIC_API_URL!
+
+export type LegalStatus = {
+  accepted?: boolean
+  terms_accepted?: boolean
+  legal_required?: boolean
+  must_accept?: boolean
+  legal_version?: string
+  accepted_version?: string | null
+  legal_change_summary?: string
+  summary?: string
+}
+
+export function needsLegalAccept(data: LegalStatus | null | undefined) {
+  if (!data) return false
+  if (typeof data.legal_required === 'boolean') return data.legal_required
+  if (typeof data.must_accept === 'boolean') return data.must_accept
+  if (typeof data.accepted === 'boolean') return !data.accepted
+  if (typeof data.terms_accepted === 'boolean') return !data.terms_accepted
+  if (data.legal_version && data.accepted_version) {
+    return data.legal_version !== data.accepted_version
+  }
+  return false
+}
+
+export async function getLegalStatus(token: string): Promise<LegalStatus> {
+  const response = await fetch(`${API}/legal/status/`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(data?.error || 'Unable to check legal status.')
+  }
+
+  return data
+}
+
+export async function acceptLegal(token: string) {
+  const response = await fetch(`${API}/legal/accept/`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      accepted: true,
+      terms_accepted: true,
+    }),
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(data?.error || 'Unable to accept the legal terms.')
+  }
+
+  return data
+}
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\name.ts ==========
+
+/** Split a single "full name" input into (first, last) — first word is the
+ * first name, everything after is the last name, so the UI only needs one
+ * name field instead of separate First/Last boxes. */
+export function splitName(full: string): [string, string] {
+  const parts = (full || "").trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return ["", ""]
+  const [first, ...rest] = parts
+  return [first, rest.join(" ")]
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\pdf-editor-autosave.ts ==========
+
+import type { EditorSnapshot } from '@/lib/pdf-editor-types'
+
+const DB_NAME = 'plugyard-pdf-editor'
+const STORE = 'drafts'
+const DRAFT_KEY = 'draft'
+
+export type PdfEditorDraft = {
+  savedAt: number
+  snapshot: EditorSnapshot
+  /** Raw bytes of each uploaded source PDF, in `docIndex` order, so pages
+   * with `source.kind === 'copy'` can be reconstructed on restore. */
+  sourceBytesList: (Uint8Array | null)[]
+}
+
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('IndexedDB not available'))
+      return
+    }
+    const req = indexedDB.open(DB_NAME, 1)
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(STORE)
+    }
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error || new Error('Could not open IndexedDB'))
+  })
+}
+
+export async function saveDraft(draft: PdfEditorDraft): Promise<void> {
+  try {
+    const db = await openDb()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite')
+      tx.objectStore(STORE).put(draft, DRAFT_KEY)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    db.close()
+  } catch {
+    // Autosave is best-effort — never block editing on it.
+  }
+}
+
+export async function loadDraft(): Promise<PdfEditorDraft | null> {
+  try {
+    const db = await openDb()
+    const draft = await new Promise<PdfEditorDraft | null>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readonly')
+      const req = tx.objectStore(STORE).get(DRAFT_KEY)
+      req.onsuccess = () => resolve((req.result as PdfEditorDraft) || null)
+      req.onerror = () => reject(req.error)
+    })
+    db.close()
+    return draft
+  } catch {
+    return null
+  }
+}
+
+export async function clearDraft(): Promise<void> {
+  try {
+    const db = await openDb()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite')
+      tx.objectStore(STORE).delete(DRAFT_KEY)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    db.close()
+  } catch {
+    // ignore
+  }
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\pdf-editor-convert.ts ==========
+
+import { PDFDocument } from '@cantoo/pdf-lib'
+import { zipSync, type Zippable } from 'fflate'
+import { renderPdfPageToCanvas, getPdfPageCount } from '@/lib/pdfjs-loader'
+
+/** Rasterizes the given pages of a (already fully-built) PDF to PNG/JPG
+ * images and bundles them into a single .zip — or returns one plain image
+ * file directly when there's only one page, so a single-page export
+ * doesn't need unzipping. */
+export async function pdfPagesToImageZip(
+  bytes: Uint8Array,
+  pageNumbers: number[],
+  format: 'png' | 'jpeg',
+  scale: number,
+): Promise<{ blob: Blob; filename: string }> {
+  const mime = format === 'png' ? 'image/png' : 'image/jpeg'
+  const ext = format === 'png' ? 'png' : 'jpg'
+
+  const images: { name: string; bytes: Uint8Array }[] = []
+  for (const pageNumber of pageNumbers) {
+    const canvas = await renderPdfPageToCanvas(bytes, pageNumber, scale)
+    const blob: Blob = await new Promise((resolve, reject) =>
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), mime, 0.92),
+    )
+    images.push({ name: `page-${pageNumber}.${ext}`, bytes: new Uint8Array(await blob.arrayBuffer()) })
+  }
+
+  if (images.length === 1) {
+    return { blob: new Blob([images[0].bytes as BlobPart], { type: mime }), filename: images[0].name }
+  }
+
+  const zipInput: Zippable = {}
+  for (const img of images) zipInput[img.name] = img.bytes
+  const zipped = zipSync(zipInput)
+  return { blob: new Blob([zipped as BlobPart], { type: 'application/zip' }), filename: 'plugyard-pages.zip' }
+}
+
+/** Re-encodes every page of a PDF as a compressed JPEG image and rebuilds
+ * the document from those images. Trades text-selectability/searchability
+ * for file size — appropriate for image-heavy or scanned documents, not a
+ * general-purpose compressor. */
+export async function compressPdfByRasterizing(bytes: Uint8Array, scale: number, quality: number): Promise<Uint8Array> {
+  const pageCount = await getPdfPageCount(bytes)
+
+  const out = await PDFDocument.create()
+  for (let i = 1; i <= pageCount; i++) {
+    const canvas = await renderPdfPageToCanvas(bytes, i, scale)
+    const blob: Blob = await new Promise((resolve, reject) =>
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/jpeg', quality),
+    )
+    const jpgBytes = new Uint8Array(await blob.arrayBuffer())
+    const embedded = await out.embedJpg(jpgBytes)
+    const page = out.addPage([embedded.width / scale, embedded.height / scale])
+    page.drawImage(embedded, { x: 0, y: 0, width: page.getWidth(), height: page.getHeight() })
+  }
+  return out.save()
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\pdf-editor-export.ts ==========
+
+import { PDFDocument, PDFName, PDFString, TextRenderingMode, degrees, rgb } from '@cantoo/pdf-lib'
+import type {
+  EditorPage,
+  EditorElement,
+  TextElement,
+  TextRun,
+  ShapeElement,
+  DrawElement,
+  NoteElement,
+  FormFieldElement,
+  RedactElement,
+  WatermarkConfig,
+  SecurityPermissions,
+} from '@/lib/pdf-editor-types'
+import { resolveStandardFont, fontCacheKey, type FontFamily } from '@/lib/pdf-editor-fonts'
+import { buildFilledFlattenedDoc, type DetectedField } from '@/lib/pdf-editor-forms'
+import { rasterizePageWithRedactions } from '@/lib/pdf-editor-redact'
+import type { OcrPageResult } from '@/lib/pdf-editor-ocr'
+
+type PdfPage = ReturnType<PDFDocument['addPage']>
+type PdfFont = Awaited<ReturnType<PDFDocument['embedFont']>>
+type PdfImage = Awaited<ReturnType<PDFDocument['embedPng']>>
+
+export type SecurityOptions = {
+  enabled: boolean
+  openPassword: string
+  ownerPassword: string
+  permissions: SecurityPermissions
+}
+
+export async function buildFinalPdf({
+  sourceDocs,
+  sourceBytesList = [],
+  detectedFields = [],
+  ocrPages = {},
+  pages,
+  elements,
+  watermark,
+  security,
+}: {
+  sourceDocs: (PDFDocument | null)[]
+  sourceBytesList?: (Uint8Array | null)[]
+  detectedFields?: DetectedField[]
+  ocrPages?: Record<string, OcrPageResult>
+  pages: EditorPage[]
+  elements: EditorElement[]
+  watermark: WatermarkConfig
+  security: SecurityOptions
+}): Promise<Uint8Array> {
+  const finalDoc = await PDFDocument.create()
+  const imageCache = new Map<string, PdfImage>()
+  const fontCache = new Map<string, PdfFont>()
+
+  async function fontFor(family: FontFamily, bold: boolean, italic: boolean) {
+    const key = fontCacheKey(family, bold, italic)
+    let f = fontCache.get(key)
+    if (!f) {
+      f = await finalDoc.embedFont(resolveStandardFont(family, bold, italic))
+      fontCache.set(key, f)
+    }
+    return f
+  }
+
+  async function embedImage(dataUrl: string, bytes: Uint8Array, format: 'png' | 'jpg') {
+    let embedded = imageCache.get(dataUrl)
+    if (!embedded) {
+      embedded = format === 'png' ? await finalDoc.embedPng(bytes) : await finalDoc.embedJpg(bytes)
+      imageCache.set(dataUrl, embedded)
+    }
+    return embedded
+  }
+
+  // --- Form fields: fill + flatten on scratch copies of each affected
+  // source document, so the live, still-interactive documents the editor
+  // session holds are never mutated. ---------------------------------
+  const fieldsByDocIndex = new Map<number, DetectedField[]>()
+  for (const f of detectedFields) {
+    const arr = fieldsByDocIndex.get(f.docIndex) || []
+    arr.push(f)
+    fieldsByDocIndex.set(f.docIndex, arr)
+  }
+  const filledDocs = new Map<number, PDFDocument>()
+  const filledBytes = new Map<number, Uint8Array>()
+  for (const [docIndex, fields] of fieldsByDocIndex) {
+    const bytes = sourceBytesList[docIndex]
+    if (!bytes) continue
+    const filled = await buildFilledFlattenedDoc(bytes, fields)
+    filledDocs.set(docIndex, filled)
+    filledBytes.set(docIndex, await filled.save())
+  }
+  function effectiveSourceDoc(docIndex: number): PDFDocument | null {
+    return filledDocs.get(docIndex) || sourceDocs[docIndex] || null
+  }
+  function effectiveSourceBytes(docIndex: number): Uint8Array | null {
+    return filledBytes.get(docIndex) || sourceBytesList[docIndex] || null
+  }
+
+  const newPageById = new Map<string, PdfPage>()
+  let formCache: ReturnType<PDFDocument['getForm']> | null = null
+
+  for (const page of pages) {
+    const redactEls = elements.filter(
+      (e): e is RedactElement => e.pageId === page.id && e.type === 'redact',
+    )
+
+    let newPage: PdfPage
+    if (page.source.kind === 'copy' && redactEls.length > 0) {
+      const bytes = effectiveSourceBytes(page.source.docIndex)
+      if (bytes) {
+        const raster = await rasterizePageWithRedactions(
+          bytes,
+          page.source.originalIndex + 1,
+          redactEls.map((el) => ({ xf: el.xf, yf: el.yf, wf: el.wf, hf: el.hf })),
+        )
+        const embedded = await finalDoc.embedPng(raster)
+        newPage = finalDoc.addPage([page.widthPt, page.heightPt])
+        newPage.drawImage(embedded, { x: 0, y: 0, width: page.widthPt, height: page.heightPt })
+      } else {
+        newPage = finalDoc.addPage([page.widthPt, page.heightPt])
+      }
+    } else if (page.source.kind === 'copy') {
+      const doc = effectiveSourceDoc(page.source.docIndex)
+      newPage = doc
+        ? finalDoc.addPage((await finalDoc.copyPages(doc, [page.source.originalIndex]))[0])
+        : finalDoc.addPage([page.widthPt, page.heightPt])
+    } else {
+      newPage = finalDoc.addPage([page.widthPt, page.heightPt])
+    }
+
+    if (page.rotationDeg) newPage.setRotation(degrees(page.rotationDeg))
+    newPageById.set(page.id, newPage)
+
+    for (const el of elements.filter((e) => e.pageId === page.id)) {
+      if (el.type === 'text') {
+        await drawTextElement(newPage, el, page, fontFor)
+        if (el.url?.trim()) {
+          addLinkAnnotation(newPage, el.url.trim(), rectFor(el, page))
+        }
+      } else if (el.type === 'image') {
+        const embedded = await embedImage(el.dataUrl, el.bytes, el.format)
+        const r = rectFor(el, page)
+        newPage.drawImage(embedded, { x: r.x, y: r.y, width: r.width, height: r.height })
+      } else if (el.type === 'draw') {
+        drawFreehand(newPage, el, page)
+      } else if (el.type === 'shape') {
+        drawShape(newPage, el, page)
+      } else if (el.type === 'note') {
+        addNoteAnnotation(newPage, el, page)
+      } else if (el.type === 'redact') {
+        // 'copy' pages were already rasterized-and-blacked-out above; a
+        // blank page has no hidden content underneath, so a plain black
+        // box is sufficient and correct.
+        if (page.source.kind === 'blank') {
+          const r = rectFor(el, page)
+          newPage.drawRectangle({ x: r.x, y: r.y, width: r.width, height: r.height, color: rgb(0, 0, 0) })
+        }
+      } else if (el.type === 'formField') {
+        if (!formCache) formCache = finalDoc.getForm()
+        const font = await fontFor('Helvetica', false, false)
+        drawFormField(formCache, newPage, el, page, font)
+      }
+    }
+
+    const ocr = ocrPages[page.id]
+    if (ocr) {
+      const font = await fontFor('Helvetica', false, false)
+      drawOcrTextLayer(newPage, page, ocr, font)
+    }
+  }
+
+  if (watermark.enabled) {
+    const targetPages =
+      watermark.scope === 'all' ? pages : pages.filter((p) => watermark.selectedPageIds.includes(p.id))
+    const font = watermark.kind === 'text' ? await fontFor(watermark.fontFamily, false, false) : null
+    const image =
+      watermark.kind === 'image' && watermark.imageBytes
+        ? await embedImage(watermark.imageDataUrl, watermark.imageBytes, watermark.imageFormat)
+        : null
+    for (const page of targetPages) {
+      const newPage = newPageById.get(page.id)
+      if (!newPage) continue
+      drawWatermark(newPage, page, watermark, font, image)
+    }
+  }
+
+  if (security.enabled) {
+    finalDoc.encrypt({
+      userPassword: security.openPassword,
+      ownerPassword: security.ownerPassword || security.openPassword,
+      permissions: {
+        printing: security.permissions.printing ? 'highResolution' : false,
+        copying: security.permissions.copying,
+        modifying: security.permissions.modifying,
+        annotating: security.permissions.annotating,
+      },
+    })
+  }
+
+  return finalDoc.save()
+}
+
+function rectFor(el: EditorElement, page: EditorPage) {
+  return {
+    x: el.xf * page.widthPt,
+    y: page.heightPt - (el.yf + el.hf) * page.heightPt,
+    width: el.wf * page.widthPt,
+    height: el.hf * page.heightPt,
+  }
+}
+
+type StyledSegment = { text: string; run: TextRun; font: PdfFont }
+
+async function drawTextElement(
+  page: PdfPage,
+  el: TextElement,
+  editorPage: EditorPage,
+  fontFor: (family: FontFamily, bold: boolean, italic: boolean) => Promise<PdfFont>,
+) {
+  const r = rectFor(el, editorPage)
+  const runs = el.runs.length ? el.runs : [{ text: '', fontSizePt: el.fontSizePt, color: el.color, fontFamily: el.fontFamily, bold: el.bold, italic: el.italic }]
+
+  if (el.coverColor) {
+    // This element replaced a run of the ORIGINAL page's own text (Phase 2
+    // click-to-edit) — that original content is still baked into the
+    // copied page underneath (copyPages() brought the whole page's content
+    // stream along), so it has to be painted over before the new text goes
+    // down, not just visually covered in the live editor.
+    page.drawRectangle({ x: r.x, y: r.y, width: r.width, height: r.height, color: hexToRgb(el.coverColor) })
+  }
+
+  // Resolve each distinct (family, bold, italic) combination appearing in
+  // this block's runs once, up front — runs can carry different fonts
+  // from each other now that styling is per-run, not one font per block.
+  const fontCache = new Map<string, PdfFont>()
+  for (const run of runs) {
+    const key = `${run.fontFamily}:${run.bold ? 1 : 0}:${run.italic ? 1 : 0}`
+    if (!fontCache.has(key)) fontCache.set(key, await fontFor(run.fontFamily, run.bold, run.italic))
+  }
+  const fontForRun = (run: TextRun) => fontCache.get(`${run.fontFamily}:${run.bold ? 1 : 0}:${run.italic ? 1 : 0}`)!
+
+  const lines = wrapRuns(runs, fontForRun, Math.max(1, r.width))
+  const lineHeight = Math.max(...runs.map((rn) => rn.fontSizePt), 12) * 1.2
+  const totalHeight = lines.length * lineHeight
+  const hasLink = !!el.url?.trim()
+  let y = r.y + r.height - Math.max(0, (r.height - totalHeight) / 2) - lineHeight * 0.85
+
+  for (const line of lines) {
+    const lineWidth = line.reduce((sum, seg) => sum + seg.font.widthOfTextAtSize(seg.text, seg.run.fontSizePt), 0)
+    let x = r.x
+    if (el.align === 'center') x = r.x + Math.max(0, (r.width - lineWidth) / 2)
+    else if (el.align === 'right') x = r.x + Math.max(0, r.width - lineWidth)
+
+    for (const seg of line) {
+      const segWidth = seg.font.widthOfTextAtSize(seg.text, seg.run.fontSizePt)
+      if (seg.text.trim()) {
+        page.drawText(seg.text, { x, y, size: seg.run.fontSizePt, font: seg.font, color: hexToRgb(seg.run.color) })
+        if (hasLink) {
+          // Matches the editor's on-canvas link preview (underline) so the
+          // exported PDF doesn't visually diverge from what was edited.
+          const underlineY = y - seg.run.fontSizePt * 0.12
+          page.drawLine({
+            start: { x, y: underlineY },
+            end: { x: x + segWidth, y: underlineY },
+            thickness: Math.max(0.5, seg.run.fontSizePt * 0.05),
+            color: hexToRgb(seg.run.color),
+          })
+        }
+      }
+      x += segWidth
+    }
+    y -= lineHeight
+  }
+}
+
+/** Wraps styled runs into lines, each line an ordered list of same-style
+ * segments — a "word" wrapping decision is made against whichever run it
+ * currently belongs to, so mixed-style text within one paragraph still
+ * wraps correctly at the actual rendered width of each piece. */
+function wrapRuns(
+  runs: TextRun[],
+  fontForRun: (run: TextRun) => PdfFont,
+  maxWidth: number,
+): StyledSegment[][] {
+  const lines: StyledSegment[][] = []
+  let current: StyledSegment[] = []
+  let currentWidth = 0
+
+  function pushLine() {
+    lines.push(current)
+    current = []
+    currentWidth = 0
+  }
+
+  for (const run of runs) {
+    const font = fontForRun(run)
+    const paragraphs = run.text.split('\n')
+    paragraphs.forEach((paragraph, pIdx) => {
+      if (pIdx > 0) pushLine()
+      const tokens = paragraph.match(/\S+|\s+/g) || []
+      for (const token of tokens) {
+        const tokenWidth = font.widthOfTextAtSize(token, run.fontSizePt)
+        if (currentWidth + tokenWidth > maxWidth && current.length > 0 && token.trim()) {
+          pushLine()
+        }
+        current.push({ text: token, run, font })
+        currentWidth += tokenWidth
+      }
+    })
+  }
+  lines.push(current)
+  return lines
+}
+
+function drawFreehand(page: PdfPage, el: DrawElement, editorPage: EditorPage) {
+  const r = rectFor(el, editorPage)
+  const color = hexToRgb(el.color)
+  for (let i = 1; i < el.points.length; i++) {
+    const a = el.points[i - 1]
+    const b = el.points[i]
+    page.drawLine({
+      start: { x: r.x + a.x * r.width, y: r.y + r.height - a.y * r.height },
+      end: { x: r.x + b.x * r.width, y: r.y + r.height - b.y * r.height },
+      thickness: el.strokeWidthPt,
+      color,
+      opacity: 1,
+    })
+  }
+}
+
+function drawShape(page: PdfPage, el: ShapeElement, editorPage: EditorPage) {
+  const r = rectFor(el, editorPage)
+  const color = hexToRgb(el.color)
+  switch (el.shapeKind) {
+    case 'rect':
+      page.drawRectangle({
+        x: r.x,
+        y: r.y,
+        width: r.width,
+        height: r.height,
+        borderColor: color,
+        borderWidth: el.strokeWidthPt,
+        color: el.fillOpacity > 0 ? color : undefined,
+        opacity: el.fillOpacity > 0 ? el.fillOpacity : 1,
+        borderOpacity: 1,
+      })
+      break
+    case 'ellipse':
+      page.drawEllipse({
+        x: r.x + r.width / 2,
+        y: r.y + r.height / 2,
+        xScale: r.width / 2,
+        yScale: r.height / 2,
+        borderColor: color,
+        borderWidth: el.strokeWidthPt,
+        color: el.fillOpacity > 0 ? color : undefined,
+        opacity: el.fillOpacity > 0 ? el.fillOpacity : 1,
+        borderOpacity: 1,
+      })
+      break
+    case 'line':
+    case 'underline':
+    case 'strikethrough': {
+      const y = el.shapeKind === 'line' ? r.y + r.height / 2 : el.shapeKind === 'underline' ? r.y : r.y + r.height / 2
+      page.drawLine({
+        start: { x: r.x, y },
+        end: { x: r.x + r.width, y },
+        thickness: el.strokeWidthPt,
+        color,
+      })
+      break
+    }
+    case 'arrow': {
+      const start = { x: r.x, y: r.y + r.height / 2 }
+      const end = { x: r.x + r.width, y: r.y + r.height / 2 }
+      page.drawLine({ start, end, thickness: el.strokeWidthPt, color })
+      const headSize = Math.max(6, el.strokeWidthPt * 4)
+      const angle = Math.atan2(end.y - start.y, end.x - start.x)
+      const leftWing = angle + (Math.PI * 5) / 6
+      const rightWing = angle - (Math.PI * 5) / 6
+      page.drawLine({
+        start: end,
+        end: { x: end.x + headSize * Math.cos(leftWing), y: end.y + headSize * Math.sin(leftWing) },
+        thickness: el.strokeWidthPt,
+        color,
+      })
+      page.drawLine({
+        start: end,
+        end: { x: end.x + headSize * Math.cos(rightWing), y: end.y + headSize * Math.sin(rightWing) },
+        thickness: el.strokeWidthPt,
+        color,
+      })
+      break
+    }
+    case 'highlight':
+      page.drawRectangle({
+        x: r.x,
+        y: r.y,
+        width: r.width,
+        height: r.height,
+        color,
+        opacity: el.fillOpacity || 0.4,
+      })
+      break
+  }
+}
+
+/** Low-level annotation helpers — pdf-lib has no high-level drawLink/note
+ * helper, so these build the /Annots entry directly. */
+function pushAnnotation(page: PdfPage, dict: Record<string, unknown>) {
+  const doc = page.doc
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const obj = doc.context.obj(dict as any)
+  const ref = doc.context.register(obj)
+  const existing = page.node.Annots()
+  if (existing) existing.push(ref)
+  else page.node.set(PDFName.of('Annots'), doc.context.obj([ref]))
+}
+
+function addLinkAnnotation(
+  page: PdfPage,
+  url: string,
+  rect: { x: number; y: number; width: number; height: number },
+) {
+  pushAnnotation(page, {
+    Type: 'Annot',
+    Subtype: 'Link',
+    Rect: [rect.x, rect.y, rect.x + rect.width, rect.y + rect.height],
+    Border: [0, 0, 0],
+    A: page.doc.context.obj({ Type: 'Action', S: 'URI', URI: PDFString.of(url) }),
+  })
+}
+
+function addNoteAnnotation(page: PdfPage, el: NoteElement, editorPage: EditorPage) {
+  const r = rectFor(el, editorPage)
+  pushAnnotation(page, {
+    Type: 'Annot',
+    Subtype: 'Text',
+    Rect: [r.x, r.y, r.x + Math.max(20, r.width), r.y + Math.max(20, r.height)],
+    Contents: PDFString.of(el.text || ''),
+    Name: 'Comment',
+    Open: false,
+    C: hexToColorArray(el.color),
+  })
+}
+
+function drawWatermark(
+  page: PdfPage,
+  editorPage: EditorPage,
+  wm: WatermarkConfig,
+  font: PdfFont | null,
+  image: PdfImage | null,
+) {
+  const w = editorPage.widthPt
+  const h = editorPage.heightPt
+  const rotate = wm.position === 'diagonal' ? Math.atan2(h, w) : 0
+
+  if (wm.kind === 'text' && font) {
+    const size = 48 * wm.scale
+    const textWidth = font.widthOfTextAtSize(wm.text, size)
+    const { x, y } = anchorFor(wm.position, w, h, textWidth, size)
+    page.drawText(wm.text, {
+      x,
+      y,
+      size,
+      font,
+      color: hexToRgb(wm.color),
+      opacity: wm.opacity,
+      rotate: degrees((rotate * 180) / Math.PI),
+    })
+  } else if (wm.kind === 'image' && image) {
+    const baseWidth = w * 0.4 * wm.scale
+    const imgHeight = baseWidth * (image.height / image.width)
+    const { x, y } = anchorFor(wm.position, w, h, baseWidth, imgHeight)
+    page.drawImage(image, { x, y, width: baseWidth, height: imgHeight, opacity: wm.opacity })
+  }
+}
+
+function anchorFor(position: WatermarkConfig['position'], w: number, h: number, boxW: number, boxH: number) {
+  const margin = 24
+  switch (position) {
+    case 'top-left':
+      return { x: margin, y: h - margin - boxH }
+    case 'top-right':
+      return { x: w - margin - boxW, y: h - margin - boxH }
+    case 'bottom-left':
+      return { x: margin, y: margin }
+    case 'bottom-right':
+      return { x: w - margin - boxW, y: margin }
+    case 'center':
+    case 'diagonal':
+    default:
+      return { x: (w - boxW) / 2, y: (h - boxH) / 2 }
+  }
+}
+
+function hexToRgb(hex: string) {
+  const clean = hex.replace('#', '')
+  const r = parseInt(clean.slice(0, 2), 16) / 255
+  const g = parseInt(clean.slice(2, 4), 16) / 255
+  const b = parseInt(clean.slice(4, 6), 16) / 255
+  return rgb(r || 0, g || 0, b || 0)
+}
+
+function hexToColorArray(hex: string) {
+  const c = hexToRgb(hex)
+  return [c.red, c.green, c.blue]
+}
+
+function drawFormField(
+  form: ReturnType<PDFDocument['getForm']>,
+  page: PdfPage,
+  el: FormFieldElement,
+  editorPage: EditorPage,
+  font: PdfFont,
+) {
+  const r = rectFor(el, editorPage)
+  const name = el.name.trim() || `field_${el.id}`
+  try {
+    if (el.fieldKind === 'text') {
+      const tf = form.createTextField(name)
+      tf.setText(el.value || '')
+      tf.addToPage(page, { x: r.x, y: r.y, width: r.width, height: r.height, font })
+    } else if (el.fieldKind === 'checkbox') {
+      const cb = form.createCheckBox(name)
+      if (el.checked) cb.check()
+      cb.addToPage(page, { x: r.x, y: r.y, width: r.width, height: r.height })
+    } else if (el.fieldKind === 'dropdown') {
+      const dd = form.createDropdown(name)
+      const options = el.options.length ? el.options : ['Option 1']
+      dd.addOptions(options)
+      dd.select(el.value || options[0])
+      dd.addToPage(page, { x: r.x, y: r.y, width: r.width, height: r.height, font })
+    }
+  } catch {
+    // Field name collision (e.g. two fields given the same name) — skip
+    // rather than fail the whole export.
+  }
+}
+
+/** Draws an invisible, OCR-derived text layer over the page so it becomes
+ * searchable/selectable — the visible page content is untouched. Word
+ * positions are approximate (mapped from the OCR canvas's pixel space back
+ * to PDF points), which is standard for this technique. */
+function drawOcrTextLayer(page: PdfPage, editorPage: EditorPage, ocr: OcrPageResult, font: PdfFont) {
+  const s = ocr.scale
+  for (const w of ocr.words) {
+    const widthPt = (w.x1 - w.x0) / s
+    const heightPt = (w.y1 - w.y0) / s
+    if (widthPt <= 0 || heightPt <= 0) continue
+    const x = w.x0 / s
+    const y = editorPage.heightPt - w.y1 / s
+    const naturalWidth = font.widthOfTextAtSize(w.text, heightPt) || widthPt
+    const size = naturalWidth > 0 ? heightPt * (widthPt / naturalWidth) : heightPt
+    try {
+      page.drawText(w.text, { x, y, size: Math.max(1, size), font, renderMode: TextRenderingMode.Invisible })
+    } catch {
+      // A handful of glyphs the standard font can't encode shouldn't sink the whole OCR pass.
+    }
+  }
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\pdf-editor-fonts.ts ==========
+
+import { StandardFonts } from '@cantoo/pdf-lib'
+
+export type FontFamily = 'Helvetica' | 'TimesRoman' | 'Courier'
+
+export const FONT_FAMILIES: { key: FontFamily; label: string; cssFamily: string }[] = [
+  { key: 'Helvetica', label: 'Helvetica', cssFamily: 'Helvetica, Arial, sans-serif' },
+  { key: 'TimesRoman', label: 'Times New Roman', cssFamily: "'Times New Roman', Times, serif" },
+  { key: 'Courier', label: 'Courier', cssFamily: "'Courier New', Courier, monospace" },
+]
+
+export const DEFAULT_FONT_FAMILY: FontFamily = 'Helvetica'
+
+export function familyOption(key: FontFamily) {
+  return FONT_FAMILIES.find((f) => f.key === key) || FONT_FAMILIES[0]
+}
+
+/** Resolve a (family, bold, italic) combination to the actual PDF standard
+ * font — the 14 built-in PDF fonts only exist as these fixed weight/style
+ * combinations, there's no way to synthesize bold/italic from the regular
+ * weight the way a browser does. */
+export function resolveStandardFont(family: FontFamily, bold: boolean, italic: boolean): StandardFonts {
+  const table: Record<FontFamily, Record<'plain' | 'bold' | 'italic' | 'boldItalic', StandardFonts>> = {
+    Helvetica: {
+      plain: StandardFonts.Helvetica,
+      bold: StandardFonts.HelveticaBold,
+      italic: StandardFonts.HelveticaOblique,
+      boldItalic: StandardFonts.HelveticaBoldOblique,
+    },
+    TimesRoman: {
+      plain: StandardFonts.TimesRoman,
+      bold: StandardFonts.TimesRomanBold,
+      italic: StandardFonts.TimesRomanItalic,
+      boldItalic: StandardFonts.TimesRomanBoldItalic,
+    },
+    Courier: {
+      plain: StandardFonts.Courier,
+      bold: StandardFonts.CourierBold,
+      italic: StandardFonts.CourierOblique,
+      boldItalic: StandardFonts.CourierBoldOblique,
+    },
+  }
+  const variant = bold && italic ? 'boldItalic' : bold ? 'bold' : italic ? 'italic' : 'plain'
+  return table[family][variant]
+}
+
+/** Cache key for the font-embed cache in the export builder. */
+export function fontCacheKey(family: FontFamily, bold: boolean, italic: boolean) {
+  return `${family}:${bold ? 1 : 0}:${italic ? 1 : 0}`
+}
+
+/** CSS approximation of a (family, bold, italic) combination, for the
+ * live on-screen preview — the actual PDF output always uses the real
+ * standard-font glyphs via resolveStandardFont(). */
+export function fontOptionCss(family: FontFamily, bold: boolean, italic: boolean) {
+  return {
+    fontFamily: familyOption(family).cssFamily,
+    fontWeight: bold ? ('bold' as const) : ('normal' as const),
+    fontStyle: italic ? ('italic' as const) : ('normal' as const),
+  }
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\pdf-editor-forms.ts ==========
+
+import { PDFDocument, PDFTextField, PDFCheckBox, PDFDropdown, PDFRadioGroup } from '@cantoo/pdf-lib'
+import type { EditorPage } from '@/lib/pdf-editor-types'
+
+export type DetectedFieldKind = 'text' | 'checkbox' | 'dropdown' | 'radio'
+
+/** An existing AcroForm field found on an uploaded PDF, positioned in the
+ * same xf/yf/wf/hf fraction space as editor elements so it can be rendered
+ * with a plain overlay input. Filled values are flattened into the page's
+ * content at export time — the output PDF is not still interactive. */
+export type DetectedField = {
+  id: string
+  pageId: string
+  docIndex: number
+  name: string
+  kind: DetectedFieldKind
+  xf: number
+  yf: number
+  wf: number
+  hf: number
+  value: string
+  checked: boolean
+  options: string[]
+}
+
+export async function detectFormFields(
+  sourceDocs: (PDFDocument | null)[],
+  pages: EditorPage[],
+): Promise<DetectedField[]> {
+  const results: DetectedField[] = []
+
+  for (let docIndex = 0; docIndex < sourceDocs.length; docIndex++) {
+    const doc = sourceDocs[docIndex]
+    if (!doc) continue
+
+    let form
+    try {
+      form = doc.getForm()
+    } catch {
+      continue
+    }
+    const fields = form.getFields()
+    if (fields.length === 0) continue
+
+    const pdfPages = doc.getPages()
+
+    for (const field of fields) {
+      let kind: DetectedFieldKind
+      let value = ''
+      let checked = false
+      let options: string[] = []
+
+      if (field instanceof PDFTextField) {
+        kind = 'text'
+        value = field.getText() || ''
+      } else if (field instanceof PDFCheckBox) {
+        kind = 'checkbox'
+        checked = field.isChecked()
+      } else if (field instanceof PDFDropdown) {
+        kind = 'dropdown'
+        options = field.getOptions()
+        value = field.getSelected()[0] || options[0] || ''
+      } else if (field instanceof PDFRadioGroup) {
+        kind = 'radio'
+        options = field.getOptions()
+        value = field.getSelected() || options[0] || ''
+      } else {
+        continue // buttons, signatures, option lists — not supported in Phase 2
+      }
+
+      const widgets = field.acroField.getWidgets()
+      for (const widget of widgets) {
+        const pageRef = widget.P()
+        const pageIndex = pageRef ? pdfPages.findIndex((p) => p.ref === pageRef) : -1
+        if (pageIndex === -1) continue
+
+        const editorPage = pages.find(
+          (p) => p.source.kind === 'copy' && p.source.docIndex === docIndex && p.source.originalIndex === pageIndex,
+        )
+        if (!editorPage) continue
+
+        const { x, y, width, height } = widget.getRectangle()
+        results.push({
+          id: `${docIndex}:${field.getName()}:${results.length}`,
+          pageId: editorPage.id,
+          docIndex,
+          name: field.getName(),
+          kind,
+          xf: x / editorPage.widthPt,
+          yf: 1 - (y + height) / editorPage.heightPt,
+          wf: width / editorPage.widthPt,
+          hf: height / editorPage.heightPt,
+          value,
+          checked,
+          options,
+        })
+      }
+    }
+  }
+
+  return results
+}
+
+/** Loads a fresh copy of a source PDF's bytes, fills in the given field
+ * values, and flattens the form so the filled appearance becomes part of
+ * the page content. Operates on a scratch document — never mutates the
+ * live, still-interactive source document held by the editor session. */
+export async function buildFilledFlattenedDoc(bytes: Uint8Array, fields: DetectedField[]): Promise<PDFDocument> {
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true })
+  const form = doc.getForm()
+  for (const f of fields) {
+    try {
+      if (f.kind === 'text') {
+        form.getTextField(f.name).setText(f.value)
+      } else if (f.kind === 'checkbox') {
+        const cb = form.getCheckBox(f.name)
+        if (f.checked) cb.check()
+        else cb.uncheck()
+      } else if (f.kind === 'dropdown') {
+        if (f.value) form.getDropdown(f.name).select(f.value)
+      } else if (f.kind === 'radio') {
+        if (f.value) form.getRadioGroup(f.name).select(f.value)
+      }
+    } catch {
+      // Field missing/renamed since detection — skip it rather than fail the whole export.
+    }
+  }
+  form.flatten()
+  return doc
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\pdf-editor-history.ts ==========
+
+import type { EditorSnapshot } from '@/lib/pdf-editor-types'
+
+const MAX_HISTORY = 60
+
+/** A simple linear undo/redo stack over document-content snapshots. Kept
+ * as plain state (not a hook) so the editor page controls exactly when a
+ * snapshot is pushed — e.g. once per discrete action, not per pointermove
+ * frame while dragging. */
+export class EditorHistory {
+  private past: EditorSnapshot[] = []
+  private future: EditorSnapshot[] = []
+
+  push(snapshot: EditorSnapshot) {
+    this.past.push(clone(snapshot))
+    if (this.past.length > MAX_HISTORY) this.past.shift()
+    this.future = []
+  }
+
+  canUndo() {
+    return this.past.length > 1
+  }
+
+  canRedo() {
+    return this.future.length > 0
+  }
+
+  /** Pop the current state off, returning the previous one to restore. */
+  undo(): EditorSnapshot | null {
+    if (this.past.length <= 1) return null
+    const current = this.past.pop()!
+    this.future.push(current)
+    return clone(this.past[this.past.length - 1])
+  }
+
+  redo(): EditorSnapshot | null {
+    const next = this.future.pop()
+    if (!next) return null
+    this.past.push(next)
+    return clone(next)
+  }
+
+  reset(snapshot: EditorSnapshot) {
+    this.past = [clone(snapshot)]
+    this.future = []
+  }
+}
+
+function clone(snapshot: EditorSnapshot): EditorSnapshot {
+  // structuredClone handles the Uint8Array bytes on image elements fine;
+  // it's supported in all evergreen browsers this tool targets.
+  return structuredClone(snapshot)
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\pdf-editor-links.ts ==========
+
+/** The accent color auto-applied to text the first time a link is added to
+ * it — matches the universal web convention for "this is a hyperlink"
+ * rather than inventing a new app-specific link color, since nothing in
+ * this codebase has an established one. Still just a starting value: it's
+ * the element's ordinary `color` field, so the user can change it like any
+ * other text afterward. */
+export const LINK_ACCENT_COLOR = '#2563eb'
+
+/** Normalizes user-typed link input into a URL pdf-lib/PDF viewers will
+ * actually treat as absolute and clickable. Returns null when the input is
+ * empty (meaning "no link") or can't be turned into a valid http(s) URL.
+ *
+ * A bare domain like "plugyard.com" has no scheme — most PDF viewers won't
+ * resolve a schemeless URI action, so this is the auto-prepend that makes
+ * the common case of typing a bare domain actually work. */
+export function normalizeLinkUrl(input: string): string | null {
+  const trimmed = input.trim()
+  if (!trimmed) return null
+
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+
+  try {
+    const parsed = new URL(withScheme)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+    if (!parsed.hostname || !parsed.hostname.includes('.')) return null
+    return parsed.toString()
+  } catch {
+    return null
+  }
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\pdf-editor-ocr.ts ==========
+
+import { renderPdfPageToCanvas } from '@/lib/pdfjs-loader'
+
+export type OcrWord = { text: string; x0: number; y0: number; x1: number; y1: number }
+export type OcrPageResult = { words: OcrWord[]; canvasWidth: number; canvasHeight: number; scale: number }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let workerPromise: Promise<any> | null = null
+
+async function getWorker() {
+  if (!workerPromise) {
+    workerPromise = (async () => {
+      const ns = await import('tesseract.js')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const Tesseract = (ns as any).default ?? ns
+      return Tesseract.createWorker('eng')
+    })()
+  }
+  return workerPromise
+}
+
+/** Runs OCR on one rasterized PDF page and returns per-word bounding boxes
+ * (in the rasterized canvas's pixel space, at the given `scale`) so the
+ * caller can position an invisible, searchable text layer over the
+ * original page content at export time. */
+export async function ocrPdfPage(bytes: Uint8Array, pageNumber: number, scale = 2): Promise<OcrPageResult> {
+  const canvas = await renderPdfPageToCanvas(bytes, pageNumber, scale)
+  const worker = await getWorker()
+  const { data } = await worker.recognize(canvas, {}, { blocks: true })
+
+  const words: OcrWord[] = []
+  for (const block of data.blocks || []) {
+    for (const para of block.paragraphs || []) {
+      for (const line of para.lines || []) {
+        for (const word of line.words || []) {
+          if (word.text && word.text.trim()) {
+            words.push({ text: word.text, x0: word.bbox.x0, y0: word.bbox.y0, x1: word.bbox.x1, y1: word.bbox.y1 })
+          }
+        }
+      }
+    }
+  }
+
+  return { words, canvasWidth: canvas.width, canvasHeight: canvas.height, scale }
+}
+
+/** Frees the OCR worker's WASM/worker-thread resources. Call once OCR is
+ * done for the session (e.g. leaving the editor) — not after every page,
+ * since re-creating the worker re-downloads the language data. */
+export async function terminateOcrWorker() {
+  if (!workerPromise) return
+  const worker = await workerPromise
+  workerPromise = null
+  await worker.terminate()
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\pdf-editor-redact.ts ==========
+
+import { renderPdfPageToCanvas } from '@/lib/pdfjs-loader'
+
+export type RedactionBox = { xf: number; yf: number; wf: number; hf: number }
+
+/** Rasterizes one page of a PDF and paints solid black boxes over the given
+ * regions directly on the pixel data — the underlying text/image content is
+ * gone from the output, not just covered. Returns PNG bytes; the caller
+ * embeds this as a full-page image in place of the original page content. */
+export async function rasterizePageWithRedactions(
+  bytes: Uint8Array,
+  pageNumber: number,
+  boxes: RedactionBox[],
+  scale = 2.5,
+): Promise<Uint8Array> {
+  const canvas = await renderPdfPageToCanvas(bytes, pageNumber, scale)
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = '#000000'
+  for (const b of boxes) {
+    ctx.fillRect(b.xf * canvas.width, b.yf * canvas.height, b.wf * canvas.width, b.hf * canvas.height)
+  }
+  const blob: Blob = await new Promise((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png'),
+  )
+  return new Uint8Array(await blob.arrayBuffer())
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\pdf-editor-text-layer.ts ==========
+
+import { loadPdfJs } from '@/lib/pdfjs-loader'
+import type { FontFamily } from '@/lib/pdf-editor-fonts'
+
+/** One existing text run detected on an uploaded PDF page — positioned in
+ * the same xf/yf/wf/hf fraction space as every other editor element (and
+ * the same raw/unrotated PDF-point frame detectFormFields already uses for
+ * form-field widgets), so it overlays correctly without any extra
+ * transform. Clicking one seeds an editable TextElement at this position —
+ * see startEditingDetectedRun in the editor page. */
+export type DetectedTextRun = {
+  id: string
+  pageId: string
+  text: string
+  xf: number
+  yf: number
+  wf: number
+  hf: number
+  fontSizePt: number
+  fontFamily: FontFamily
+  bold: boolean
+  italic: boolean
+  /** Best-effort — pdf.js's getTextContent() does not expose the actual
+   * fill color used to paint the glyphs (only font/position data), so this
+   * is always black. Covers the overwhelming common case; a user can still
+   * recolor after clicking in, same as any other text edit. */
+  color: string
+}
+
+function guessFontFamily(name: string): FontFamily {
+  const n = name.toLowerCase()
+  if (n.includes('courier') || n.includes('mono') || n.includes('consol')) return 'Courier'
+  // "sans-serif" contains the substring "serif" — pdf.js's own generic CSS
+  // fallback for a standard sans font is literally "sans-serif", so a
+  // plain .includes('serif') check misclassifies every ordinary Helvetica/
+  // Arial run as Times. Requiring a serif hit to NOT also be a sans-serif
+  // hit fixes that without losing real serif-font detection.
+  const looksSerif =
+    (n.includes('serif') && !n.includes('sans-serif') && !n.includes('sans serif')) ||
+    n.includes('times') ||
+    n.includes('georgia') ||
+    n.includes('garamond') ||
+    n.includes('minion')
+  if (looksSerif) return 'TimesRoman'
+  return 'Helvetica'
+}
+
+/** pdf.js's TextItem doesn't have an explicit bold/italic flag — the font's
+ * own PostScript-ish name is the only signal available (e.g.
+ * "Helvetica-BoldOblique", "Arial,Bold"), same heuristic every pdf.js-based
+ * text-layer tool relies on. */
+function guessBoldItalic(name: string): { bold: boolean; italic: boolean } {
+  const n = name.toLowerCase()
+  return {
+    bold: n.includes('bold') || n.includes('black') || n.includes('heavy'),
+    italic: n.includes('italic') || n.includes('oblique'),
+  }
+}
+
+type PdfTextItem = {
+  str?: string
+  transform?: number[]
+  width?: number
+  height?: number
+  fontName?: string
+}
+
+/** Detects every text run on one page of an uploaded PDF, in the page's
+ * own point-space (matching EditorPage.widthPt/heightPt) — deliberately
+ * NOT run through a rotation-aware viewport, so a page with no intrinsic
+ * rotation (the overwhelming common case) lines up exactly with the
+ * existing preview render and with detectFormFields' own widget rectangles,
+ * which use this same raw frame. A source PDF with genuine intrinsic page
+ * rotation baked into its own /Rotate entry shares this same limitation
+ * with the existing form-field overlay — not a new gap Phase 2 introduces. */
+export async function detectPageTextRuns(
+  bytes: Uint8Array,
+  pageNumber: number,
+  pageId: string,
+  widthPt: number,
+  heightPt: number,
+): Promise<DetectedTextRun[]> {
+  if (!widthPt || !heightPt) return []
+  await loadPdfJs()
+  const pdf = await window.pdfjsLib!.getDocument({ data: bytes.slice() }).promise
+  const page = await pdf.getPage(pageNumber)
+  const content = await page.getTextContent()
+
+  const runs: DetectedTextRun[] = []
+  let idx = 0
+  for (const raw of content.items as PdfTextItem[]) {
+    const text = raw.str
+    if (!text || !text.trim() || !raw.transform) continue
+
+    const [a, b, , d, e, f] = raw.transform
+    const fontSizePt = Math.hypot(a, b) || Math.abs(d) || 12
+    const runWidthPt = raw.width || fontSizePt * text.length * 0.5
+    const runHeightPt = raw.height || fontSizePt * 1.15
+
+    // (e, f) is the run's baseline-start point in the page's raw point
+    // space (bottom-left origin, y-up). The box spans from baseline up to
+    // baseline + runHeightPt, PLUS a descender allowance below the
+    // baseline — without it, characters like g/j/p/q/y and commas visibly
+    // peek out beneath the covering rectangle when this run gets edited
+    // (confirmed live: a "g" and comma bled through before this was
+    // added). 0.25*fontSize is a standard rough descender depth.
+    const descenderPt = fontSizePt * 0.25
+    const totalHeightPt = runHeightPt + descenderPt
+    const hf = totalHeightPt / heightPt
+    const yf = 1 - (f + runHeightPt) / heightPt
+
+    const style = (content.styles as Record<string, { fontFamily?: string }> | undefined)?.[raw.fontName || '']
+    const nameForGuess = style?.fontFamily || raw.fontName || ''
+
+    runs.push({
+      id: `${pageId}:${idx++}`,
+      pageId,
+      text,
+      xf: e / widthPt,
+      yf,
+      wf: runWidthPt / widthPt,
+      hf,
+      fontSizePt,
+      fontFamily: guessFontFamily(nameForGuess),
+      ...guessBoldItalic(nameForGuess),
+      color: '#000000',
+    })
+  }
+  return runs
+}
+
+/** Samples the page's own rendered preview image just outside a detected
+ * run's tight bounding box, to get a covering-rectangle color close to the
+ * real page background at that spot — handles a plain white page and a
+ * colored/scanned one the same way, rather than assuming white. Sampling
+ * just outside the box's edges (not its center) avoids landing on the
+ * text's own glyph pixels most of the time. */
+export function sampleBackgroundColor(
+  previewDataUrl: string,
+  xf: number,
+  yf: number,
+  wf: number,
+  hf: number,
+): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext('2d')
+      if (!ctx || canvas.width === 0 || canvas.height === 0) {
+        resolve('#ffffff')
+        return
+      }
+      ctx.drawImage(img, 0, 0)
+      const pixelAt = (fx: number, fy: number) => {
+        const x = Math.min(canvas.width - 1, Math.max(0, Math.round(fx * canvas.width)))
+        const y = Math.min(canvas.height - 1, Math.max(0, Math.round(fy * canvas.height)))
+        return ctx.getImageData(x, y, 1, 1).data
+      }
+      const marginY = Math.max(0.005, hf * 0.15)
+      const marginX = Math.max(0.003, wf * 0.03)
+      const samples = [
+        pixelAt(xf - marginX, yf - marginY),
+        pixelAt(xf + wf + marginX, yf - marginY),
+        pixelAt(xf - marginX, yf + hf + marginY),
+      ]
+      let r = 0
+      let g = 0
+      let b = 0
+      for (const s of samples) {
+        r += s[0]
+        g += s[1]
+        b += s[2]
+      }
+      const n = samples.length
+      const hex = (v: number) => Math.round(v / n).toString(16).padStart(2, '0')
+      resolve(`#${hex(r)}${hex(g)}${hex(b)}`)
+    }
+    img.onerror = () => resolve('#ffffff')
+    img.src = previewDataUrl
+  })
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\pdf-editor-types.ts ==========
+
+import type { FontFamily } from '@/lib/pdf-editor-fonts'
+
+export type ElementBase = {
+  id: string
+  pageId: string
+  // Position/size as fractions (0..1) of the page's width/height, origin
+  // top-left — independent of zoom, so they translate directly onto the
+  // final PDF page's point dimensions at export time.
+  xf: number
+  yf: number
+  wf: number
+  hf: number
+}
+
+export type TextAlign = 'left' | 'center' | 'right'
+
+/** One contiguous run of same-styled text within a text block. A block's
+ * actual content is `runs`, not a single flat string — this is what lets
+ * one word in the middle of a sentence carry its own font/size/color
+ * independent of the rest, instead of one style applying to the whole
+ * block. See rich-text-editor.tsx for how the contenteditable surface
+ * reads/writes this array. */
+export type TextRun = {
+  text: string
+  fontSizePt: number
+  color: string
+  fontFamily: FontFamily
+  bold: boolean
+  italic: boolean
+}
+
+export type TextElement = ElementBase & {
+  type: 'text'
+  runs: TextRun[]
+  /** Style for a brand-new empty block (its first run) and the toolbar's
+   * fallback when no run can be resolved (e.g. a totally empty editor) —
+   * NOT applied to existing content. Live editing always reads/writes
+   * per-run style via the runs above. */
+  fontSizePt: number
+  color: string
+  fontFamily: FontFamily
+  bold: boolean
+  italic: boolean
+  align: TextAlign
+  /** Optional — when set, the text becomes a clickable link on export. */
+  url: string
+  /** Set when this element was created by clicking into a DETECTED run of
+   * existing page content (an uploaded PDF's own text — see
+   * pdf-editor-text-layer.ts) rather than inserted fresh. The original
+   * glyphs are still baked into the copied page underneath, so export must
+   * paint a rectangle in this sampled background color behind the new text
+   * first, to actually hide them — not just draw over them visually in the
+   * live editor. Undefined for elements the user placed on blank space. */
+  coverColor?: string
+  /** Set for a block created by clicking blank page space (Part G) — its
+   * height grows automatically to fit typed content instead of showing
+   * the overflow hint a fixed-size block would. Its width is still bounded
+   * by the page's right margin from creation, so long lines wrap there
+   * rather than growing the block wider. */
+  autoGrow?: boolean
+}
+
+export function runsToPlainText(runs: TextRun[]): string {
+  return runs.map((r) => r.text).join('')
+}
+
+export type ImageElement = ElementBase & {
+  type: 'image'
+  dataUrl: string
+  bytes: Uint8Array
+  format: 'png' | 'jpg'
+  naturalAspect: number
+}
+
+/** A freehand pen stroke. `points` are fractions *within this element's own
+ * bounding box* (0..1), so moving/resizing the box moves/scales the whole
+ * stroke, same as any other element. */
+export type DrawElement = ElementBase & {
+  type: 'draw'
+  points: { x: number; y: number }[]
+  color: string
+  strokeWidthPt: number
+}
+
+export type ShapeKind = 'rect' | 'ellipse' | 'line' | 'arrow' | 'highlight' | 'underline' | 'strikethrough'
+
+export type ShapeElement = ElementBase & {
+  type: 'shape'
+  shapeKind: ShapeKind
+  color: string
+  strokeWidthPt: number
+  /** 0..1 fill opacity. Highlight uses this; other shapes are stroke-only. */
+  fillOpacity: number
+}
+
+/** A classic PDF "sticky note" comment — a small icon on the page that
+ * shows `text` when opened in a PDF reader. */
+export type NoteElement = ElementBase & {
+  type: 'note'
+  text: string
+  color: string
+}
+
+/** A box marking content to be permanently removed at export time. Renders
+ * as a solid black box; on a page copied from an uploaded PDF, the whole
+ * page is rasterized and the underlying data is actually gone from the
+ * output — not just visually covered. See pdf-editor-redact.ts. */
+export type RedactElement = ElementBase & {
+  type: 'redact'
+}
+
+export type FormFieldKind = 'text' | 'checkbox' | 'dropdown'
+
+/** A brand-new interactive form field placed by the user (as opposed to a
+ * field detected on an uploaded PDF — see DetectedField in
+ * pdf-editor-forms.ts). Created directly as a real AcroForm field in the
+ * exported document. */
+export type FormFieldElement = ElementBase & {
+  type: 'formField'
+  fieldKind: FormFieldKind
+  name: string
+  value: string
+  checked: boolean
+  options: string[]
+  fontSizePt: number
+}
+
+export type EditorElement =
+  | TextElement
+  | ImageElement
+  | DrawElement
+  | ShapeElement
+  | NoteElement
+  | RedactElement
+  | FormFieldElement
+
+export type PageRotation = 0 | 90 | 180 | 270
+
+export type EditorPage = {
+  id: string
+  widthPt: number
+  heightPt: number
+  rotationDeg: PageRotation
+  /** Rasterized background for a page copied from an uploaded PDF; null
+   * for a blank page created in the editor. */
+  previewDataUrl: string | null
+  /** Where this page's content comes from at export time. `docIndex`
+   * indexes into the editor's `sourceDocs` array (supports merging pages
+   * from more than one uploaded PDF into a single document). */
+  source: { kind: 'blank' } | { kind: 'copy'; docIndex: number; originalIndex: number }
+}
+
+export type WatermarkKind = 'text' | 'image'
+export type WatermarkPosition = 'center' | 'diagonal' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+
+export type WatermarkConfig = {
+  enabled: boolean
+  kind: WatermarkKind
+  text: string
+  fontFamily: FontFamily
+  color: string
+  imageDataUrl: string
+  imageBytes: Uint8Array | null
+  imageFormat: 'png' | 'jpg'
+  opacity: number
+  position: WatermarkPosition
+  scale: number
+  /** Which pages get the watermark. */
+  scope: 'all' | 'selected'
+  selectedPageIds: string[]
+}
+
+export function defaultWatermark(): WatermarkConfig {
+  return {
+    enabled: false,
+    kind: 'text',
+    text: 'CONFIDENTIAL',
+    fontFamily: 'Helvetica',
+    color: '#ff0000',
+    imageDataUrl: '',
+    imageBytes: null,
+    imageFormat: 'png',
+    opacity: 0.25,
+    position: 'diagonal',
+    scale: 1,
+    scope: 'all',
+    selectedPageIds: [],
+  }
+}
+
+export type SecurityPermissions = {
+  printing: boolean
+  copying: boolean
+  modifying: boolean
+  annotating: boolean
+}
+
+export function defaultPermissions(): SecurityPermissions {
+  return { printing: true, copying: true, modifying: true, annotating: true }
+}
+
+/** The document-content part of editor state — what undo/redo snapshots
+ * and the autosave draft both capture. Selection/UI state is intentionally
+ * excluded. */
+export type EditorSnapshot = {
+  pages: EditorPage[]
+  elements: EditorElement[]
+  watermark: WatermarkConfig
+}
+
+export const A4_WIDTH_PT = 595.28
+export const A4_HEIGHT_PT = 841.89
+
+export const MAX_PDF_BYTES = 25 * 1024 * 1024 // 25MB
+export const MAX_IMAGE_BYTES = 8 * 1024 * 1024 // 8MB
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\pdfjs-loader.ts ==========
+
+// Loads pdf.js from the same CDN + version already used by pdf-reader.tsx,
+// so the browser only ever fetches one copy of it regardless of which
+// component asks first.
+
+declare global {
+  interface Window {
+    pdfjsLib?: {
+      GlobalWorkerOptions: { workerSrc: string }
+      getDocument: (opts: Record<string, unknown>) => { promise: Promise<any> }
+    }
+  }
+}
+
+let loading: Promise<void> | null = null
+
+export function loadPdfJs(): Promise<void> {
+  if (typeof window === 'undefined') return Promise.reject(new Error('No window'))
+  if (window.pdfjsLib) return Promise.resolve()
+  if (loading) return loading
+
+  loading = new Promise<void>((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js'
+    s.onload = () => resolve()
+    s.onerror = () => reject(new Error('pdf.js failed to load'))
+    document.body.appendChild(s)
+  }).then(() => {
+    window.pdfjsLib!.GlobalWorkerOptions.workerSrc =
+      'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js'
+  })
+
+  return loading
+}
+
+/** Rasterize one page of a PDF (given as bytes) to a canvas. `scale`
+ * controls render resolution (higher = sharper but slower/larger). */
+export async function renderPdfPageToCanvas(
+  bytes: Uint8Array,
+  pageNumber: number,
+  scale = 1.5,
+): Promise<HTMLCanvasElement> {
+  await loadPdfJs()
+  // pdf.js transfers `data`'s underlying buffer to its worker (detaching
+  // it in this thread), so hand it a copy — callers pass in bytes they
+  // (or the rest of the editor, e.g. export) still need afterward.
+  const pdf = await window.pdfjsLib!.getDocument({ data: bytes.slice() }).promise
+  const page = await pdf.getPage(pageNumber)
+  const viewport = page.getViewport({ scale })
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.ceil(viewport.width)
+  canvas.height = Math.ceil(viewport.height)
+  const ctx = canvas.getContext('2d')!
+  await page.render({ canvasContext: ctx, viewport }).promise
+  return canvas
+}
+
+export async function getPdfPageCount(bytes: Uint8Array): Promise<number> {
+  await loadPdfJs()
+  const pdf = await window.pdfjsLib!.getDocument({ data: bytes.slice() }).promise
+  return pdf.numPages
+}
+
+/** Rasterize one page of a PDF (given as bytes) to a PNG data URL, for use
+ * as a background preview image while editing. `scale` controls render
+ * resolution (higher = sharper but slower/larger). */
+export async function renderPdfPageToDataUrl(
+  bytes: Uint8Array,
+  pageNumber: number,
+  scale = 1.5,
+): Promise<string> {
+  const canvas = await renderPdfPageToCanvas(bytes, pageNumber, scale)
+  return canvas.toDataURL('image/png')
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\pip.ts ==========
+
+'use client'
+
+import { useCallback, useState } from 'react'
+
+// True "float on top of OTHER APPS" (like a chat head) needs OS-level
+// permission only available to a native app — not achievable from a web
+// page. The Document Picture-in-Picture API is the correct web substitute:
+// a small always-on-top window that floats above other browser tabs and,
+// on desktop, above other application windows too. Chromium-based browsers
+// only (Chrome/Edge/Opera) — there is no fallback, the pop-out control
+// simply doesn't render when unsupported.
+declare global {
+  interface Window {
+    documentPictureInPicture?: {
+      requestWindow: (options?: { width?: number; height?: number }) => Promise<Window>
+      window: Window | null
+    }
+  }
+}
+
+function copyStylesInto(pipWindow: Window) {
+  Array.from(document.styleSheets).forEach((styleSheet) => {
+    try {
+      const rules = Array.from(styleSheet.cssRules)
+        .map((rule) => rule.cssText)
+        .join('\n')
+      const style = pipWindow.document.createElement('style')
+      style.textContent = rules
+      pipWindow.document.head.appendChild(style)
+    } catch {
+      // Cross-origin stylesheet — cssRules access throws. Re-link it
+      // instead of inlining (works the same for a same-origin <link>, and
+      // is the only option for a cross-origin one).
+      if (styleSheet.href) {
+        const link = pipWindow.document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = styleSheet.href
+        pipWindow.document.head.appendChild(link)
+      }
+    }
+  })
+}
+
+export function usePictureInPicture(background = '#0b1020') {
+  const [pipWindow, setPipWindow] = useState<Window | null>(null)
+  const supported = typeof window !== 'undefined' && 'documentPictureInPicture' in window
+
+  const open = useCallback(
+    async (opts?: { width?: number; height?: number }) => {
+      if (!supported || !window.documentPictureInPicture) return null
+      try {
+        const win = await window.documentPictureInPicture.requestWindow({
+          width: opts?.width ?? 340,
+          height: opts?.height ?? 220,
+        })
+        copyStylesInto(win)
+        win.document.documentElement.style.colorScheme = 'dark'
+        win.document.body.style.margin = '0'
+        win.document.body.style.background = background
+        win.document.body.style.overflow = 'hidden'
+        win.addEventListener('pagehide', () => setPipWindow(null))
+        setPipWindow(win)
+        return win
+      } catch {
+        // User dismissed the permission prompt, or the API rejected — not
+        // an error worth surfacing, the pop-out button just stays inactive.
+        return null
+      }
+    },
+    [supported, background],
+  )
+
+  const close = useCallback(() => {
+    pipWindow?.close()
+    setPipWindow(null)
+  }, [pipWindow])
+
+  return { pipWindow, supported, open, close }
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\prisma.ts ==========
+
+import { PrismaClient } from "@prisma/client"
+
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
+
+export const prisma = globalForPrisma.prisma || new PrismaClient()
+
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\prompts.ts ==========
+
+const API = process.env.NEXT_PUBLIC_API_URL!
+
+export type PromptCopy = {
+  slug: string
+  title: string
+  body: string
+  updated_at?: string
+}
+
+export async function getPromptContent(slug: string): Promise<PromptCopy | null> {
+  const r = await fetch(`${API}/prompts/?slug=${encodeURIComponent(slug)}`, {
+    cache: "no-store",
+  })
+  const data = await r.json().catch(() => ({}))
+  return data?.items?.[0] || null
+}
+
+/** Fill in `{name}` where we have one, or drop the "{name}, " lead-in
+ * gracefully (capitalizing what follows) where we don't. */
+export function personalize(text: string, name: string) {
+  if (!text.includes("{name}")) return text
+  if (name) return text.replace("{name}", name)
+  return text.replace(/\{name\}, /, "").replace(/^./, (c) => c.toUpperCase())
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\push.ts ==========
+
+import { getToken, unsubscribePush } from "@/lib/api"
+
+const API = process.env.NEXT_PUBLIC_API_URL!
+const VAPID = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ""
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/")
+  const raw = window.atob(base64)
+  const out = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i += 1) {
+    out[i] = raw.charCodeAt(i)
+  }
+  return out
+}
+
+export async function savePushSubscription(subscription: PushSubscription) {
+  const raw = subscription.toJSON()
+  if (!raw.endpoint || !raw.keys?.p256dh || !raw.keys?.auth) {
+    throw new Error("Browser returned an invalid push subscription")
+  }
+
+  const token = getToken()
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  }
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  const response = await fetch(`${API}/push/subscribe/`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      endpoint: raw.endpoint,
+      keys: raw.keys,
+      p256dh: raw.keys.p256dh,
+      auth: raw.keys.auth,
+    }),
+  })
+
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(
+      (data as { error?: string }).error || "Could not save notification subscription",
+    )
+  }
+  return raw.endpoint
+}
+
+export async function getPushSubscription() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null
+  try {
+    const registration = await navigator.serviceWorker.register("/sw.js")
+    await navigator.serviceWorker.ready
+    return await registration.pushManager.getSubscription()
+  } catch {
+    return null
+  }
+}
+
+/** Re-bind an existing granted subscription to the signed-in account. */
+export async function bindPushToAccount() {
+  if (typeof window === "undefined") return
+  if (!("Notification" in window) || Notification.permission !== "granted") return
+  const subscription = await getPushSubscription()
+  if (subscription) {
+    try {
+      await savePushSubscription(subscription)
+    } catch {
+      // Binding must never block login or signup.
+    }
+  }
+}
+
+/** Error thrown when pushManager.subscribe() itself fails — this is expected,
+ * routine behavior in some browsers (Brave disables Google's push service by
+ * default) rather than a real app bug, so callers can degrade gracefully
+ * instead of treating it like a hard failure. */
+export class PushSubscribeError extends Error {
+  isBrave: boolean
+  constructor(message: string, isBrave: boolean) {
+    super(message)
+    this.name = "PushSubscribeError"
+    this.isBrave = isBrave
+  }
+}
+
+declare global {
+  interface Navigator {
+    brave?: { isBrave: () => Promise<boolean> }
+  }
+}
+
+export async function isBraveBrowser(): Promise<boolean> {
+  try {
+    if (navigator.brave && typeof navigator.brave.isBrave === "function") {
+      return await navigator.brave.isBrave()
+    }
+  } catch {
+    // fall through
+  }
+  return false
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
+export async function enablePushNotifications() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    throw new Error("This browser cannot receive push notifications")
+  }
+  if (!("Notification" in window)) {
+    throw new Error("This browser does not support notifications")
+  }
+  if (!VAPID) {
+    throw new Error("Missing NEXT_PUBLIC_VAPID_PUBLIC_KEY")
+  }
+
+  if (Notification.permission === "denied") {
+    throw new Error(
+      "Notifications are blocked for this site. Allow them in your browser's site settings, then try again.",
+    )
+  }
+
+  const permission = await withTimeout(
+    Notification.requestPermission(),
+    20000,
+    "Didn't hear back from your browser's permission popup — check near the address bar (or your browser's notification settings), then try again.",
+  )
+  if (permission !== "granted") {
+    throw new Error("Notifications were blocked")
+  }
+
+  const registration = await navigator.serviceWorker.register("/sw.js")
+  await navigator.serviceWorker.ready
+
+  let subscription = await registration.pushManager.getSubscription()
+  if (!subscription) {
+    try {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID),
+      })
+    } catch {
+      // pushManager.subscribe() failing here is routine in some browsers
+      // (e.g. Brave disables Google's push service unless the user opts in
+      // under brave://settings/privacy) — never let this look like a app
+      // bug, and never fall through to sending anything to the backend.
+      const brave = await isBraveBrowser()
+      throw new PushSubscribeError(
+        brave
+          ? "Brave blocks push alerts by default. You can enable them in Brave's settings (brave://settings/privacy), or just continue without them."
+          : "This browser couldn't register for push alerts. You can still continue — alerts can be turned on later from Settings.",
+        brave,
+      )
+    }
+  }
+
+  await savePushSubscription(subscription)
+}
+
+/** Unsubscribe this device from push, and tell the backend to deactivate it. */
+export async function disablePushNotifications() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return
+  const subscription = await getPushSubscription()
+  const endpoint = subscription?.endpoint || ""
+  if (subscription) {
+    try {
+      await subscription.unsubscribe()
+    } catch {
+      // Still tell the backend even if the browser-side unsubscribe fails.
+    }
+  }
+  try {
+    await unsubscribePush(endpoint)
+  } catch {
+    // Best effort — the device-side unsubscribe already took effect.
+  }
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\referral.ts ==========
+
+const KEY = "plugyard_referral_code"
+
+export function normalizeReferralCode(value: string | null | undefined) {
+  return (value || "").trim().toUpperCase().replace(/\s+/g, "")
+}
+
+export function getReferralCode() {
+  if (typeof window === "undefined") return ""
+  return normalizeReferralCode(localStorage.getItem(KEY) || "")
+}
+
+export function setReferralCode(value: string) {
+  if (typeof window === "undefined") return
+  const code = normalizeReferralCode(value)
+  if (code) localStorage.setItem(KEY, code)
+  else localStorage.removeItem(KEY)
+}
+
+export function clearReferralCode() {
+  if (typeof window === "undefined") return
+  localStorage.removeItem(KEY)
+}
+
+export function captureReferralFromLocation(search?: string) {
+  if (typeof window === "undefined") return getReferralCode()
+
+  const params = new URLSearchParams(search ?? window.location.search)
+  const fromQuery = normalizeReferralCode(
+    params.get("ref") || params.get("referral") || params.get("referral_code") || "",
+  )
+
+  if (fromQuery) {
+    setReferralCode(fromQuery)
+    return fromQuery
+  }
+
+  return getReferralCode()
+}
+
+export function withReferralQuery(href: string) {
+  const code = getReferralCode()
+  if (!code) return href
+  const url = new URL(href, "https://plugyard.com")
+  if (!url.searchParams.get("ref")) url.searchParams.set("ref", code)
+  return `${url.pathname}${url.search}${url.hash}`
+}
+
+
+
+========== FILE: C:\Users\user\Projects\bookstore\src\lib\utils.ts ==========
+
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+

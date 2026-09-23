@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { getToken } from '@/lib/api'
 import {
@@ -9,7 +10,10 @@ import {
   getAudioNotes,
   addAudioNote,
   deleteAudioNote,
+  getProStatus,
 } from '@/lib/api'
+import { usePictureInPicture } from '@/lib/pip'
+import { ProGateModal } from '@/components/pro-gate-modal'
 
 function fmt(sec: number) {
   if (!Number.isFinite(sec) || sec < 0) return '0:00'
@@ -41,6 +45,14 @@ const SLEEP_OPTS = [
 
 const ROLLBACK_AFTER_MS = 2 * 60 * 1000
 const ROLLBACK_SEC = 15
+
+// How long audio can keep playing in a backgrounded/hidden tab before we
+// auto-pause it as a data-saving safety net. There's no Media Session /
+// lock-screen integration in this app today (confirmed: no `mediaSession`
+// usage anywhere in the codebase), so background playback that happens is
+// just default <audio> behavior, not a deliberate feature — this timeout
+// exists purely to stop someone leaving it running for hours by accident.
+const IDLE_BACKGROUND_TIMEOUT_MS = 45 * 60 * 1000
 
 function IconPlay() {
   return (
@@ -107,6 +119,22 @@ export function AudioPlayer({
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [obscured, setObscured] = useState(false)
+  const [isPro, setIsPro] = useState(false)
+  const [proGate, setProGate] = useState(false)
+  const { pipWindow, supported: pipSupported, open: openPip, close: closePip } = usePictureInPicture('#0b1020')
+
+  useEffect(() => {
+    if (!getToken()) return
+    let cancelled = false
+    getProStatus()
+      .then((s) => {
+        if (!cancelled) setIsPro(s.is_pro)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     const onVisibility = () => setObscured(document.visibilityState !== 'visible')
@@ -119,6 +147,47 @@ export function AudioPlayer({
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('blur', onBlur)
       window.removeEventListener('focus', onFocus)
+    }
+  }, [])
+
+  useEffect(() => {
+    // pagehide fires reliably when the tab is closed or navigated away
+    // from — including mobile Safari, where beforeunload is notoriously
+    // unreliable — so this is the correct event to stop audio (and the
+    // network activity that comes with it) the moment the page is gone,
+    // rather than relying on component unmount alone.
+    const onPageHide = () => {
+      audioRef.current?.pause()
+    }
+    window.addEventListener('pagehide', onPageHide)
+    return () => window.removeEventListener('pagehide', onPageHide)
+  }, [])
+
+  const hiddenSinceRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    // Safety net for background/lock-screen playback left running for
+    // hours by accident. This is NOT "pause the instant the tab loses
+    // focus" — that would break normal background listening, which is
+    // expected behavior for an audio app. It only kicks in after a long,
+    // continuous stretch in the background while audio is still playing.
+    const onVisibility = () => {
+      hiddenSinceRef.current = document.visibilityState === 'hidden' ? Date.now() : null
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    const interval = window.setInterval(() => {
+      const since = hiddenSinceRef.current
+      const a = audioRef.current
+      if (since && a && !a.paused && Date.now() - since > IDLE_BACKGROUND_TIMEOUT_MS) {
+        a.pause()
+        hiddenSinceRef.current = null
+      }
+    }, 60 * 1000)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.clearInterval(interval)
     }
   }, [])
   const sleepEndRef = useRef(0)
@@ -547,7 +616,87 @@ export function AudioPlayer({
           ×
         </button>
         <h2 className="min-w-0 flex-1 truncate text-[16px] font-bold">{title}</h2>
+        {pipSupported && (
+          <button
+            type="button"
+            onClick={() => {
+              if (!isPro) {
+                setProGate(true)
+                return
+              }
+              if (pipWindow) closePip()
+              else void openPip({ width: 340, height: 200 })
+            }}
+            aria-label={pipWindow ? 'Close floating player' : 'Pop out as a floating player'}
+            title={
+              !isPro
+                ? 'Pro feature — pop out as a floating player'
+                : pipWindow
+                  ? 'Close floating player'
+                  : 'Keep playback controls floating above other windows'
+            }
+            className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+              pipWindow ? 'bg-[#f591ac] text-[#141a32]' : 'text-white hover:bg-white/10'
+            }`}
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8" aria-hidden>
+              <rect x="3" y="5" width="14" height="11" rx="1.5" />
+              <path d="M13 12.5h6v6h-6z" fill="currentColor" stroke="none" />
+            </svg>
+            {!isPro && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[#d4af37] px-0.5 text-[8px] font-bold text-[#3a2e08]">
+                🔒
+              </span>
+            )}
+          </button>
+        )}
       </header>
+
+      {pipWindow &&
+        createPortal(
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-[#fdfbf4]" style={{ fontFamily: 'inherit' }}>
+            <p className="w-full truncate text-center text-[13px] font-bold">{title}</p>
+            <div className="flex w-full items-center gap-3">
+              <span className="w-10 shrink-0 text-right text-[11px] text-white/50">{fmt(t)}</span>
+              <div className="relative h-1.5 flex-1">
+                <div className="absolute inset-0 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="absolute inset-y-0 left-0 bg-[#f591ac]"
+                    style={{ width: `${Math.min(100, (t / (dur || Math.max(t + 30, 30))) * 100)}%` }}
+                  />
+                </div>
+              </div>
+              <span className="w-10 shrink-0 text-[11px] text-white/50">{dur ? fmt(dur) : '—'}</span>
+            </div>
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => seek((audioRef.current?.currentTime || t) - 15)}
+                aria-label="Back 15 seconds"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white"
+              >
+                <IconBack15 />
+              </button>
+              <button
+                type="button"
+                onClick={toggle}
+                aria-label={playing ? 'Pause' : 'Play'}
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f591ac] text-[#141a32]"
+              >
+                {playing ? <IconPause /> : <IconPlay />}
+              </button>
+              <button
+                type="button"
+                onClick={() => seek((audioRef.current?.currentTime || t) + 15)}
+                aria-label="Forward 15 seconds"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white"
+              >
+                <IconFwd15 />
+              </button>
+            </div>
+          </div>,
+          pipWindow.document.body,
+        )}
 
       <div className="flex min-h-0 flex-1 flex-col items-center justify-start gap-6 overflow-y-auto px-6 py-6">
         {status && !ready ? (
@@ -764,6 +913,10 @@ export function AudioPlayer({
                 <p className="text-[13px] text-white/50">
                   <Link href={loginHref} className="underline text-[#f591ac]">
                     Log in
+                  </Link>
+                  {' · '}
+                  <Link href={signupHref} className="underline text-[#f591ac]">
+                    Sign up
                   </Link>{' '}
                   to save notes across devices.
                 </p>
@@ -790,6 +943,12 @@ export function AudioPlayer({
           </>
         )}
       </div>
+      <ProGateModal
+        open={proGate}
+        onClose={() => setProGate(false)}
+        feature="Floating pop-out player"
+        benefit="Keep playback controls floating above other tabs and windows while you listen."
+      />
     </div>
   )
 }

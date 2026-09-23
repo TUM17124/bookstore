@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { useBookmarks } from '@/components/bookmarks-context';
 import { BookReviews } from '@/components/book-reviews';
 import { createPortal } from 'react-dom';
-import { getPurchases, downloadOrderUrl, freeBookUrl, searchTrack, previewBookUrl, getRatings, getBooks, asBookList, type ApiBook } from '@/lib/api';
+import { getPurchases, downloadOrderUrl, freeBookUrl, searchTrack, previewBookUrl, getRatings, getRelatedBooks, type ApiBook } from '@/lib/api';
 import { getStoredUser } from '@/lib/auth-client';
 import { PdfReader } from '@/components/pdf-reader';
 import { AudioPlayer } from '@/components/audio-player';
@@ -252,22 +252,17 @@ function RecommendedBooks({ book }: { book: BookCfg }) {
 
   useEffect(() => {
     let cancelled = false;
-    const byRatingThenTitle = (a: ApiBook, b: ApiBook) =>
-      (b.stars ?? 0) - (a.stars ?? 0) || a.title.localeCompare(b.title);
 
     async function load() {
       try {
-        const data = book.category
-          ? await getBooks({ category: book.category, pageSize: 20 })
-          : await getBooks({ featured: true, pageSize: 20 });
-        let candidates = asBookList(data).filter((b) => String(b.id) !== String(book.id));
-        if (candidates.length === 0 && book.category) {
-          const fallback = await getBooks({ featured: true, pageSize: 20 });
-          candidates = asBookList(fallback).filter((b) => String(b.id) !== String(book.id));
-        }
-        // Same category, best-rated first — the closest thing to a real
-        // recommendation we can do without extra rating fetches per card.
-        const list = candidates.sort(byRatingThenTitle).map(apiBookToMiniCfg);
+        // Backend already returns a fully ranked list (item similarity +
+        // "people who bought/rated/bookmarked this also ..." + personal
+        // affinity when logged in) — no client-side re-sort here, that
+        // would undo the scoring.
+        const data: ApiBook[] = await getRelatedBooks(book.id, 8);
+        const list = data
+          .filter((b) => String(b.id) !== String(book.id))
+          .map(apiBookToMiniCfg);
         if (!cancelled) setItems(list.slice(0, 8));
       } catch {
         if (!cancelled) setItems([]);
@@ -277,7 +272,7 @@ function RecommendedBooks({ book }: { book: BookCfg }) {
     return () => {
       cancelled = true;
     };
-  }, [book.id, book.category]);
+  }, [book.id]);
 
   useEffect(() => {
     setOpeningId(null);

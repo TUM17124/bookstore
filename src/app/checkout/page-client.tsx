@@ -3,8 +3,17 @@
 import { Suspense, useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { createCheckout, getToken } from '@/lib/api'
-import { getStoredUser } from '@/lib/auth-client'
+import { createCheckout, CheckoutError } from '@/lib/api'
+import { getStoredUser, isLoggedIn } from '@/lib/auth-client'
+import { getPromptContent, type PromptCopy } from '@/lib/prompts'
+
+// Used only until the backend copy loads (or if it fails) — the editable
+// version lives in Django admin under Site copy, slug "checkout-email-notice".
+const FALLBACK_EMAIL_NOTICE: PromptCopy = {
+  slug: 'checkout-email-notice',
+  title: "You'll get a receipt by email",
+  body: "After payment, we email a full receipt to the address above — the book, amount paid, and your Paystack transaction details. Keep it; it's what we use to sort out any payment dispute.",
+}
 
 function rememberBook(bookId: string, title: string, email?: string) {
   if (typeof window === 'undefined') return
@@ -36,16 +45,31 @@ function CheckoutInner() {
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [legalRequired, setLegalRequired] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [emailNotice, setEmailNotice] = useState<PromptCopy>(FALLBACK_EMAIL_NOTICE)
 
   useEffect(() => {
     setMounted(true)
-    setLoggedIn(!!getToken())
+    setLoggedIn(isLoggedIn())
     const u = getStoredUser()
     if (u?.email) setEmail(u.email)
     rememberBook(bookId, title)
   }, [bookId, title])
+
+  useEffect(() => {
+    let cancelled = false
+    getPromptContent('checkout-email-notice')
+      .then((c) => {
+        if (!cancelled && c) setEmailNotice(c)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const productLabel = type === 'ebook' ? 'ebook (PDF)' : 'audiobook'
   const checkoutPath = `/checkout?bookId=${bookId}&type=${type}&title=${encodeURIComponent(title)}`
@@ -55,8 +79,10 @@ function CheckoutInner() {
   async function onPay(e: React.FormEvent) {
     e.preventDefault()
     if (!bookId || !email.trim()) return
+    if (!loggedIn && !termsAccepted) return
     setBusy(true)
     setError('')
+    setLegalRequired(false)
     try {
       const trimmed = email.trim().toLowerCase()
       rememberBook(bookId, title, trimmed)
@@ -65,6 +91,7 @@ function CheckoutInner() {
         book_id: Number(bookId),
         product_type: type,
         email: trimmed,
+        terms_accepted: termsAccepted,
       })
 
       if (!res.checkout_url) {
@@ -89,6 +116,9 @@ function CheckoutInner() {
 
       window.location.href = url
     } catch (err) {
+      if (err instanceof CheckoutError && err.legalRequired) {
+        setLegalRequired(true)
+      }
       setError(err instanceof Error ? err.message : 'Checkout failed')
       setBusy(false)
     }
@@ -140,6 +170,16 @@ function CheckoutInner() {
           className="mt-3 w-full rounded-xl border border-foreground/15 bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-sky-500/30"
         />
 
+        <div className="mt-3 flex gap-2 rounded-xl border border-foreground/10 bg-foreground/[0.03] px-3 py-2.5">
+          <span aria-hidden className="mt-0.5 text-foreground/40">
+            ✉️
+          </span>
+          <p className="text-[13px] leading-relaxed text-foreground/60">
+            <span className="font-medium text-foreground/80">{emailNotice.title}</span>{' '}
+            {emailNotice.body}
+          </p>
+        </div>
+
         {mounted && !loggedIn && (
           <div className="mt-4 space-y-3 rounded-2xl border border-foreground/10 bg-foreground/[0.03] px-4 py-4">
             <div>
@@ -171,6 +211,43 @@ function CheckoutInner() {
                 </Link>
               </p>
             </div>
+
+            <label
+              className={`flex items-start gap-2.5 rounded-xl border px-3 py-3 text-[13px] leading-relaxed ${
+                legalRequired
+                  ? 'border-red-500/40 bg-red-500/5 text-red-700 dark:text-red-300'
+                  : 'border-foreground/10 text-foreground/70'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(e) => {
+                  setTermsAccepted(e.target.checked)
+                  if (e.target.checked) setLegalRequired(false)
+                }}
+                required
+                className="mt-0.5 h-4 w-4 shrink-0"
+              />
+              <span>
+                I accept the{' '}
+                <Link href="/terms" target="_blank" className="underline hover:text-foreground">
+                  Terms &amp; Conditions
+                </Link>
+                ,{' '}
+                <Link href="/terms-of-use" target="_blank" className="underline hover:text-foreground">
+                  Terms of Use
+                </Link>
+                ,{' '}
+                <Link href="/privacy" target="_blank" className="underline hover:text-foreground">
+                  Privacy Policy
+                </Link>
+                , and{' '}
+                <Link href="/refund-policy" target="_blank" className="underline hover:text-foreground">
+                  Refund Policy
+                </Link>
+              </span>
+            </label>
           </div>
         )}
 
@@ -189,7 +266,7 @@ function CheckoutInner() {
 
         <button
           type="submit"
-          disabled={busy || !email.trim()}
+          disabled={busy || !email.trim() || (mounted && !loggedIn && !termsAccepted)}
           className="mt-6 w-full rounded-full bg-foreground py-3 text-sm font-semibold text-background transition hover:bg-foreground/90 disabled:opacity-50"
         >
           {busy ? 'Redirecting…' : 'Continue to payment'}

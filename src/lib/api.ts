@@ -87,6 +87,15 @@ export class SessionEvictedError extends Error {
   }
 }
 
+export class CheckoutError extends Error {
+  legalRequired: boolean
+  constructor(message: string, legalRequired = false) {
+    super(message)
+    this.name = "CheckoutError"
+    this.legalRequired = legalRequired
+  }
+}
+
 /** Exchanges the stored refresh token for a new access token — the access
  * token is intentionally short-lived (see backend SIMPLE_JWT comment), so
  * this has to run periodically in the background or every page reload
@@ -289,33 +298,60 @@ export type TtsVoice = {
   description: string
 }
 
-export async function getTtsVoices(): Promise<TtsVoice[]> {
-  const res = await fetch(`${API}/tts/voices/`)
-  if (!res.ok) return []
-  const data = await res.json().catch(() => ({}))
-  return Array.isArray(data.voices) ? data.voices : []
+export type TtsTimepoint = { mark: string; time_seconds: number }
+
+export type TtsUsageSnapshot = {
+  chars_used_today: number
+  daily_limit: number
+  chars_used_week: number
+  weekly_limit: number
+  daily_percent: number
+  weekly_percent: number
+  warn: boolean
+  warn_percent: number
+  credit_chars: number
+  credits_enabled: boolean
+  credit_min_kes: string
+  chars_per_kes: number
+  volume_bonus_percent: number
 }
 
-export type TtsTimepoint = { mark: string; time_seconds: number }
+export type TtsCreditQuote = {
+  enabled: boolean
+  amount: string
+  min_kes: string
+  chars: number
+  chars_per_kes: number
+  volume_bonus_percent: number
+  example_double_chars: number
+}
 
 export type TtsResult = {
   token: string
   sentences: string[]
   timepoints: TtsTimepoint[]
   cached: boolean
+  usage?: TtsUsageSnapshot
 }
 
-/** Synthesizes (or reuses cached) audio for one reading-view page — Pro
- * "robot reader" feature. Throws with `.proRequired` set if the caller
- * isn't an active Pro subscriber, so the UI can show an upsell instead of
- * a generic error. */
 export class TtsError extends Error {
   proRequired: boolean
-  constructor(message: string, proRequired = false) {
+  creditsRequired: boolean
+  usage?: TtsUsageSnapshot
+  constructor(message: string, proRequired = false, extra?: { creditsRequired?: boolean; usage?: TtsUsageSnapshot }) {
     super(message)
     this.name = "TtsError"
     this.proRequired = proRequired
+    this.creditsRequired = !!extra?.creditsRequired
+    this.usage = extra?.usage
   }
+}
+
+export async function getTtsVoices(): Promise<TtsVoice[]> {
+  const res = await fetch(`${API}/tts/voices/`)
+  if (!res.ok) return []
+  const data = await res.json().catch(() => ({}))
+  return Array.isArray(data.voices) ? data.voices : []
 }
 
 export async function synthesizePage(
@@ -334,7 +370,11 @@ export async function synthesizePage(
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    throw new TtsError(data.error || "Could not read this page aloud", !!data.pro_required)
+    throw new TtsError(
+      data.error || "Could not read this page aloud",
+      !!data.pro_required,
+      { creditsRequired: !!data.credits_required, usage: data.usage },
+    )
   }
   return data as TtsResult
 }
@@ -343,17 +383,67 @@ export function ttsAudioUrl(token: string) {
   return `${API}/tts-audio/?token=${encodeURIComponent(token)}`
 }
 
-/** Thrown by createCheckout — carries `legalRequired` so the checkout page
- * can show the "accept the terms" message inline instead of a generic
- * error (the generic `api()` helper above discards extra response fields,
- * so this endpoint parses its own response instead of using it). */
-export class CheckoutError extends Error {
-  legalRequired: boolean
-  constructor(message: string, legalRequired = false) {
-    super(message)
-    this.name = "CheckoutError"
-    this.legalRequired = legalRequired
-  }
+export async function getTtsUsage(): Promise<TtsUsageSnapshot | null> {
+  const token = getToken()
+  if (!token) return null
+  const res = await fetch(`${API}/tts/usage/?_=${Date.now()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  })
+  if (!res.ok) return null
+  return res.json()
+}
+
+export async function quoteTtsCredits(amount?: string | number): Promise<TtsCreditQuote | null> {
+  const q = amount != null ? `?amount=${encodeURIComponent(String(amount))}` : ""
+  const res = await fetch(`${API}/tts/credits/quote/${q}${q ? "&" : "?"}_=${Date.now()}`)
+  if (!res.ok) return null
+  return res.json()
+}
+
+export async function buyTtsCredits(amount: string | number, next = ""): Promise<{
+  purchase_id: number
+  checkout_url: string
+  reference: string
+  amount: string
+  chars: number
+}> {
+  const token = getToken()
+  if (!token) throw new Error("Log in required")
+  const res = await fetch(`${API}/tts/credits/buy/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ amount: String(amount), next }),
+    cache: "no-store",
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data as { error?: string }).error || "Could not start credit checkout")
+  return data
+}
+
+export async function confirmTtsCredits(reference: string): Promise<{
+  ok: boolean
+  paid?: boolean
+  already_paid?: boolean
+  chars?: number
+  error?: string
+  usage?: TtsUsageSnapshot
+}> {
+  const token = getToken()
+  if (!token) return { ok: false, error: "Log in required" }
+  const res = await fetch(`${API}/tts/credits/confirm/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ reference }),
+    cache: "no-store",
+  })
+  return res.json()
 }
 
 export async function createCheckout(payload: {

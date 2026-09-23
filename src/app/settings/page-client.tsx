@@ -8,11 +8,13 @@ import {
   confirmEmailChange,
   deleteAccount,
   getNotificationPrefs,
+  getProStatus,
   getSettings,
   requestAffiliateWithdrawal,
   startEmailChange,
   updateNotificationPrefs,
   type NotificationPrefs,
+  type ProStatus,
 } from "@/lib/api"
 import { clientLogout, isLoggedIn } from "@/lib/auth-client"
 import { splitName } from "@/lib/name"
@@ -27,6 +29,7 @@ const SECTIONS = [
   { id: "profile", label: "Profile" },
   { id: "email", label: "Email" },
   { id: "notifications", label: "Notifications" },
+  { id: "pro", label: "Pro" },
   { id: "affiliate", label: "Affiliate & rewards" },
   { id: "history", label: "History" },
   { id: "delete", label: "Delete account" },
@@ -44,6 +47,7 @@ export default function SettingsPage() {
   const [prefs, setPrefs] = useState<NotificationPrefs | null>(null)
   const [deviceSubscribed, setDeviceSubscribed] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
+  const [proStatus, setProStatus] = useState<ProStatus | null>(null)
 
   const reload = () => getSettings().then(setData).catch((e) => setError(e.message))
 
@@ -61,6 +65,7 @@ export default function SettingsPage() {
     if (ok) {
       reload()
       reloadNotificationPrefs()
+      getProStatus().then(setProStatus).catch(() => {})
     }
   }, [])
 
@@ -335,6 +340,44 @@ export default function SettingsPage() {
                         : "Turn on push on this device"}
                   </button>
                 </div>
+              </section>
+            )}
+
+            {active === "pro" && (
+              <section className="min-w-0 space-y-4 rounded-xl border p-5">
+                <h2 className="text-xl font-semibold">Pro</h2>
+                {proStatus?.is_pro ? (
+                  <>
+                    <p className="inline-flex items-center gap-1.5 rounded-full bg-[#d4af37]/15 px-3 py-1 text-sm font-bold text-[#a3811f]">
+                      ★ PlugYard Pro
+                    </p>
+                    <p className="text-sm text-foreground/60">
+                      {proStatus.subscription?.expires_at
+                        ? `Renews or expires on ${new Date(
+                            proStatus.subscription.expires_at,
+                          ).toLocaleDateString(undefined, {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                          })}.`
+                        : "Your subscription is active."}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-semibold text-foreground/80">Free plan</p>
+                    <p className="text-sm text-foreground/60">
+                      Upgrade for the floating pop-out reader/player, AI narration with
+                      multiple voices, auto-scroll, and sentence highlighting.
+                    </p>
+                    <Link
+                      href="/pro"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-[#d4af37] px-4 py-2 text-sm font-bold text-[#3a2e08]"
+                    >
+                      ★ Upgrade to Pro
+                    </Link>
+                  </>
+                )}
               </section>
             )}
 
