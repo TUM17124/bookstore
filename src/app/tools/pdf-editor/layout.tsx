@@ -5,9 +5,9 @@ import { useEffect, useState, type ReactNode } from "react"
 import { isLoggedIn } from "@/lib/auth-client"
 
 // Auth is a client-side token check (bookstore's own pattern, see
-// src/app/settings/page-client.tsx) and the document is loaded at runtime,
-// so this route can't be statically rendered.
-export const dynamic = "force-dynamic"
+// src/app/settings/page-client.tsx), and the document id is read from a
+// query param client-side (see page.tsx) - this route is fully static
+// buildable under output: "export", no server-side dynamic routing needed.
 
 export default function PdfEditorLayout({ children }: { children?: ReactNode }) {
   const [ready, setReady] = useState(false)

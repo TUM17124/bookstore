@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useState, useCallback, useMemo, useRef, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "@/lib/pdf-editor/use-translations";
+import { PDF_SERVICE_URL } from "@/lib/pdf-editor/pdf-service";
 import { useShallow } from "zustand/react/shallow";
 import Link from "next/link";
 import type {
@@ -338,14 +339,29 @@ const SDK_EXPORT_ITEMS: ReadonlyArray<{
 ];
 
 export default function EditorPage() {
-  const params = useParams();
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen w-full items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+      }
+    >
+      <EditorPageInner />
+    </Suspense>
+  );
+}
+
+function EditorPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const t = useTranslations("editor");
   const { toast } = useToast();
 
-  // ID du document stocké (depuis l'URL)
-  const storedDocumentId = params?.id as string;
+  // ID du document stocké (depuis l'URL) — a query param, not a path segment,
+  // so this route has no dynamic path param and is statically buildable
+  // under bookstore's output: "export" config.
+  const storedDocumentId = searchParams.get("id") as string;
 
   // Deep-link target page (?page=N, 1-based) — e.g. opened from a semantic
   // search hit. Applied once, after the pages load (see effect below).
@@ -1136,7 +1152,7 @@ export default function EditorPage() {
         form.append("format", "png");
         form.append("maxWidth", "480");
         form.append("maxHeight", "640");
-        const res = await fetch("/api/pdf/preview", {
+        const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/preview`, {
           method: "POST",
           credentials: "include",
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -2509,7 +2525,7 @@ export default function EditorPage() {
         // Garantit que la version exportée reflète l'état courant
         if (isDirty) await save();
         const token = await getAuthToken();
-        const res = await fetch("/api/office/export", {
+        const res = await fetch(`${PDF_SERVICE_URL}/api/office/export`, {
           method: "POST",
           credentials: "include",
           headers: {
@@ -2630,7 +2646,7 @@ export default function EditorPage() {
         // load attaches. Without it, the first page op of a session silently
         // dropped the paragraph grouping (heuristic fallback) until reload.
         form.append('blockGroups', 'true');
-        const res = await fetch('/api/pdf/parse', {
+        const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/parse`, {
           method: 'POST',
           credentials: 'include',
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -3699,7 +3715,7 @@ export default function EditorPage() {
           form.append("page", String(effectivePageIndex + 1));
           form.append("imageIndex", String(index));
           form.append("image", imageFile, imageFile.name);
-          const res = await fetch("/api/pdf/replace-image", {
+          const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/replace-image`, {
             method: "POST",
             credentials: "include",
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -3759,7 +3775,7 @@ export default function EditorPage() {
           form.append("points", JSON.stringify(points));
           form.append("rgb", String(rgb));
           form.append("lineWidth", String(lineWidth));
-          const res = await fetch("/api/pdf/ink", {
+          const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/ink`, {
             method: "POST",
             credentials: "include",
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -3813,7 +3829,7 @@ export default function EditorPage() {
         // `page` omitted → OCR every page (full, consistent index).
         form.append("granularity", "line");
 
-        const res = await fetch("/api/pdf/ocr-page", {
+        const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/ocr-page`, {
           method: "POST",
           credentials: "include",
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -4032,7 +4048,7 @@ export default function EditorPage() {
           fd.append("name", value.name);
         }
 
-        const resp = await fetch("/api/pdf/links", { method: "POST", body: fd });
+        const resp = await fetch(`${PDF_SERVICE_URL}/api/pdf/links`, { method: "POST", body: fd });
         if (!resp.ok) throw new Error(`links action failed: ${resp.status}`);
         const blob = await resp.blob();
         // namedCreate moves nothing; namedLink adds an annotation we re-parse so
@@ -4105,7 +4121,7 @@ export default function EditorPage() {
         fd.append("y", String(placement.y));
         fd.append("w", String(placement.w));
         fd.append("h", String(placement.h));
-        const resp = await fetch("/api/pdf/insert-svg", { method: "POST", body: fd });
+        const resp = await fetch(`${PDF_SERVICE_URL}/api/pdf/insert-svg`, { method: "POST", body: fd });
         if (!resp.ok) throw new Error(`insert svg failed: ${resp.status}`);
         const blob = await resp.blob();
         adoptModifiedPdf(blob, { reparse: true });
@@ -4283,7 +4299,7 @@ export default function EditorPage() {
     form.append("file", file, file.name);
     form.append("action", "detect");
 
-    const res = await fetch("/api/pdf/structure", {
+    const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/structure`, {
       method: "POST",
       credentials: "include",
       body: form,
@@ -4317,7 +4333,7 @@ export default function EditorPage() {
           form.append("pageNumber", String(effectivePageIndex + 1));
           form.append("action", kind);
 
-          const res = await fetch("/api/pdf/annotations", {
+          const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/annotations`, {
             method: "POST",
             credentials: "include",
             body: form,
@@ -4373,7 +4389,7 @@ export default function EditorPage() {
           form.append("index", String(index));
           form.append("spans", JSON.stringify(spans));
 
-          const res = await fetch("/api/pdf/text-style", {
+          const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/text-style`, {
             method: "POST",
             credentials: "include",
             body: form,
@@ -4412,7 +4428,7 @@ export default function EditorPage() {
       const form = new FormData();
       form.append("file", file, file.name);
       form.append("action", "list");
-      const res = await fetch("/api/pdf/annotations", {
+      const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/annotations`, {
         method: "POST",
         credentials: "include",
         body: form,
@@ -4437,7 +4453,7 @@ export default function EditorPage() {
         form.append("action", "remove");
         form.append("page", String(page));
         form.append("index", String(index));
-        const res = await fetch("/api/pdf/annotations", {
+        const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/annotations`, {
           method: "POST",
           credentials: "include",
           body: form,
@@ -4877,7 +4893,7 @@ export default function EditorPage() {
           fd.append("file", new File([working], docName, { type: "application/pdf" }));
           fd.append("action", "add");
           fd.append("attachment", f);
-          const resp = await fetch("/api/pdf/attachments", {
+          const resp = await fetch(`${PDF_SERVICE_URL}/api/pdf/attachments`, {
             method: "POST",
             body: fd,
           });
@@ -4910,7 +4926,7 @@ export default function EditorPage() {
         fd.append("file", new File([source], docName, { type: "application/pdf" }));
         fd.append("action", "remove");
         fd.append("name", file.name);
-        const resp = await fetch("/api/pdf/attachments", {
+        const resp = await fetch(`${PDF_SERVICE_URL}/api/pdf/attachments`, {
           method: "POST",
           body: fd,
         });
