@@ -16,12 +16,15 @@ import {
 export type { DocumentObject };
 export { getAuthToken, invalidateAuthToken };
 
-// API base URL - PLACEHOLDER. GigaPDF's own version relies on nginx proxying
-// same-origin /api/ requests to FastAPI; PlugYard's editor endpoints instead
-// live on the Django backend, not yet wired up (see the migration's backend
-// phase). Every call below still targets GigaPDF's own /api/v1/* paths -
-// they will 404 against Django until that phase rewrites them.
-const API_BASE_URL = process.env.NEXT_PUBLIC_EDITOR_API_URL ?? "";
+// API base URL for PlugYard's Django backend. The 11 load-bearing methods
+// below (save/load/restore-original/create-version/get-elements/
+// create-element/update-element/delete-element/batch-elements/
+// upload-thumbnail/index-ocr-blocks/get-download-url) target Django's real
+// /api/editor/* routes (see bookstore_backend/shop/urls.py + views_editor.py).
+// The ~80 other methods on this client are dead code for this editor route
+// (confirmed unused by grep) and still point at GigaPDF's own /api/v1/*
+// paths - left untouched since nothing calls them.
+const API_BASE_URL = process.env.NEXT_PUBLIC_EDITOR_API_URL ?? "http://localhost:8000";
 
 
 interface APIResponse<T> {
@@ -380,8 +383,7 @@ class APIClient {
 
   /**
    * Upload (or replace) the thumbnail image of a stored document.
-   * Backend: POST /api/v1/storage/documents/{id}/thumbnail — multipart
-   * field "file", PNG/JPEG/WebP, max 2 MB (magic bytes validated).
+   * Backend: POST /api/editor/documents/{id}/thumbnail/ (Django).
    */
   async uploadDocumentThumbnail(
     storedDocumentId: string,
@@ -393,7 +395,7 @@ class APIClient {
     fd.append("file", image, fileName);
 
     const response = await this.request<APIResponse<{ thumbnail_url: string | null }>>(
-      `/api/v1/storage/documents/${storedDocumentId}/thumbnail`,
+      `/api/editor/documents/${storedDocumentId}/thumbnail/`,
       { method: "POST", body: fd, signal: options.signal }
     );
     return response.data;
@@ -492,7 +494,7 @@ class APIClient {
       page_count: number;
       version_number: number;
       created_at: string;
-    }>>("/api/v1/storage/documents", fd, {
+    }>>("/api/editor/documents/", fd, {
       onProgress: params.onProgress,
       signal: params.signal,
     });
@@ -515,7 +517,7 @@ class APIClient {
       stored_document_id: string;
       version: number;
       created_at: string;
-    }>>(`/api/v1/storage/documents/${storedDocumentId}/versions`, {
+    }>>(`/api/editor/documents/${storedDocumentId}/versions/`, {
       method: "POST",
       body: fd,
     });
@@ -547,7 +549,7 @@ class APIClient {
       stored_document_id: string;
       name: string;
       page_count: number;
-    }>>(`/api/v1/storage/documents/${storedDocumentId}/load`, {
+    }>>(`/api/editor/documents/${storedDocumentId}/load/`, {
       method: "POST",
     });
     return response.data;
@@ -663,7 +665,7 @@ class APIClient {
   }
 
   getDocumentDownloadUrl(documentId: string): string {
-    return `${this.baseUrl}/api/v1/documents/${documentId}/download`;
+    return `${this.baseUrl}/api/editor/documents/${documentId}/download/`;
   }
 
   async deleteSessionDocument(documentId: string): Promise<void> {
@@ -684,7 +686,7 @@ class APIClient {
     element: ElementCreateRequest
   ): Promise<ElementResponse> {
     const response = await this.request<APIResponse<ElementResponse>>(
-      `/api/v1/documents/${documentId}/pages/${pageNumber}/elements`,
+      `/api/editor/documents/${documentId}/pages/${pageNumber}/elements/`,
       {
         method: "POST",
         body: JSON.stringify(element),
@@ -702,7 +704,7 @@ class APIClient {
     updates: Partial<ElementCreateRequest>
   ): Promise<ElementResponse> {
     const response = await this.request<APIResponse<ElementResponse>>(
-      `/api/v1/documents/${documentId}/elements/${elementId}`,
+      `/api/editor/documents/${documentId}/elements/${elementId}/`,
       {
         method: "PATCH",
         body: JSON.stringify(updates),
@@ -716,7 +718,7 @@ class APIClient {
    */
   async deleteElement(documentId: string, elementId: string): Promise<void> {
     await this.request(
-      `/api/v1/documents/${documentId}/elements/${elementId}`,
+      `/api/editor/documents/${documentId}/elements/${elementId}/`,
       { method: "DELETE" }
     );
   }
@@ -745,7 +747,7 @@ class APIClient {
         page_count?: number;
         created_at?: string;
       }>
-    >(`/api/v1/storage/documents/${storedDocumentId}/restore-original`, {
+    >(`/api/editor/documents/${storedDocumentId}/restore-original/`, {
       method: "POST",
     });
     return response.data;
@@ -767,7 +769,7 @@ class APIClient {
     const response = await this.request<APIResponse<{
       elements: ElementResponse[];
       pagination: PaginationInfo;
-    }>>(`/api/v1/documents/${documentId}/pages/${pageNumber}/elements?${searchParams.toString()}`);
+    }>>(`/api/editor/documents/${documentId}/pages/${pageNumber}/elements/?${searchParams.toString()}`);
     return response.data;
   }
 
@@ -786,7 +788,7 @@ class APIClient {
     const response = await this.request<APIResponse<{
       results: Array<{ success: boolean; element_id?: string; error?: string }>;
       failed_count: number;
-    }>>(`/api/v1/documents/${documentId}/elements/batch`, {
+    }>>(`/api/editor/documents/${documentId}/elements/batch/`, {
       method: "POST",
       body: JSON.stringify({ operations }),
     });
@@ -1529,10 +1531,11 @@ class APIClient {
   // ===== Semantic search (OCR) API — #85 =====
 
   /**
-   * Ingest OCR blocks for a stored document into the semantic index (pgvector).
-   * The backend embeds each block's text and stores it owner-scoped.
+   * Ingest OCR blocks for a stored document (Django stores them; no semantic
+   * search is implemented - the response's `semantic_search_available` is
+   * always false).
    *
-   * Contract: POST /api/v1/storage/documents/{id}/ocr-blocks
+   * Contract: POST /api/editor/documents/{id}/ocr-blocks/
    *   body { blocks: [{ page, bbox: { x, y, w, h }, text }] }
    */
   async indexOcrBlocks(
@@ -1540,7 +1543,7 @@ class APIClient {
     blocks: OcrBlockInput[]
   ): Promise<IndexOcrBlocksResponse> {
     const response = await this.request<APIResponse<IndexOcrBlocksResponse>>(
-      `/api/v1/storage/documents/${storedDocumentId}/ocr-blocks`,
+      `/api/editor/documents/${storedDocumentId}/ocr-blocks/`,
       {
         method: "POST",
         body: JSON.stringify({ blocks }),
