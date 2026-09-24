@@ -1,0 +1,224 @@
+/**
+ * Internal store types for the editor package
+ */
+
+import type {
+  UUID,
+  PageObject,
+  LayerObject,
+  Element,
+  Tool,
+  ShapeType,
+  AnnotationType,
+  FieldType,
+  FieldCreationKind,
+} from "@giga-pdf/types";
+
+// Document Store Types
+export interface DocumentState {
+  documentId: UUID | null;
+  title: string;
+  version: number;
+  pages: PageObject[];
+  /**
+   * Editor-only user layers (Phase 2 "Layer Groups"). These are NOT PDF
+   * Optional Content Groups — they are a design-tool grouping construct that
+   * lives in editor state. Elements reference a layer via `element.layerId`;
+   * hiding/locking a layer cascades to every member element's
+   * `visible`/`locked` flags (see setLayerVisible / setLayerLocked).
+   */
+  layers: LayerObject[];
+  lastSaved: Date | null;
+  isDirty: boolean;
+  isLoading: boolean;
+  error: string | null;
+}
+
+// Canvas Store Types
+export interface ViewportDimensions {
+  width: number;
+  height: number;
+}
+
+/** Measurement unit for rulers and margin handles. */
+export type RulerUnit = "px" | "mm" | "cm" | "in" | "pt";
+
+export interface CanvasState {
+  zoom: number;
+  minZoom: number;
+  maxZoom: number;
+  /**
+   * Adaptive zoom mode. "page" keeps the whole page visible, "width" fits
+   * the page width to the viewport. null = manual zoom. The fit zoom is
+   * recomputed on viewport resize / page change until the user zooms
+   * manually (callers reset fitMode to null on manual zoom).
+   */
+  fitMode: "page" | "width" | null;
+  panOffset: { x: number; y: number };
+  activeTool: Tool;
+  activeSubtype: string | null;
+  viewport: ViewportDimensions;
+  gridEnabled: boolean;
+  snapToGrid: boolean;
+  gridSize: number;
+  showRulers: boolean;
+  /**
+   * Page layout mode for the document canvas. "continuous" stacks every page
+   * vertically (Word-like scroll), "single" shows one page at a time.
+   */
+  viewMode: "single" | "continuous";
+  /** Measurement unit displayed on the rulers / margin handles. */
+  rulerUnit: RulerUnit;
+  currentPageIndex: number;
+  // Tool options
+  shapeType: ShapeType;
+  annotationType: AnnotationType;
+  fieldType: FieldType;
+  /** Creation palette entry for the form-field tool (richer than fieldType). */
+  fieldKind: FieldCreationKind;
+  strokeColor: string;
+  fillColor: string;
+  strokeWidth: number;
+}
+
+// Layout Store Types (Word-like page layout: margins, headers, footers)
+
+/** Page margins in PDF points (origin top-left). */
+export interface Margins {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/**
+ * Header or footer band content for a section. `elements` reuses the editor
+ * `Element` type so a header/footer can hold the same primitives as a page
+ * (text, image, ...). `height` is the reserved band height in PDF points.
+ */
+export interface HeaderFooterContent {
+  enabled: boolean;
+  elements: Element[];
+  height: number;
+  showOnFirstPage: boolean;
+}
+
+/**
+ * A layout section. v1 always holds a single section spanning the whole
+ * document (`pageRange` = { from: 0, to: <lastIndex> }), but the shape already
+ * supports multiple sections with distinct margins / headers / footers.
+ */
+export interface SectionLayout {
+  margins: Margins;
+  header: HeaderFooterContent;
+  footer: HeaderFooterContent;
+  pageRange: { from: number; to: number };
+}
+
+// Selection Store Types
+export interface SelectionState {
+  selectedElementIds: Set<UUID>;
+  selectedPageId: UUID | null;
+  isMultiSelect: boolean;
+  selectionBounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
+  hoveredElementId: UUID | null;
+}
+
+// History Store Types
+export interface HistorySnapshot {
+  id: string;
+  timestamp: Date;
+  documentVersion: number;
+  pages: PageObject[];
+  description: string;
+}
+
+export interface HistoryState {
+  undoStack: HistorySnapshot[];
+  redoStack: HistorySnapshot[];
+  maxStackSize: number;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
+// UI Store Types
+export type PanelType =
+  | "layers"
+  | "pages"
+  | "properties"
+  | "comments"
+  | "history"
+  | "templates";
+
+export type ModalType =
+  | "export"
+  | "share"
+  | "settings"
+  | "shortcuts"
+  | "upload"
+  | null;
+
+export interface UIState {
+  sidebarOpen: boolean;
+  sidebarWidth: number;
+  activePanel: PanelType;
+  modalOpen: ModalType;
+  modalData: Record<string, unknown> | null;
+  theme: "light" | "dark" | "system";
+  showGrid: boolean;
+  showGuides: boolean;
+  notifications: Notification[];
+  contextMenu: {
+    x: number;
+    y: number;
+    items: ContextMenuItem[];
+  } | null;
+  // Editor-specific UI modes
+  showFormsPanel: boolean;
+  isContentEditActive: boolean;
+  /**
+   * Word-style running headers & footers turned on for the document. When on,
+   * the editor manages header/footer bands (and the dialog is enabled); when
+   * off, all bands are cleared from the PDF.
+   */
+  headersFootersEnabled: boolean;
+}
+
+export interface Notification {
+  id: string;
+  type: "info" | "success" | "warning" | "error";
+  title: string;
+  message: string;
+  timestamp: Date;
+  autoClose: boolean;
+  duration?: number;
+}
+
+export interface ContextMenuItem {
+  id: string;
+  label: string;
+  icon?: string;
+  shortcut?: string;
+  disabled?: boolean;
+  divider?: boolean;
+  onClick?: () => void;
+  items?: ContextMenuItem[];
+}
+
+// Middleware Types
+export interface SyncConfig {
+  enabled: boolean;
+  debounceMs: number;
+  conflictResolution: "server-wins" | "client-wins" | "merge";
+}
+
+export interface PersistenceConfig {
+  enabled: boolean;
+  debounceMs: number;
+  storageKey: string;
+}

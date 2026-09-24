@@ -19,7 +19,23 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@giga-pdf/types": ["./src/vendor/giga-pdf/types/src/index.ts"],
+      "@giga-pdf/logger": ["./src/vendor/giga-pdf/logger/src/index.ts"],
+      "@giga-pdf/ui": ["./src/vendor/giga-pdf/ui/src/index.ts"],
+      "@giga-pdf/ui/lib/utils": ["./src/vendor/giga-pdf/ui/src/lib/utils.ts"],
+      "@giga-pdf/canvas": ["./src/vendor/giga-pdf/canvas/src/index.ts"],
+      "@giga-pdf/editor": ["./src/vendor/giga-pdf/editor/src/index.ts"],
+      "@giga-pdf/api": ["./src/vendor/giga-pdf/api/src/index.ts"],
+      "@giga-pdf/pdf-engine": ["./src/vendor/giga-pdf/pdf-engine/src/index.ts"],
+      "@giga-pdf/pdf-engine/engine": ["./src/vendor/giga-pdf/pdf-engine/src/engine/index.ts"],
+      "@giga-pdf/pdf-engine/parse": ["./src/vendor/giga-pdf/pdf-engine/src/parse/index.ts"],
+      "@giga-pdf/pdf-engine/render": ["./src/vendor/giga-pdf/pdf-engine/src/render/index.ts"],
+      "@giga-pdf/pdf-engine/merge-split": ["./src/vendor/giga-pdf/pdf-engine/src/merge-split/index.ts"],
+      "@giga-pdf/pdf-engine/forms": ["./src/vendor/giga-pdf/pdf-engine/src/forms/index.ts"],
+      "@giga-pdf/pdf-engine/encrypt": ["./src/vendor/giga-pdf/pdf-engine/src/encrypt/index.ts"],
+      "@giga-pdf/pdf-engine/preview": ["./src/vendor/giga-pdf/pdf-engine/src/preview/index.ts"],
+      "@giga-pdf/pdf-engine/convert": ["./src/vendor/giga-pdf/pdf-engine/src/convert/index.ts"]
     }
   },
   "include": [

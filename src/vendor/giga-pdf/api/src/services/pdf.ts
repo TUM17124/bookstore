@@ -1,0 +1,1607 @@
+import type {
+  DocumentObject,
+  DocumentMetadata,
+  FormFieldElement,
+} from '@giga-pdf/types';
+
+/**
+ * Response wrapper for PDF API routes
+ */
+interface PdfApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+/**
+ * Options for opening/parsing a PDF
+ */
+interface OpenPdfOptions {
+  password?: string;
+  extractText?: boolean;
+  extractImages?: boolean;
+  extractAnnotations?: boolean;
+  extractFormFields?: boolean;
+}
+
+/**
+ * Parsed document response from /api/pdf/open
+ */
+interface OpenPdfResult {
+  documentId: string;
+  pageCount: number;
+  metadata: DocumentObject['metadata'];
+  pages: DocumentObject['pages'];
+  bookmarks: DocumentObject['outlines'];
+  layers: DocumentObject['layers'];
+  embeddedFiles: DocumentObject['embeddedFiles'];
+  filename: string;
+  fileSize: number;
+}
+
+/**
+ * Options for saving/normalizing a PDF
+ */
+interface SavePdfOptions {
+  garbage?: 0 | 1 | 2 | 3 | 4;
+  useObjectStreams?: boolean;
+}
+
+/**
+ * Options for merging PDFs
+ */
+interface MergePdfOptions {
+  ranges?: string[];
+  outputName?: string;
+}
+
+/**
+ * Split result part
+ */
+interface SplitPart {
+  filename: string;
+  pageCount: number | null;
+  data: string; // base64
+}
+
+/**
+ * Options for splitting a PDF
+ */
+interface SplitPdfOptions {
+  splitPoints?: number[];
+  ranges?: string[];
+  outputNames?: string[];
+}
+
+/**
+ * Split result
+ */
+interface SplitPdfResult {
+  originalFilename: string;
+  partsCount: number;
+  parts: SplitPart[];
+}
+
+/**
+ * Preview options
+ */
+interface PreviewOptions {
+  mode?: 'page' | 'thumbnail' | 'all';
+  pageNumber?: number;
+  dpi?: number;
+  scale?: number;
+  format?: 'png' | 'jpeg' | 'webp';
+  quality?: number;
+  maxWidth?: number;
+  maxHeight?: number;
+}
+
+/**
+ * Thumbnail data from "all" mode
+ */
+interface ThumbnailData {
+  pageNumber: number;
+  data: string; // base64
+  mimeType: string;
+}
+
+/**
+ * All-thumbnails result
+ */
+interface AllThumbnailsResult {
+  format: string;
+  count: number;
+  thumbnails: ThumbnailData[];
+}
+
+/**
+ * Encrypt options. Supply `certificates` for public-key (certificate)
+ * encryption; otherwise the user/owner passwords drive password encryption.
+ * When `certificates` is non-empty the password fields are ignored.
+ */
+interface EncryptOptions {
+  userPassword?: string;
+  ownerPassword?: string;
+  algorithm?: 'AES-128' | 'AES-256';
+  permissions?: Record<string, boolean>;
+  /**
+   * Recipient X.509 certificate files (DER or PEM). When non-empty, the PDF is
+   * encrypted to these recipients (public-key security) instead of a password.
+   */
+  certificates?: File[];
+}
+
+/**
+ * Permissions result
+ */
+interface PermissionsResult {
+  isEncrypted: boolean;
+  permissions: Record<string, boolean>;
+}
+
+/**
+ * Form field info from get action
+ */
+interface FormFieldsResult {
+  fields: FormFieldElement[];
+  totalFields: number;
+  filledFields: number;
+}
+
+/**
+ * Text/Image/Shape element operation options
+ */
+interface ElementOperationOptions {
+  operation: 'add' | 'update';
+  pageNumber: number;
+  element: Record<string, unknown>;
+  oldBounds?: { x: number; y: number; width: number; height: number };
+}
+
+/**
+ * Convert options
+ */
+interface ConvertOptions {
+  html?: string;
+  url?: string;
+  format?: string;
+  landscape?: boolean;
+  pageSize?: string;
+  margin?: string;
+}
+
+/**
+ * Metadata result
+ */
+interface MetadataResult {
+  metadata: DocumentMetadata;
+}
+
+/**
+ * Flatten options
+ */
+interface FlattenOptions {
+  flattenAnnotations?: boolean;
+  flattenForms?: boolean;
+}
+
+/**
+ * One signature's metadata (a `/Sig` field's `/V`), mirrored from the engine's
+ * `SignatureInfo`. Returned by {@link pdfService.verifyPdfSignatures}.
+ */
+export interface PdfSignatureInfo {
+  /** The signature field's `/T` name. */
+  fieldName: string;
+  /** The signer name (`/Name`), or `null`. */
+  signerName: string | null;
+  /** The stated reason (`/Reason`), or `null`. */
+  reason: string | null;
+  /** The stated location (`/Location`), or `null`. */
+  location: string | null;
+  /** The signing date string (`/M`, e.g. `D:20260624…`), or `null`. */
+  date: string | null;
+  /** The `/SubFilter` (e.g. `adbe.pkcs7.detached`), or `null`. */
+  subFilter: string | null;
+  /** The `/ByteRange` `[a, b, c, d]` the signature covers. */
+  byteRange: [number, number, number, number];
+}
+
+/**
+ * The cryptographic verdict for one signature, mirrored from the engine's
+ * `SignatureReport`. Returned by {@link pdfService.verifyPdfSignatures}.
+ */
+export interface PdfSignatureReport {
+  /** The signature field's `/T` name (joins to {@link PdfSignatureInfo.fieldName}). */
+  fieldName: string;
+  /** The `/ByteRange` is well-formed and within the file bounds. */
+  byteRangeOk: boolean;
+  /** The CMS `messageDigest` equals SHA-256 of the covered bytes (integrity). */
+  digestOk: boolean;
+  /** The SignerInfo signature validates under the signer certificate's key. */
+  signatureOk: boolean;
+  /** The signature covers the whole current file (nothing appended after it). */
+  coversWholeDocument: boolean;
+  /** The signer certificate's Common Name, or `null`. */
+  signerCommonName: string | null;
+  /** Number of certificates embedded in the CMS. */
+  certCount: number;
+  /** The recognised signature algorithm (`RSA+SHA-256`) or an unsupported note. */
+  algorithm: string;
+}
+
+/** Result of {@link pdfService.verifyPdfSignatures} — metadata + verdict, keyed by `fieldName`. */
+export interface VerifyPdfSignaturesResult {
+  signatures: PdfSignatureInfo[];
+  reports: PdfSignatureReport[];
+}
+
+/** DocMDP permission level for {@link pdfService.certifyPdf}. */
+export type DocMdpLevel = 1 | 2 | 3;
+
+/** Options for {@link pdfService.certifyPdf} (DocMDP author certification). */
+export interface CertifyPdfOptions {
+  /** Which later changes the certification permits: 1 = none, 2 = form-fill + sign, 3 = also annotate. */
+  docmdpLevel: DocMdpLevel;
+  /** `/Reason` — why the document is being certified. */
+  reason?: string;
+  /** `/Name` — human-readable certifier name. */
+  signerName?: string;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function getAuthHeaders(): HeadersInit {
+  if (typeof window === 'undefined') return {};
+  const token = localStorage.getItem('access_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function handleJsonResponse<T>(response: Response): Promise<T> {
+  const json = (await response.json()) as PdfApiResponse<T>;
+  if (!json.success) {
+    throw new Error(json.error ?? 'PDF operation failed');
+  }
+  return json.data as T;
+}
+
+async function handleBlobResponse(response: Response): Promise<Blob> {
+  if (!response.ok) {
+    const json = (await response.json()) as PdfApiResponse;
+    throw new Error(json.error ?? `HTTP ${response.status}`);
+  }
+  return response.blob();
+}
+
+function appendFileToForm(form: FormData, file: File | Blob, fieldName = 'file'): void {
+  if (file instanceof File) {
+    form.append(fieldName, file);
+  } else {
+    form.append(fieldName, file, 'document.pdf');
+  }
+}
+
+// ─── PDF Service ─────────────────────────────────────────────────────────────
+
+export const pdfService = {
+  /**
+   * Parse/open a PDF and return full document structure
+   */
+  openPdf: async (file: File | Blob, options: OpenPdfOptions = {}): Promise<OpenPdfResult> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+
+    if (options.password) form.append('password', options.password);
+    if (options.extractText === false) form.append('extractText', 'false');
+    if (options.extractImages === false) form.append('extractImages', 'false');
+    if (options.extractAnnotations === false) form.append('extractAnnotations', 'false');
+    if (options.extractFormFields === false) form.append('extractFormFields', 'false');
+
+    const response = await fetch('/api/pdf/open', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleJsonResponse<OpenPdfResult>(response);
+  },
+
+  /**
+   * Save/normalize a PDF with optional compaction
+   */
+  savePdf: async (file: File | Blob, options: SavePdfOptions = {}): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+
+    if (options.garbage !== undefined) form.append('garbage', String(options.garbage));
+    if (options.useObjectStreams !== undefined) form.append('useObjectStreams', String(options.useObjectStreams));
+
+    const response = await fetch('/api/pdf/save', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Merge multiple PDFs into one
+   */
+  mergePdfs: async (files: File[], options: MergePdfOptions = {}): Promise<Blob> => {
+    const form = new FormData();
+    for (const file of files) {
+      form.append('files[]', file);
+    }
+
+    if (options.ranges) {
+      for (const range of options.ranges) {
+        form.append('ranges[]', range);
+      }
+    }
+    if (options.outputName) form.append('outputName', options.outputName);
+
+    const response = await fetch('/api/pdf/merge', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Split a PDF into multiple parts
+   */
+  splitPdf: async (file: File | Blob, options: SplitPdfOptions): Promise<SplitPdfResult> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+
+    if (options.splitPoints) form.append('splitPoints', JSON.stringify(options.splitPoints));
+    if (options.ranges) form.append('ranges', JSON.stringify(options.ranges));
+    if (options.outputNames) form.append('outputNames', JSON.stringify(options.outputNames));
+
+    const response = await fetch('/api/pdf/split', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleJsonResponse<SplitPdfResult>(response);
+  },
+
+  /**
+   * Render page preview or thumbnails
+   */
+  previewPage: async (file: File | Blob, options: PreviewOptions = {}): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+
+    const mode = options.mode ?? 'page';
+    form.append('mode', mode);
+
+    if (options.pageNumber !== undefined) form.append('pageNumber', String(options.pageNumber));
+    if (options.dpi !== undefined) form.append('dpi', String(options.dpi));
+    if (options.scale !== undefined) form.append('scale', String(options.scale));
+    if (options.format) form.append('format', options.format);
+    if (options.quality !== undefined) form.append('quality', String(options.quality));
+    if (options.maxWidth !== undefined) form.append('maxWidth', String(options.maxWidth));
+    if (options.maxHeight !== undefined) form.append('maxHeight', String(options.maxHeight));
+
+    const response = await fetch('/api/pdf/preview', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Render all page thumbnails (returns base64 data)
+   */
+  previewAllThumbnails: async (
+    file: File | Blob,
+    options: Omit<PreviewOptions, 'mode' | 'pageNumber'> = {},
+  ): Promise<AllThumbnailsResult> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('mode', 'all');
+
+    if (options.format) form.append('format', options.format);
+    if (options.quality !== undefined) form.append('quality', String(options.quality));
+    if (options.maxWidth !== undefined) form.append('maxWidth', String(options.maxWidth));
+    if (options.maxHeight !== undefined) form.append('maxHeight', String(options.maxHeight));
+
+    const response = await fetch('/api/pdf/preview', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleJsonResponse<AllThumbnailsResult>(response);
+  },
+
+  /**
+   * Encrypt a PDF
+   */
+  encryptPdf: async (file: File | Blob, options: EncryptOptions): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+
+    if (options.certificates && options.certificates.length > 0) {
+      // Public-key (certificate) encryption — no password is sent.
+      form.append('action', 'encryptCertificate');
+      for (const cert of options.certificates) {
+        form.append('certificates[]', cert, cert.name);
+      }
+    } else {
+      form.append('action', 'encrypt');
+      if (options.userPassword) form.append('userPassword', options.userPassword);
+      if (options.ownerPassword) form.append('ownerPassword', options.ownerPassword);
+    }
+    if (options.algorithm) form.append('algorithm', options.algorithm);
+    if (options.permissions) form.append('permissions', JSON.stringify(options.permissions));
+
+    const response = await fetch('/api/pdf/encrypt', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Decrypt a PDF
+   */
+  decryptPdf: async (file: File | Blob, password: string): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('action', 'decrypt');
+    form.append('password', password);
+
+    const response = await fetch('/api/pdf/encrypt', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Decrypt a public-key (certificate) encrypted PDF with the recipient's
+   * X.509 certificate + PKCS#1 RSA private key (each DER or PEM). The
+   * certificate and key transit only in the request body — never stored nor
+   * logged server-side.
+   */
+  decryptPdfWithCertificate: async (
+    file: File | Blob,
+    certificate: File,
+    privateKey: File,
+  ): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('action', 'decryptCertificate');
+    form.append('certificate', certificate, certificate.name);
+    form.append('privateKey', privateKey, privateKey.name);
+
+    const response = await fetch('/api/pdf/encrypt', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Get PDF permissions
+   */
+  getPermissions: async (file: File | Blob): Promise<PermissionsResult> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('action', 'getPermissions');
+
+    const response = await fetch('/api/pdf/encrypt', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleJsonResponse<PermissionsResult>(response);
+  },
+
+  /**
+   * Set PDF permissions
+   */
+  setPermissions: async (
+    file: File | Blob,
+    ownerPassword: string,
+    permissions: Record<string, boolean>,
+  ): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('action', 'setPermissions');
+    form.append('ownerPassword', ownerPassword);
+    form.append('permissions', JSON.stringify(permissions));
+
+    const response = await fetch('/api/pdf/encrypt', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Get form fields from a PDF
+   */
+  getFormFields: async (file: File | Blob): Promise<FormFieldsResult> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('action', 'get');
+
+    const response = await fetch('/api/pdf/forms', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleJsonResponse<FormFieldsResult>(response);
+  },
+
+  /**
+   * Fill form fields in a PDF
+   */
+  fillFormFields: async (
+    file: File | Blob,
+    values: Record<string, string | boolean | string[]>,
+  ): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('action', 'fill');
+    form.append('values', JSON.stringify(values));
+
+    const response = await fetch('/api/pdf/forms', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Add a form field to a PDF
+   */
+  addFormField: async (
+    file: File | Blob,
+    pageNumber: number,
+    field: FormFieldElement,
+  ): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('action', 'create');
+    form.append('pageNumber', String(pageNumber));
+    form.append('field', JSON.stringify(field));
+
+    const response = await fetch('/api/pdf/forms', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Add/update text element on a PDF page
+   */
+  textOperation: async (file: File | Blob, options: ElementOperationOptions): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('operation', options.operation);
+    form.append('pageNumber', String(options.pageNumber));
+    form.append('element', JSON.stringify(options.element));
+    if (options.oldBounds) form.append('oldBounds', JSON.stringify(options.oldBounds));
+
+    const response = await fetch('/api/pdf/text', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Add/update image element on a PDF page
+   */
+  imageOperation: async (file: File | Blob, options: ElementOperationOptions): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('operation', options.operation);
+    form.append('pageNumber', String(options.pageNumber));
+    form.append('element', JSON.stringify(options.element));
+    if (options.oldBounds) form.append('oldBounds', JSON.stringify(options.oldBounds));
+
+    const response = await fetch('/api/pdf/image', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Add/update shape element on a PDF page
+   */
+  shapeOperation: async (file: File | Blob, options: ElementOperationOptions): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('operation', options.operation);
+    form.append('pageNumber', String(options.pageNumber));
+    form.append('element', JSON.stringify(options.element));
+    if (options.oldBounds) form.append('oldBounds', JSON.stringify(options.oldBounds));
+
+    const response = await fetch('/api/pdf/shape', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Add/update annotation on a PDF page
+   */
+  annotationOperation: async (file: File | Blob, options: ElementOperationOptions): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('operation', options.operation);
+    form.append('pageNumber', String(options.pageNumber));
+    form.append('element', JSON.stringify(options.element));
+    if (options.oldBounds) form.append('oldBounds', JSON.stringify(options.oldBounds));
+
+    const response = await fetch('/api/pdf/annotations', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Page operations (extract, rotate, delete, reorder)
+   *
+   * Backend contract (/api/pdf/pages):
+   *   - operation: 'add' | 'delete' | 'move' | 'rotate' | 'copy' | 'resize' | 'extract'
+   *   - params: JSON-stringified operation-specific parameters
+   */
+  pageOperation: async (
+    file: File | Blob,
+    operation: string,
+    params: Record<string, unknown> = {},
+  ): Promise<Blob | Record<string, unknown>> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('operation', operation);
+    form.append('params', JSON.stringify(params));
+
+    const response = await fetch('/api/pdf/pages', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    const contentType = response.headers.get('content-type') ?? '';
+    if (contentType.includes('application/pdf')) {
+      return handleBlobResponse(response);
+    }
+    return handleJsonResponse<Record<string, unknown>>(response);
+  },
+
+  /**
+   * Get or update PDF metadata
+   */
+  metadata: async (
+    file: File | Blob,
+    action: 'get' | 'set',
+    metadata?: Partial<DocumentMetadata>,
+  ): Promise<MetadataResult | Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('action', action);
+    if (metadata) form.append('metadata', JSON.stringify(metadata));
+
+    const response = await fetch('/api/pdf/metadata', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    if (action === 'get') {
+      return handleJsonResponse<MetadataResult>(response);
+    }
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Flatten PDF layers (annotations, forms)
+   */
+  flattenPdf: async (file: File | Blob, options: FlattenOptions = {}): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+
+    if (options.flattenAnnotations !== undefined) form.append('flattenAnnotations', String(options.flattenAnnotations));
+    if (options.flattenForms !== undefined) form.append('flattenForms', String(options.flattenForms));
+
+    const response = await fetch('/api/pdf/flatten', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Apply an ordered list of element operations (add, update, delete) to a PDF
+   * and return the modified PDF binary as a Blob.
+   */
+  applyElements: async (
+    file: File | Blob,
+    operations: Array<{
+      action: 'add' | 'update' | 'delete' | 'reorder';
+      pageNumber: number;
+      element: Record<string, unknown>;
+      oldBounds?: { x: number; y: number; width: number; height: number };
+      reorder?: { toFront: boolean };
+    }>,
+  ): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('operations', JSON.stringify(operations));
+
+    const response = await fetch('/api/pdf/apply-elements', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Mutate native PDF Optional Content Group (OCG / "layers") state — toggle
+   * visibility/lock or remove a layer by its numeric OCG id — and return the
+   * modified PDF binary. Thin native path (no element redact+add pipeline).
+   */
+  applyOcgLayers: async (
+    file: File | Blob,
+    operations: Array<{
+      action: 'visibility' | 'locked' | 'remove';
+      ocgId: number;
+      value?: boolean;
+    }>,
+  ): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('operations', JSON.stringify(operations));
+
+    const response = await fetch('/api/pdf/ocg', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Bake native paragraph-style / list-level formatting AND/OR table structural
+   * edits (add/remove row or column) into a PDF and return the modified binary.
+   * Paragraph/list edits are keyed by the editor's flat engine run index
+   * (`TextElement.index`); table edits are keyed by a positional table handle
+   * (`pageNumber` + `tableIndexOnPage`) because table cell runs carry no
+   * `source_index`. The engine resolves each to a structural block address and
+   * applies the matching model op on the unified document model — a true
+   * structural bake, not an overlay. At least one of `paragraphs` / `lists` /
+   * `tableOps` must be non-empty.
+   */
+  applyModelOps: async (
+    file: File | Blob,
+    edits: {
+      paragraphs?: ParagraphStyleEdit[];
+      lists?: ListEdit[];
+      tableOps?: TableEdit[];
+    },
+  ): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    if (edits.paragraphs && edits.paragraphs.length > 0) {
+      form.append('paragraphs', JSON.stringify(edits.paragraphs));
+    }
+    if (edits.lists && edits.lists.length > 0) {
+      form.append('lists', JSON.stringify(edits.lists));
+    }
+    if (edits.tableOps && edits.tableOps.length > 0) {
+      form.append('tableOps', JSON.stringify(edits.tableOps));
+    }
+
+    const response = await fetch('/api/pdf/apply-model-ops', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Enumerate the document's tables for the editor's table-edit overlay. Returns
+   * each table's positional handle (`pageNumber` + `tableIndexOnPage`), grid size
+   * and placement frame in PDF user-space (origin bottom-left), or `null` frame
+   * when the engine carried none. The handle is what `applyModelOps`'s `tableOps`
+   * address — a stable identity independent of `source_index`.
+   */
+  tableStructure: async (file: File | Blob): Promise<TableStructureResult> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+
+    const response = await fetch('/api/pdf/table-structure', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    if (!response.ok) {
+      const message = await response
+        .json()
+        .then((b) => (b as { error?: string }).error)
+        .catch(() => undefined);
+      throw new Error(message ?? 'Failed to read table structure.');
+    }
+    return response.json() as Promise<TableStructureResult>;
+  },
+
+  /**
+   * Convert HTML to PDF
+   */
+  convertToPdf: async (options: ConvertOptions): Promise<Blob> => {
+    const form = new FormData();
+
+    if (options.html) form.append('html', options.html);
+    if (options.url) form.append('url', options.url);
+    if (options.format) form.append('format', options.format);
+    if (options.landscape !== undefined) form.append('landscape', String(options.landscape));
+    if (options.pageSize) form.append('pageSize', options.pageSize);
+    if (options.margin) form.append('margin', options.margin);
+
+    const response = await fetch('/api/pdf/convert', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Full-text search in a PDF via the engine. Returns a list of hits with
+   * PDF user-space quads ready for frontend highlighting.
+   */
+  searchPdf: async (
+    file: File | Blob,
+    needle: string,
+    options: { pages?: number[]; maxHitsPerPage?: number } = {},
+  ): Promise<{
+    needle: string;
+    totalHits: number;
+    pagesSearched: number;
+    hits: Array<{
+      pageNumber: number;
+      matchIndex: number;
+      quads: number[][];
+      bbox: [number, number, number, number];
+    }>;
+  }> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('needle', needle);
+    if (options.pages) form.append('pages', JSON.stringify(options.pages));
+    if (options.maxHitsPerPage !== undefined) {
+      form.append('maxHitsPerPage', String(options.maxHitsPerPage));
+    }
+
+    const response = await fetch('/api/pdf/search', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    if (!response.ok) {
+      const err = await response.text().catch(() => '');
+      throw new Error(`Search failed: HTTP ${response.status} ${err}`);
+    }
+    return response.json();
+  },
+
+  /**
+   * Stamp a watermark on every page (or selected pages) of a PDF.
+   */
+  addWatermark: async (
+    file: File | Blob,
+    options: {
+      text: string;
+      position?:
+        | 'center-diagonal'
+        | 'top-left'
+        | 'top-right'
+        | 'bottom-left'
+        | 'bottom-right'
+        | 'header'
+        | 'footer'
+        | 'custom';
+      pages?: number[];
+      fontSize?: number;
+      color?: [number, number, number];
+      opacity?: number;
+      custom?: { x: number; y: number; rotation: number };
+    },
+  ): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('text', options.text);
+    if (options.position) form.append('position', options.position);
+    if (options.pages) form.append('pages', JSON.stringify(options.pages));
+    if (options.fontSize !== undefined) form.append('fontSize', String(options.fontSize));
+    if (options.color) form.append('color', JSON.stringify(options.color));
+    if (options.opacity !== undefined) form.append('opacity', String(options.opacity));
+    if (options.custom) form.append('custom', JSON.stringify(options.custom));
+
+    const response = await fetch('/api/pdf/watermark', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Stamp a raster image watermark (PNG/JPEG/WebP/GIF/AVIF) on every page
+   * (or selected pages) of a PDF. Hits the same `/api/pdf/watermark` endpoint
+   * in `mode=image`.
+   */
+  addImageWatermark: async (
+    file: File | Blob,
+    image: File | Blob,
+    options: {
+      anchor?: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+      pages?: number[];
+      width?: number;
+      height?: number;
+      rotation?: number;
+      opacity?: number;
+      tile?: boolean;
+    } = {},
+  ): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('mode', 'image');
+    form.append('image', image, image instanceof File ? image.name : 'watermark');
+    if (options.anchor) form.append('anchor', options.anchor);
+    if (options.pages) form.append('pages', JSON.stringify(options.pages));
+    if (options.width !== undefined) form.append('width', String(options.width));
+    if (options.height !== undefined) form.append('height', String(options.height));
+    if (options.rotation !== undefined) form.append('rotation', String(options.rotation));
+    if (options.opacity !== undefined) form.append('opacity', String(options.opacity));
+    if (options.tile !== undefined) form.append('tile', options.tile ? 'true' : 'false');
+
+    const response = await fetch('/api/pdf/watermark', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Sign a PDF with a PKCS#7 detached signature (adbe.pkcs7.detached) using
+   * a user-provided PKCS#12 (.p12/.pfx) certificate.
+   *
+   * SECURITY: the certificate and passphrase transit only inside this
+   * request body — they are never stored, cached, or logged anywhere.
+   *
+   * Throws an Error whose `name` is `'InvalidCertificateError'` when the
+   * server rejects the certificate/passphrase pair, `'TsaUnreachableError'`
+   * when a requested PAdES-B-T timestamp could not be obtained, or
+   * `'LtvUnreachableError'` when a requested PAdES-LTV signature could not reach
+   * the timestamp/revocation infrastructure — so callers can show a dedicated
+   * i18n message without parsing server strings.
+   *
+   * Set `options.timestamp` to embed an RFC 3161 trusted timestamp (PAdES-B-T,
+   * eIDAS advanced) from the server's fixed TSA. Set `options.ltv` for long-term
+   * validation (PAdES-B-LT: chain + OCSP/CRL in a /DSS); LTV implies a timestamp
+   * and takes precedence over `options.timestamp`. Either makes the request
+   * perform network round trips and may fail with `'TsaUnreachableError'` /
+   * `'LtvUnreachableError'`.
+   */
+  signPdf: async (
+    file: File | Blob,
+    p12File: File | Blob,
+    passphrase: string,
+    options: {
+      reason?: string;
+      location?: string;
+      contactInfo?: string;
+      signerName?: string;
+      /** Embed an RFC 3161 trusted timestamp (PAdES-B-T). Default false. */
+      timestamp?: boolean;
+      /**
+       * Embed long-term validation material (PAdES-B-LT: certificate chain +
+       * OCSP/CRL in a /DSS). Implies a B-T timestamp and takes precedence over
+       * `timestamp`. Default false.
+       */
+      ltv?: boolean;
+    } = {},
+  ): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    appendFileToForm(form, p12File, 'p12');
+    form.append('passphrase', passphrase);
+    if (options.reason) form.append('reason', options.reason);
+    if (options.location) form.append('location', options.location);
+    if (options.contactInfo) form.append('contactInfo', options.contactInfo);
+    if (options.signerName) form.append('signerName', options.signerName);
+    if (options.timestamp) form.append('timestamp', 'true');
+    if (options.ltv) form.append('ltv', 'true');
+
+    const response = await fetch('/api/pdf/sign', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+    if (!response.ok) {
+      const json = (await response
+        .json()
+        .catch(() => ({}))) as PdfApiResponse & { code?: string };
+      const error = new Error(json.error ?? `HTTP ${response.status}`);
+      if (json.code === 'INVALID_CERTIFICATE_OR_PASSPHRASE') {
+        error.name = 'InvalidCertificateError';
+      } else if (json.code === 'TSA_UNREACHABLE') {
+        error.name = 'TsaUnreachableError';
+      } else if (json.code === 'LTV_UNREACHABLE') {
+        error.name = 'LtvUnreachableError';
+      }
+      throw error;
+    }
+    return response.blob();
+  },
+
+  /**
+   * List every signature on a PDF and cryptographically verify each one
+   * (`POST /api/pdf/sign` with `action=verify`). Returns the per-field metadata
+   * plus the per-field verdict (integrity, RSA check, whole-document coverage,
+   * signer CN, algorithm), keyed by `fieldName`. Read-only — no network call
+   * leaves the server. An unsigned document yields two empty arrays.
+   */
+  verifyPdfSignatures: async (file: File | Blob): Promise<VerifyPdfSignaturesResult> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('action', 'verify');
+
+    const response = await fetch('/api/pdf/sign', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+    return handleJsonResponse<VerifyPdfSignaturesResult>(response);
+  },
+
+  /**
+   * Certify a PDF (DocMDP author certification) via `POST /api/pdf/sign` with
+   * `action=certify`. Declares which later changes are permitted
+   * (`options.docmdpLevel`: 1 = none, 2 = form-fill + sign, 3 = also annotate)
+   * using a generated self-signed identity (no certificate upload). Returns the
+   * certified PDF binary.
+   */
+  certifyPdf: async (file: File | Blob, options: CertifyPdfOptions): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('action', 'certify');
+    form.append('docmdpLevel', String(options.docmdpLevel));
+    if (options.reason) form.append('reason', options.reason);
+    if (options.signerName) form.append('signerName', options.signerName);
+
+    const response = await fetch('/api/pdf/sign', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+    return handleBlobResponse(response);
+  },
+
+  /**
+   * Run OCR on each rasterised page (verified by GET /api/pdf/ocr).
+   */
+  ocrPdf: async (
+    file: File | Blob,
+    options: {
+      pages?: number[];
+      lang?: string;
+      dpi?: 144 | 200 | 300;
+      format?: 'text' | 'hocr';
+    } = {},
+  ): Promise<{
+    pages: Array<{ pageNumber: number; text: string; hocr?: string }>;
+    fullText: string;
+  }> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    if (options.pages) form.append('pages', JSON.stringify(options.pages));
+    if (options.lang) form.append('lang', options.lang);
+    if (options.dpi) form.append('dpi', String(options.dpi));
+    if (options.format) form.append('format', options.format);
+
+    const response = await fetch('/api/pdf/ocr', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    if (!response.ok) {
+      const err = await response.text().catch(() => '');
+      throw new Error(`OCR failed: HTTP ${response.status} ${err}`);
+    }
+    return response.json();
+  },
+
+  /**
+   * Check if OCR is available on the server. Used by the UI to
+   * enable/disable the OCR button.
+   */
+  isOcrAvailable: async (): Promise<boolean> => {
+    const response = await fetch('/api/pdf/ocr', {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) return false;
+    const data = await response.json();
+    return Boolean(data?.available);
+  },
+
+  /**
+   * Compress a PDF (native normalisation + garbage collection / compression).
+   * Returns the compressed binary plus the before/after sizes reported by
+   * the route headers (X-Original-Size / X-Compressed-Size).
+   *
+   * `options` switch the serializer used:
+   *   - optimize  → compact object/xref streams (saveOptimized)
+   *   - linearize → Fast Web View / linearized output (saveLinearized)
+   *   - version   → "1.7" | "2.0" %PDF header banner for the above
+   * Omitting them keeps the default recompression pipeline.
+   */
+  compressPdf: async (
+    file: File | Blob,
+    options: CompressPdfOptions = {},
+  ): Promise<CompressPdfResult> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    if (options.optimize) form.append('optimize', 'true');
+    if (options.linearize) form.append('linearize', 'true');
+    if (options.version) form.append('version', options.version);
+
+    const response = await fetch('/api/pdf/compress', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    const blob = await handleBlobResponse(response);
+    const originalHeader = Number(response.headers.get('X-Original-Size'));
+    const compressedHeader = Number(response.headers.get('X-Compressed-Size'));
+
+    return {
+      blob,
+      originalSize:
+        Number.isFinite(originalHeader) && originalHeader > 0
+          ? originalHeader
+          : file.size,
+      compressedSize:
+        Number.isFinite(compressedHeader) && compressedHeader > 0
+          ? compressedHeader
+          : blob.size,
+    };
+  },
+
+  /**
+   * Run OCR and bake an INVISIBLE text layer into the PDF so it becomes
+   * searchable/selectable (output="searchable" on /api/pdf/ocr). Only
+   * pages without extractable text are processed unless force=true.
+   */
+  makeSearchablePdf: async (
+    file: File | Blob,
+    options: {
+      lang?: string;
+      dpi?: 144 | 200 | 300;
+      force?: boolean;
+      /**
+       * Bundled OCR scripts (writing systems) to load, e.g. ['alpha'] for
+       * Latin/Cyrillic or ['cjk'] for Chinese. Omit to load every bundled
+       * model (auto-detection). See OcrScript in @giga-pdf/pdf-engine.
+       */
+      scripts?: string[];
+      /**
+       * Opt-in handwriting recognition for Latin scripts. Loads the cursive
+       * Latin model in addition to the printed recognizers. Latin only; never
+       * auto-detected. Defaults to printed text.
+       */
+      handwriting?: boolean;
+      /**
+       * Restrict OCR to a contiguous 1-based page range (inclusive), e.g.
+       * `{ from: 3, to: 3 }` for the "current page only" scope. Omit to OCR the
+       * whole document (default).
+       */
+      pageRange?: { from: number; to: number };
+    } = {},
+  ): Promise<SearchablePdfResult> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('output', 'searchable');
+    if (options.lang) form.append('lang', options.lang);
+    if (options.dpi) form.append('dpi', String(options.dpi));
+    if (options.force) form.append('force', 'true');
+    if (options.scripts && options.scripts.length > 0) {
+      form.append('scripts', JSON.stringify(options.scripts));
+    }
+    if (options.handwriting) form.append('handwriting', 'true');
+    if (options.pageRange) form.append('pageRange', JSON.stringify(options.pageRange));
+
+    const response = await fetch('/api/pdf/ocr', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    const blob = await handleBlobResponse(response);
+    const pagesProcessed = Number(response.headers.get('X-Ocr-Pages-Processed'));
+    const wordsAdded = Number(response.headers.get('X-Ocr-Words-Added'));
+
+    return {
+      blob,
+      pagesProcessed: Number.isFinite(pagesProcessed) ? pagesProcessed : 0,
+      wordsAdded: Number.isFinite(wordsAdded) ? wordsAdded : 0,
+    };
+  },
+
+  /**
+   * Run OCR and produce an EDITABLE PDF (output="editable" on /api/pdf/ocr):
+   * each scanned text zone is masked with its local background colour and a
+   * real, visible OCR text run is laid on top — so the recognized text can be
+   * edited in the editor without the scanned image showing through. Only pages
+   * without extractable text are processed unless force=true.
+   */
+  makeEditableOcrPdf: async (
+    file: File | Blob,
+    options: {
+      lang?: string;
+      dpi?: 144 | 200 | 300;
+      force?: boolean;
+      /**
+       * Bundled OCR scripts (writing systems) to load, e.g. ['alpha'] for
+       * Latin/Cyrillic or ['cjk'] for Chinese. Omit to load every bundled
+       * model (auto-detection). See OcrScript in @giga-pdf/pdf-engine.
+       */
+      scripts?: string[];
+      /**
+       * Opt-in handwriting recognition for Latin scripts. Loads the cursive
+       * Latin model in addition to the printed recognizers. Latin only; never
+       * auto-detected. Defaults to printed text.
+       */
+      handwriting?: boolean;
+      /**
+       * Restrict OCR to a contiguous 1-based page range (inclusive), e.g.
+       * `{ from: 3, to: 3 }` for the "current page only" scope. Omit to OCR the
+       * whole document (default).
+       */
+      pageRange?: { from: number; to: number };
+    } = {},
+  ): Promise<EditableOcrPdfResult> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('output', 'editable');
+    if (options.lang) form.append('lang', options.lang);
+    if (options.dpi) form.append('dpi', String(options.dpi));
+    if (options.force) form.append('force', 'true');
+    if (options.scripts && options.scripts.length > 0) {
+      form.append('scripts', JSON.stringify(options.scripts));
+    }
+    if (options.handwriting) form.append('handwriting', 'true');
+    if (options.pageRange) form.append('pageRange', JSON.stringify(options.pageRange));
+
+    const response = await fetch('/api/pdf/ocr', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+
+    const blob = await handleBlobResponse(response);
+    const pagesProcessed = Number(response.headers.get('X-Ocr-Pages-Processed'));
+    const wordsAdded = Number(response.headers.get('X-Ocr-Words-Added'));
+    const masksAdded = Number(response.headers.get('X-Ocr-Masks-Added'));
+
+    return {
+      blob,
+      pagesProcessed: Number.isFinite(pagesProcessed) ? pagesProcessed : 0,
+      wordsAdded: Number.isFinite(wordsAdded) ? wordsAdded : 0,
+      masksAdded: Number.isFinite(masksAdded) ? masksAdded : 0,
+    };
+  },
+
+  /**
+   * Convert a PDF to PDF/A (archival format).
+   */
+  convertToPdfA: async (
+    file: File | Blob,
+    variant: 'pdfa-1b' | 'pdfa-1a' | 'pdfa-2b' | 'pdfa-2u' | 'pdfa-3b' = 'pdfa-2u',
+  ): Promise<Blob> => {
+    const form = new FormData();
+    appendFileToForm(form, file);
+    form.append('variant', variant);
+
+    const response = await fetch('/api/pdf/pdfa', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: form,
+    });
+    return handleBlobResponse(response);
+  },
+};
+
+/** PDF file-version banner for the optimized / linearized output. */
+export type PdfVersion = '1.7' | '2.0';
+
+/**
+ * Output controls for compressPdf. When neither `optimize` nor `linearize` is
+ * set, the default recompression pipeline runs (backward compatible).
+ */
+export interface CompressPdfOptions {
+  /** Re-serialise with PDF object streams + a cross-reference stream (most compact ISO output). */
+  optimize?: boolean;
+  /** Serialise as a linearized ("Fast Web View") PDF for progressive web rendering. */
+  linearize?: boolean;
+  /** %PDF header banner applied to the optimized / linearized output (default "1.7"). */
+  version?: PdfVersion;
+}
+
+/**
+ * Result of compressPdf — compressed binary + before/after sizes (bytes).
+ */
+export interface CompressPdfResult {
+  blob: Blob;
+  originalSize: number;
+  compressedSize: number;
+}
+
+/**
+ * Result of makeSearchablePdf — PDF with invisible OCR text layer.
+ */
+export interface SearchablePdfResult {
+  blob: Blob;
+  pagesProcessed: number;
+  wordsAdded: number;
+}
+
+/**
+ * Result of makeEditableOcrPdf — PDF whose scanned text zones are masked and
+ * overlaid with real, editable OCR text.
+ */
+export interface EditableOcrPdfResult {
+  blob: Blob;
+  pagesProcessed: number;
+  wordsAdded: number;
+  /** Number of background masks painted (one per recognized line). */
+  masksAdded: number;
+}
+
+/**
+ * A single element operation passed to applyElements
+ */
+export interface ApplyElementsOperation {
+  action: 'add' | 'update' | 'delete' | 'reorder';
+  pageNumber: number;
+  element: Record<string, unknown>;
+  oldBounds?: { x: number; y: number; width: number; height: number };
+  /** For `reorder`: bring the element to front (`true`) or send to back (`false`). */
+  reorder?: { toFront: boolean };
+}
+
+/** A list bullet/number marker style (mirrors the engine `GigaListMarker`). */
+export type ListMarkerSpec =
+  | { t: 'bullet'; v: string }
+  | { t: 'decimal' }
+  | { t: 'lower_alpha' }
+  | { t: 'upper_alpha' }
+  | { t: 'lower_roman' }
+  | { t: 'upper_roman' };
+
+/** A paragraph leading policy (mirrors the engine `GigaParaPatch.line_height`). */
+export type LineHeightSpec =
+  | { t: 'normal' }
+  | { t: 'multiple'; v: number }
+  | { t: 'points'; v: number };
+
+/**
+ * Paragraph-level formatting patch passed to applyModelOps. Only the provided
+ * fields change. Lengths are in PDF points. Keyed (in the edit below) by the
+ * editor's flat engine run index, not by an explicit block address.
+ */
+export interface ParagraphStylePatch {
+  align?: 'left' | 'center' | 'right' | 'justify';
+  indent_left?: number;
+  indent_right?: number;
+  /** First-line indent (positive) or hanging indent (negative), in points. */
+  first_line?: number;
+  space_before?: number;
+  space_after?: number;
+  line_height?: LineHeightSpec;
+}
+
+/** A paragraph-style edit keyed by the editor's `TextElement.index`. */
+export interface ParagraphStyleEdit {
+  sourceIndex: number;
+  patch: ParagraphStylePatch;
+}
+
+/** A list-level edit keyed by the editor's `TextElement.index`. */
+export type ListEdit =
+  | { sourceIndex: number; kind: 'level'; level: number }
+  | { sourceIndex: number; kind: 'marker'; marker: ListMarkerSpec }
+  | { sourceIndex: number; kind: 'ordered'; ordered: boolean };
+
+/**
+ * An RGB triple in the engine's `0..=1` float channel space (mirror of the
+ * engine `[number, number, number]` colour). Used by table cell shading and the
+ * table border colour; `null` (where accepted) clears the colour/shading.
+ */
+export type RgbColor = [number, number, number];
+
+/** A table/cell border (mirrors the engine `GigaBorderStyle`). */
+export interface TableBorderSpec {
+  /** Stroke width in PDF points. */
+  width: number;
+  /** RGB `0..=1` stroke colour. */
+  color: RgbColor;
+}
+
+/**
+ * A table structural / style edit keyed by a POSITIONAL handle (`pageNumber`
+ * 1-based + `tableIndexOnPage` 0-based) — table cell runs carry no
+ * `source_index`, so a table is addressed by its position, not by a flat run
+ * index. `insert*`/`delete*` act at a 0-based grid `at`; `setCellSpan` retargets
+ * a cell's span; `setCellShading`/`setRowHeight`/`setColWidth`/`setTableBorder`
+ * restyle the table.
+ */
+export type TableEdit =
+  | {
+      pageNumber: number;
+      tableIndexOnPage: number;
+      kind: 'insertRow' | 'deleteRow' | 'insertColumn' | 'deleteColumn';
+      at: number;
+    }
+  | {
+      pageNumber: number;
+      tableIndexOnPage: number;
+      kind: 'setCellSpan';
+      row: number;
+      col: number;
+      colSpan: number;
+      rowSpan: number;
+    }
+  | {
+      pageNumber: number;
+      tableIndexOnPage: number;
+      kind: 'setCellShading';
+      row: number;
+      col: number;
+      /** RGB `0..=1` shading, or `null` to clear the cell's shading. */
+      color: RgbColor | null;
+    }
+  | {
+      pageNumber: number;
+      tableIndexOnPage: number;
+      kind: 'setRowHeight';
+      row: number;
+      /** Fixed row height in PDF points. */
+      height: number;
+    }
+  | {
+      pageNumber: number;
+      tableIndexOnPage: number;
+      kind: 'setColWidth';
+      col: number;
+      /** Fixed column width in PDF points. */
+      width: number;
+    }
+  | {
+      pageNumber: number;
+      tableIndexOnPage: number;
+      kind: 'setTableBorder';
+      border: TableBorderSpec;
+    };
+
+/** A table placement rectangle in PDF user-space (origin bottom-left), points. */
+export interface TableRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * One cell of a table surfaced by `tableStructure`: its 0-based grid position
+ * (`col` = leftmost spanned column), spans, and the `source_index`es of its runs
+ * (= `TextElement.index`). The editor maps a clicked text element to its cell via
+ * `sourceIndices`, then targets a row/column insert at `row`/`col`.
+ */
+export interface TableCellInfo {
+  row: number;
+  col: number;
+  colSpan: number;
+  rowSpan: number;
+  sourceIndices: number[];
+}
+
+/** One table surfaced by `tableStructure` — its handle, grid size, frame, cells. */
+export interface TableStructureInfo {
+  /** 1-based page number (matches `TextElement` pages). */
+  pageNumber: number;
+  /** 0-based index among the tables on its page. */
+  tableIndexOnPage: number;
+  /** Number of grid rows. */
+  rowCount: number;
+  /** Number of grid columns. */
+  colCount: number;
+  /** Placement frame (PDF points, origin bottom-left), or `null` when unknown. */
+  frame: TableRect | null;
+  /** Cells in row-major order (grid position + spans + run indices). */
+  cells: TableCellInfo[];
+}
+
+/** The `tableStructure` response: every table in the document. */
+export interface TableStructureResult {
+  success: boolean;
+  tables: TableStructureInfo[];
+}
+
+// Re-export types for consumers
+export type {
+  OpenPdfOptions,
+  OpenPdfResult,
+  SavePdfOptions,
+  MergePdfOptions,
+  SplitPdfOptions,
+  SplitPdfResult,
+  SplitPart,
+  PreviewOptions,
+  AllThumbnailsResult,
+  ThumbnailData,
+  EncryptOptions,
+  PermissionsResult,
+  FormFieldsResult,
+  ElementOperationOptions,
+  ConvertOptions,
+  MetadataResult,
+  FlattenOptions,
+};
+// ApplyElementsOperation, ParagraphStyleEdit, ListEdit, ParagraphStylePatch,
+// ListMarkerSpec & LineHeightSpec are exported above (interface/type
+// declarations) — no re-export needed here.
+// CompressPdfResult & SearchablePdfResult are exported above (interface
+// declarations) — no re-export needed here.
