@@ -268,6 +268,7 @@ export function PdfReader({
   const canUseTts = isPro || (ttsUsage?.credit_chars || 0) > 0
   const pipOpen = !!pipWindow || inAppPip
   const estimatedCreditChars = charsForCreditAmount(creditQuote, creditAmount)
+  const readerMessage = ttsError || pipError || usageNotice
 
   const readerReturnPath = (() => {
     if (typeof window === 'undefined') {
@@ -371,7 +372,7 @@ export function PdfReader({
     return false
   }
 
-    function buildUsageNotices(): string[] {
+  function buildUsageNotices(): string[] {
     const usage = ttsUsageRef.current
     if (!usage) return []
 
@@ -388,11 +389,7 @@ export function PdfReader({
         return usagePercent((used / total) * 100)
       })()
 
-    if (
-      usage.credits_enabled &&
-      creditPct != null &&
-      creditPct >= warnAt
-    ) {
+    if (usage.credits_enabled && creditPct != null && creditPct >= warnAt) {
       notices.push(
         `You have used ${creditPct}% of your purchased robot-reader credits. Buy credits to keep listening.`,
       )
@@ -475,7 +472,7 @@ export function PdfReader({
     return () => window.removeEventListener('resize', apply)
   }, [])
 
-    useEffect(() => {
+  useEffect(() => {
     if (!loggedIn || !ttsPlaying) {
       setUsageNotice('')
 
@@ -509,7 +506,7 @@ export function PdfReader({
     const scheduleNotice = () => {
       if (cancelled || !ttsPlayingRef.current) return
 
-      const delay = 7000 + Math.floor(Math.random() * 23000)
+      const delay = 8000 + Math.floor(Math.random() * 22000)
 
       lowCreditCycleRef.current = window.setTimeout(() => {
         if (cancelled || !ttsPlayingRef.current) {
@@ -518,11 +515,7 @@ export function PdfReader({
         }
 
         const notices = buildUsageNotices()
-
-        if (!notices.length) {
-          scheduleNotice()
-          return
-        }
+        if (!notices.length) return
 
         const next = notices[usageNoticeIndexRef.current % notices.length]
         usageNoticeIndexRef.current += 1
@@ -530,8 +523,7 @@ export function PdfReader({
 
         lowCreditTimerRef.current = window.setTimeout(() => {
           if (!cancelled) setUsageNotice('')
-          if (ttsPlayingRef.current) scheduleNotice()
-        }, 5000)
+        }, 6000)
       }, delay)
     }
 
@@ -541,9 +533,7 @@ export function PdfReader({
       cancelled = true
       clearNoticeTimers()
     }
-  }, [isPro, loggedIn, ttsPlaying, ttsUsage])
-
-    
+  }, [loggedIn, ttsPlaying])
 
   useEffect(() => {
     if (!loggedIn) return
@@ -710,7 +700,7 @@ export function PdfReader({
       }
 
       if (lowCreditCycleRef.current) {
-        window.clearInterval(lowCreditCycleRef.current)
+        window.clearTimeout(lowCreditCycleRef.current)
       }
 
       if (creditQuoteTimerRef.current) {
@@ -1459,6 +1449,7 @@ export function PdfReader({
 
     ttsPlayingRef.current = false
     setTtsPlaying(false)
+    setUsageNotice('')
 
     stopFollowLoop()
   }
@@ -2084,43 +2075,19 @@ export function PdfReader({
       const nextPage =
         current + 1
 
-      const cached =
-        prefetchRef.current
+      void gotoPage(nextPage)
 
-      if (
-        cached &&
-        cached.page === nextPage &&
-        cached.voice === voice &&
-        cached.first
-      ) {
-        pageRef.current =
-          nextPage
-
-        setPage(nextPage)
-
-        void gotoPage(nextPage)
-
-        await playRobotReader(
-          nextPage,
-          {
-            force: true,
-            silentBusy: true,
-          },
-        )
-      } else {
-        void gotoPage(nextPage)
-
-        await playRobotReader(
-          nextPage,
-          {
-            force: true,
-            silentBusy: true,
-          },
-        )
-      }
+      await playRobotReader(
+        nextPage,
+        {
+          force: true,
+          silentBusy: true,
+        },
+      )
     } else {
       setTtsPlaying(false)
       ttsPlayingRef.current = false
+      setUsageNotice('')
 
       stopFollowLoop()
 
@@ -2146,6 +2113,7 @@ export function PdfReader({
 
       setTtsPlaying(false)
       ttsPlayingRef.current = false
+      setUsageNotice('')
 
       stopFollowLoop()
 
@@ -2540,11 +2508,10 @@ export function PdfReader({
           ) : null}
         </div>
 
-        {ttsError || pipError ? (
+        {readerMessage ? (
           <div className="shrink-0 border-b border-red-200 bg-red-50 px-3 py-2">
             <p className="text-[11px] font-semibold leading-snug text-red-700">
-              {ttsError ||
-                pipError}
+              {readerMessage}
             </p>
           </div>
         ) : null}
@@ -2734,12 +2701,6 @@ export function PdfReader({
               Next →
             </button>
           </div>
-
-          {ttsError ? (
-            <p className="text-[10px] font-semibold text-red-600">
-              {ttsError}
-            </p>
-          ) : null}
         </div>
       </div>
     )
@@ -2892,7 +2853,7 @@ export function PdfReader({
           ttsPlayingRef.current = true
           startFollowLoop()
         }}
-                onPause={() => {
+        onPause={() => {
           setTtsPlaying(false)
           ttsPlayingRef.current = false
           setUsageNotice('')
@@ -2977,24 +2938,12 @@ export function PdfReader({
               ),
             )}
           </div>
-
-          {ttsError ? (
-            <span className="text-xs font-semibold text-red-600">
-              {ttsError}
-            </span>
-          ) : null}
         </div>
       )}
 
-      {pipError ? (
+      {readerMessage ? (
         <p className="px-4 pt-2 text-center text-[12px] font-semibold text-red-600">
-          {pipError}
-        </p>
-      ) : null}
-
-      {usageNotice ? (
-        <p className="px-4 pt-2 text-center text-[12px] font-semibold text-red-600">
-          {usageNotice}
+          {readerMessage}
         </p>
       ) : null}
 
