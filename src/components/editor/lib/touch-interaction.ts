@@ -71,8 +71,12 @@ export function isCoarsePointer(): boolean {
   );
 }
 
-/** Fabric `touchCornerSize` used on coarse pointers (default is 24). */
-export const TOUCH_CORNER_SIZE = 28;
+/** Fabric `touchCornerSize` used on coarse pointers (default is 24). This is
+ * a HIT-ONLY size — Fabric renders controls at the separate `cornerSize`
+ * (unchanged, e.g. 8) and only uses this one for touch hit-testing — so
+ * bumping it doesn't make handles look bigger, just easier to grab; 44 matches
+ * the ≥44×44px touch-target guidance (redesign #3). */
+export const TOUCH_CORNER_SIZE = 44;
 /** Extra Fabric control padding on coarse pointers (easier corner grabs). */
 export const TOUCH_CONTROL_PADDING = 6;
 

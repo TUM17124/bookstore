@@ -85,6 +85,8 @@ import {
   touchActionForTool,
   allowTouchScrollingForTool,
   clientPointFromEvent,
+  isCoarsePointer,
+  coarseControlProps,
 } from "./lib/touch-interaction";
 import { attachPinchZoom } from "./lib/pinch-zoom";
 
@@ -2253,8 +2255,14 @@ export function EditorCanvas({
               // by the safe area so text never crosses the right margin. Falls
               // back to a plain default width when margins aren't known yet
               // (e.g. document still loading) rather than blocking creation.
+              // Redesign #3 (touch only): a much wider default (~65% of the
+              // page) so the box is comfortably tappable/typeable on a phone,
+              // instead of the small desktop default sized for a mouse click.
               const safeRectAtCreate = getSafeRect();
-              const DEFAULT_TEXT_WIDTH = 220;
+              const isTouch = isCoarsePointer();
+              const DEFAULT_TEXT_WIDTH = isTouch
+                ? pageDimsRef.current.width * 0.65
+                : 220;
               const textWidth = safeRectAtCreate
                 ? Math.max(60, Math.min(DEFAULT_TEXT_WIDTH, safeRectAtCreate.right - safeRectAtCreate.left))
                 : DEFAULT_TEXT_WIDTH;
@@ -2267,6 +2275,10 @@ export function EditorCanvas({
                 // doit ressembler au reste de la page, pas à un Arial générique.
                 fontFamily: documentDefaultFontFamilyRef.current,
                 fill: currentStrokeColor,
+                transparentCorners: false,
+                // Redesign #3: wider invisible touch hit area on the resize
+                // handles ({} on desktop — visual size is unchanged either way).
+                ...coarseControlProps(),
               });
               (newObj as FabricObjectWithData).data = { elementId: generateId() };
               clientLogger.debug("[EditorCanvas] Textbox created successfully:", newObj);
@@ -2776,6 +2788,35 @@ export function EditorCanvas({
           clientLogger.debug("[EditorCanvas] Adding new object to canvas:", currentTool, (newObj as FabricObjectWithData).data?.elementId);
           currentCanvas.add(newObj);
           currentCanvas.setActiveObject(newObj);
+          // Redesign #3 (mobile add-text UX, touch only): enter edit mode
+          // immediately, with the placeholder text selected so the first
+          // keystroke replaces it. Desktop keeps today's behaviour (placed,
+          // not auto-edited) — a mouse user can click to position the cursor
+          // precisely; a touch user can't reliably hit a freshly-placed,
+          // still-small box a second time. This MUST run synchronously in
+          // THIS same tap handler: iOS Safari only opens the on-screen
+          // keyboard when the textarea focus happens inside the original
+          // user-gesture call stack, not after a setTimeout/promise tick.
+          if (currentTool === "text" && isCoarsePointer()) {
+            const editable = newObj as FabricObjectWithData & {
+              enterEditing?: () => void;
+              selectAll?: () => void;
+              hiddenTextarea?: HTMLTextAreaElement | null;
+            };
+            if (typeof editable.enterEditing === "function") {
+              editable.enterEditing();
+              editable.selectAll?.();
+              // The keyboard animates in over the next few hundred ms; an
+              // immediate scrollIntoView races that resize and can land
+              // short, so give it a beat before scrolling the box above it.
+              const textarea = editable.hiddenTextarea;
+              if (textarea) {
+                window.setTimeout(() => {
+                  textarea.scrollIntoView({ block: "center", behavior: "smooth" });
+                }, 300);
+              }
+            }
+          }
           currentCanvas.renderAll();
           saveHistory(currentCanvas);
           // Redaction markers are not scene-graph elements; report their live
