@@ -3,6 +3,7 @@ import type {
   DocumentMetadata,
   FormFieldElement,
 } from '@giga-pdf/types';
+import { PDF_SERVICE_URL } from '@/lib/pdf-editor/pdf-service';
 
 /**
  * Response wrapper for PDF API routes
@@ -296,7 +297,7 @@ export const pdfService = {
     if (options.extractAnnotations === false) form.append('extractAnnotations', 'false');
     if (options.extractFormFields === false) form.append('extractFormFields', 'false');
 
-    const response = await fetch('/api/pdf/open', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/open`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -315,7 +316,7 @@ export const pdfService = {
     if (options.garbage !== undefined) form.append('garbage', String(options.garbage));
     if (options.useObjectStreams !== undefined) form.append('useObjectStreams', String(options.useObjectStreams));
 
-    const response = await fetch('/api/pdf/save', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/save`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -340,7 +341,7 @@ export const pdfService = {
     }
     if (options.outputName) form.append('outputName', options.outputName);
 
-    const response = await fetch('/api/pdf/merge', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/merge`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -360,7 +361,7 @@ export const pdfService = {
     if (options.ranges) form.append('ranges', JSON.stringify(options.ranges));
     if (options.outputNames) form.append('outputNames', JSON.stringify(options.outputNames));
 
-    const response = await fetch('/api/pdf/split', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/split`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -387,7 +388,7 @@ export const pdfService = {
     if (options.maxWidth !== undefined) form.append('maxWidth', String(options.maxWidth));
     if (options.maxHeight !== undefined) form.append('maxHeight', String(options.maxHeight));
 
-    const response = await fetch('/api/pdf/preview', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/preview`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -412,7 +413,7 @@ export const pdfService = {
     if (options.maxWidth !== undefined) form.append('maxWidth', String(options.maxWidth));
     if (options.maxHeight !== undefined) form.append('maxHeight', String(options.maxHeight));
 
-    const response = await fetch('/api/pdf/preview', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/preview`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -442,7 +443,7 @@ export const pdfService = {
     if (options.algorithm) form.append('algorithm', options.algorithm);
     if (options.permissions) form.append('permissions', JSON.stringify(options.permissions));
 
-    const response = await fetch('/api/pdf/encrypt', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/encrypt`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -460,7 +461,7 @@ export const pdfService = {
     form.append('action', 'decrypt');
     form.append('password', password);
 
-    const response = await fetch('/api/pdf/encrypt', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/encrypt`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -486,7 +487,7 @@ export const pdfService = {
     form.append('certificate', certificate, certificate.name);
     form.append('privateKey', privateKey, privateKey.name);
 
-    const response = await fetch('/api/pdf/encrypt', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/encrypt`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -503,7 +504,7 @@ export const pdfService = {
     appendFileToForm(form, file);
     form.append('action', 'getPermissions');
 
-    const response = await fetch('/api/pdf/encrypt', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/encrypt`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -526,7 +527,7 @@ export const pdfService = {
     form.append('ownerPassword', ownerPassword);
     form.append('permissions', JSON.stringify(permissions));
 
-    const response = await fetch('/api/pdf/encrypt', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/encrypt`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -543,7 +544,7 @@ export const pdfService = {
     appendFileToForm(form, file);
     form.append('action', 'get');
 
-    const response = await fetch('/api/pdf/forms', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/forms`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -564,7 +565,7 @@ export const pdfService = {
     form.append('action', 'fill');
     form.append('values', JSON.stringify(values));
 
-    const response = await fetch('/api/pdf/forms', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/forms`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -587,7 +588,7 @@ export const pdfService = {
     form.append('pageNumber', String(pageNumber));
     form.append('field', JSON.stringify(field));
 
-    const response = await fetch('/api/pdf/forms', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/forms`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -607,7 +608,7 @@ export const pdfService = {
     form.append('element', JSON.stringify(options.element));
     if (options.oldBounds) form.append('oldBounds', JSON.stringify(options.oldBounds));
 
-    const response = await fetch('/api/pdf/text', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/text`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -627,7 +628,7 @@ export const pdfService = {
     form.append('element', JSON.stringify(options.element));
     if (options.oldBounds) form.append('oldBounds', JSON.stringify(options.oldBounds));
 
-    const response = await fetch('/api/pdf/image', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/image`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -647,7 +648,7 @@ export const pdfService = {
     form.append('element', JSON.stringify(options.element));
     if (options.oldBounds) form.append('oldBounds', JSON.stringify(options.oldBounds));
 
-    const response = await fetch('/api/pdf/shape', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/shape`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -667,7 +668,7 @@ export const pdfService = {
     form.append('element', JSON.stringify(options.element));
     if (options.oldBounds) form.append('oldBounds', JSON.stringify(options.oldBounds));
 
-    const response = await fetch('/api/pdf/annotations', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/annotations`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -693,7 +694,7 @@ export const pdfService = {
     form.append('operation', operation);
     form.append('params', JSON.stringify(params));
 
-    const response = await fetch('/api/pdf/pages', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/pages`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -719,7 +720,7 @@ export const pdfService = {
     form.append('action', action);
     if (metadata) form.append('metadata', JSON.stringify(metadata));
 
-    const response = await fetch('/api/pdf/metadata', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/metadata`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -741,7 +742,7 @@ export const pdfService = {
     if (options.flattenAnnotations !== undefined) form.append('flattenAnnotations', String(options.flattenAnnotations));
     if (options.flattenForms !== undefined) form.append('flattenForms', String(options.flattenForms));
 
-    const response = await fetch('/api/pdf/flatten', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/flatten`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -768,7 +769,7 @@ export const pdfService = {
     appendFileToForm(form, file);
     form.append('operations', JSON.stringify(operations));
 
-    const response = await fetch('/api/pdf/apply-elements', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/apply-elements`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -794,7 +795,7 @@ export const pdfService = {
     appendFileToForm(form, file);
     form.append('operations', JSON.stringify(operations));
 
-    const response = await fetch('/api/pdf/ocg', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/ocg`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -834,7 +835,7 @@ export const pdfService = {
       form.append('tableOps', JSON.stringify(edits.tableOps));
     }
 
-    const response = await fetch('/api/pdf/apply-model-ops', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/apply-model-ops`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -854,7 +855,7 @@ export const pdfService = {
     const form = new FormData();
     appendFileToForm(form, file);
 
-    const response = await fetch('/api/pdf/table-structure', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/table-structure`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -883,7 +884,7 @@ export const pdfService = {
     if (options.pageSize) form.append('pageSize', options.pageSize);
     if (options.margin) form.append('margin', options.margin);
 
-    const response = await fetch('/api/pdf/convert', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/convert`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -919,7 +920,7 @@ export const pdfService = {
       form.append('maxHitsPerPage', String(options.maxHitsPerPage));
     }
 
-    const response = await fetch('/api/pdf/search', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/search`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -965,7 +966,7 @@ export const pdfService = {
     if (options.opacity !== undefined) form.append('opacity', String(options.opacity));
     if (options.custom) form.append('custom', JSON.stringify(options.custom));
 
-    const response = await fetch('/api/pdf/watermark', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/watermark`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -1003,7 +1004,7 @@ export const pdfService = {
     if (options.opacity !== undefined) form.append('opacity', String(options.opacity));
     if (options.tile !== undefined) form.append('tile', options.tile ? 'true' : 'false');
 
-    const response = await fetch('/api/pdf/watermark', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/watermark`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -1062,7 +1063,7 @@ export const pdfService = {
     if (options.timestamp) form.append('timestamp', 'true');
     if (options.ltv) form.append('ltv', 'true');
 
-    const response = await fetch('/api/pdf/sign', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/sign`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -1096,7 +1097,7 @@ export const pdfService = {
     appendFileToForm(form, file);
     form.append('action', 'verify');
 
-    const response = await fetch('/api/pdf/sign', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/sign`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -1119,7 +1120,7 @@ export const pdfService = {
     if (options.reason) form.append('reason', options.reason);
     if (options.signerName) form.append('signerName', options.signerName);
 
-    const response = await fetch('/api/pdf/sign', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/sign`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -1149,7 +1150,7 @@ export const pdfService = {
     if (options.dpi) form.append('dpi', String(options.dpi));
     if (options.format) form.append('format', options.format);
 
-    const response = await fetch('/api/pdf/ocr', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/ocr`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -1167,7 +1168,7 @@ export const pdfService = {
    * enable/disable the OCR button.
    */
   isOcrAvailable: async (): Promise<boolean> => {
-    const response = await fetch('/api/pdf/ocr', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/ocr`, {
       method: 'GET',
       headers: getAuthHeaders(),
     });
@@ -1197,7 +1198,7 @@ export const pdfService = {
     if (options.linearize) form.append('linearize', 'true');
     if (options.version) form.append('version', options.version);
 
-    const response = await fetch('/api/pdf/compress', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/compress`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -1263,7 +1264,7 @@ export const pdfService = {
     if (options.handwriting) form.append('handwriting', 'true');
     if (options.pageRange) form.append('pageRange', JSON.stringify(options.pageRange));
 
-    const response = await fetch('/api/pdf/ocr', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/ocr`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -1325,7 +1326,7 @@ export const pdfService = {
     if (options.handwriting) form.append('handwriting', 'true');
     if (options.pageRange) form.append('pageRange', JSON.stringify(options.pageRange));
 
-    const response = await fetch('/api/pdf/ocr', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/ocr`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
@@ -1355,7 +1356,7 @@ export const pdfService = {
     appendFileToForm(form, file);
     form.append('variant', variant);
 
-    const response = await fetch('/api/pdf/pdfa', {
+    const response = await fetch(`${PDF_SERVICE_URL}/pdf/pdfa`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: form,
