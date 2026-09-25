@@ -119,32 +119,32 @@ export function overflowsBottomMargin(box: BoundedBox, rect: SafeRect): boolean 
 }
 
 /**
- * Clamp an element's PDF USER SPACE bounds (bottom-left origin, Y increases
- * upward — the `element.bounds` convention used by the Properties panel's X/
- * Y/Width/Height fields and page.tsx's handleElementUpdate) into `margins`.
- * DELIBERATELY separate from {@link clampPositionToRect}/{@link
- * clampSizeToRect} above, which work in Fabric's scene space (top-left
- * origin, Y down) — mixing the two conventions up is exactly the
- * top-left/bottom-left bug this file exists to avoid. No rotation mapping
- * needed here: `element.bounds` is already page-intrinsic, the same frame
- * `PageMargins` itself is defined in (only the Fabric canvas render is in
- * rotated/screen space).
+ * Clamp an element's `bounds` (the model shape the Properties panel's X/Y/
+ * Width/Height fields and page.tsx's handleElementUpdate read/write) into
+ * `margins`. `element.bounds` turned out NOT to be PDF user space as an
+ * earlier version of this function assumed — render-elements.ts assigns
+ * `left: element.bounds.x, top: element.bounds.y` to a Fabric object with NO
+ * transform at all (confirmed directly in the source, see
+ * text-baseline.ts's "parser hands the editor bounds.{x,y} at the TOP-LEFT
+ * of the glyph bbox"), i.e. `bounds` is the SAME top-left-origin, Y-down,
+ * already-rotated space Fabric's scene uses for the currently displayed
+ * page. That earlier (bottom-left, un-rotated) version was wrong — it
+ * happened to clamp visually-plausible values whenever a page's top and
+ * bottom margins were equal (the common case), which is why testing it
+ * didn't catch the swap. `margins` here must be SCREEN-space (already
+ * through screenMarginsFromPage for the owning page's rotation), exactly
+ * like the Fabric-side call sites — this is now a thin wrapper over the
+ * SAME clampPositionToRect/clampSizeToRect above, not a parallel
+ * implementation, so the two can't drift apart again.
  */
 export function clampBoundsToMargins(
   bounds: { x: number; y: number; width: number; height: number },
-  margins: PageMargins,
+  screenMargins: PageMargins,
   pageSize: PageSize,
 ): { x: number; y: number; width: number; height: number } {
-  const minX = margins.left;
-  const maxX = pageSize.width - margins.right;
-  const minY = margins.bottom;
-  const maxY = pageSize.height - margins.top;
-
-  const width = Math.max(1, Math.min(bounds.width, maxX - minX));
-  const height = Math.max(1, Math.min(bounds.height, maxY - minY));
-
-  const x = Math.min(Math.max(bounds.x, minX), Math.max(minX, maxX - width));
-  const y = Math.min(Math.max(bounds.y, minY), Math.max(minY, maxY - height));
-
-  return { x, y, width, height };
+  const rect = safeRectFromMargins(pageSize, screenMargins);
+  const box: BoundedBox = { left: bounds.x, top: bounds.y, width: bounds.width, height: bounds.height };
+  const size = clampSizeToRect(box, rect);
+  const pos = clampPositionToRect({ ...box, ...size }, rect);
+  return { x: pos.left, y: pos.top, width: size.width, height: size.height };
 }

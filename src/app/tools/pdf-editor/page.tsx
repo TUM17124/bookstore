@@ -180,6 +180,7 @@ import {
   clampBoundsToMargins,
   resolveMargins,
 } from "@/components/editor/lib/margin-enforcement";
+import { screenMarginsFromPage } from "@/components/editor/lib/margin-rotation";
 import {
   applyHeaderFooter,
   removeHeaderFooter,
@@ -2316,18 +2317,22 @@ function EditorPageInner() {
       if (ownerPage && existing) {
         // Redesign #4: clamp Properties-panel X/Y/Width/Height edits into
         // the page's safe-area margins too — mouse/touch drags are already
-        // clamped inside editor-canvas.tsx (Fabric scene space, top-left
-        // origin), but typing into these fields bypasses Fabric entirely and
-        // writes straight to `element.bounds`, which is PDF USER SPACE
-        // (bottom-left origin, Y up) — a DIFFERENT convention, hence the
-        // separate clampBoundsToMargins helper rather than reusing the
-        // Fabric-side one. Annotations are exempt, same reasoning as the
-        // canvas side: they mark up existing content wherever it is.
+        // clamped inside editor-canvas.tsx, but typing into these fields
+        // bypasses Fabric entirely and writes straight to `element.bounds`.
+        // `element.bounds` turned out to be the SAME top-left, Y-down,
+        // already-rotated space Fabric's scene uses (render-elements.ts
+        // assigns it to `left`/`top` with no transform) — so this uses the
+        // exact same screenMarginsFromPage conversion as the canvas side,
+        // not a separate convention. Annotations are exempt, same reasoning
+        // as the canvas side: they mark up existing content wherever it is.
         const boundsUpdate =
           updates.bounds && existing.type !== "annotation"
             ? clampBoundsToMargins(
                 updates.bounds,
-                resolveMargins(pageMargins[pages.indexOf(ownerPage)] ?? null),
+                screenMarginsFromPage(
+                  resolveMargins(pageMargins[pages.indexOf(ownerPage)] ?? null),
+                  ownerPage.dimensions.rotation,
+                ),
                 { width: ownerPage.dimensions.width, height: ownerPage.dimensions.height },
               )
             : updates.bounds;
