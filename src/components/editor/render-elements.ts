@@ -523,7 +523,7 @@ function squigglyPathData(width: number, amp = 2): string {
  * going from (x1,y1) → (x2,y2), in the same coordinate space as the line. The
  * head is `size` long and `size*0.7` wide, pointing along the segment direction.
  */
-function arrowHeadPoints(
+export function arrowHeadPoints(
   x1: number,
   y1: number,
   x2: number,
@@ -1809,9 +1809,25 @@ export async function renderElementsOverlay(
             fabricObj = new Ellipse({ ...shapeOptions, rx: w / 2, ry: h / 2 });
             break;
           case "line":
-          case "arrow":
             fabricObj = new Line([0, 0, w, 0], shapeOptions);
             break;
+          case "arrow": {
+            // Shaft + filled triangular head, same construction as the
+            // ANNOTATION "arrow" case below - this SHAPE-type arrow had none
+            // at all (always rendered as a bare Line, even after reload).
+            const strokeW = (shapeOptions.strokeWidth as number | undefined) ?? 2;
+            const headSize = Math.max(6, strokeW * 4);
+            const [tip, c1, c2] = arrowHeadPoints(0, 0, w, 0, headSize);
+            const d =
+              `M 0 0 L ${w} 0 ` +
+              `M ${tip!.x} ${tip!.y} L ${c1!.x} ${c1!.y} ` +
+              `L ${c2!.x} ${c2!.y} Z`;
+            fabricObj = new FabricPath(d, {
+              ...shapeOptions,
+              fill: (shapeOptions.stroke as string | undefined) ?? "#000000",
+            });
+            break;
+          }
           case "triangle":
             fabricObj = new Triangle({ ...shapeOptions, width: w, height: h });
             break;

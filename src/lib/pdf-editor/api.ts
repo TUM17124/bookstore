@@ -310,7 +310,7 @@ class APIClient {
     if (params.tag) searchParams.set("tag", params.tag);
 
     const response = await this.request<APIResponse<DocumentListResponse>>(
-      `/api/v1/storage/documents?${searchParams.toString()}`
+      `/api/editor/documents/?${searchParams.toString()}`
     );
     return response.data;
   }
@@ -557,7 +557,7 @@ class APIClient {
 
   async deleteDocument(storedDocumentId: string): Promise<void> {
     await this.request<APIResponse<{ deleted: boolean }>>(
-      `/api/v1/storage/documents/${storedDocumentId}`,
+      `/api/editor/documents/${storedDocumentId}/`,
       { method: "DELETE" }
     );
   }

@@ -442,6 +442,12 @@ function UploadToStartPrompt({
         </Button>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
+      <a
+        href="/tools/pdf-editor/documents"
+        className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+      >
+        View my saved documents
+      </a>
     </div>
   );
 }
@@ -5429,7 +5435,7 @@ function EditorPageInner() {
             <h2 className="text-lg font-semibold">{t("error.title")}</h2>
             <p className="text-muted-foreground">{error}</p>
           </div>
-          <Button onClick={() => router.push("/documents")}>
+          <Button onClick={() => router.push("/tools/pdf-editor/documents")}>
             {t("error.backToDocuments")}
           </Button>
         </div>
@@ -5503,7 +5509,7 @@ function EditorPageInner() {
       {/* Header */}
       <header className="flex items-center justify-between gap-2 border-b px-2 py-2 md:px-4">
         <div className="flex min-w-0 items-center gap-3">
-          <Link href="/documents">
+          <Link href="/tools/pdf-editor/documents">
             <Button variant="ghost" size="icon" title={t("back")}>
               <ArrowLeft className="h-4 w-4" />
             </Button>

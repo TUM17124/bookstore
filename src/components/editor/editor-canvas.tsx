@@ -36,6 +36,10 @@ import {
   beginParagraphEditSession,
   restoreParagraphEditSession,
   sealParagraphEditSession,
+  // Shared with render-elements.ts's own "arrow" case (the load/reload path)
+  // so a freshly-drawn arrow looks identical to one reloaded from storage,
+  // instead of the plain headless Line it used to fall back to at draw time.
+  arrowHeadPoints,
 } from "./render-elements";
 // Pure Fabric<->Element helpers in lib/fabric-element-io.ts, so any surface that
 // serialises Fabric objects back to Elements does so identically.
@@ -2056,7 +2060,7 @@ export function EditorCanvas({
     import("fabric").then((fabricModule) => {
       // Conservé pour la construction hors-loadPage (session de paragraphe).
       fabricModuleRef.current = fabricModule;
-      const { Canvas, Rect, Circle, Ellipse, Triangle, Line, IText, Group, FabricText, Polyline } = fabricModule;
+      const { Canvas, Rect, Circle, Ellipse, Triangle, Line, IText, Group, FabricText, Polyline, Path: FabricPath } = fabricModule;
 
       const host = containerRef.current;
       // Le container a pu se démonter pendant l'import async (mode continu :
@@ -2241,9 +2245,25 @@ export function EditorCanvas({
                 });
                 break;
               case "line":
-              case "arrow":
                 newObj = new Line([0, 0, 100, 0], shapeOptions);
                 break;
+              case "arrow": {
+                // Same shaft+triangular-head Path as the annotation "arrow"
+                // case and render-elements.ts's shape reload path - this used
+                // to be a bare headless Line, both at draw time and reload.
+                const strokeW = (shapeOptions.strokeWidth as number | undefined) ?? 2;
+                const headSize = Math.max(6, strokeW * 4);
+                const [tip, c1, c2] = arrowHeadPoints(0, 0, 100, 0, headSize);
+                const d =
+                  `M 0 0 L 100 0 ` +
+                  `M ${tip!.x} ${tip!.y} L ${c1!.x} ${c1!.y} ` +
+                  `L ${c2!.x} ${c2!.y} Z`;
+                newObj = new FabricPath(d, {
+                  ...shapeOptions,
+                  fill: currentStrokeColor,
+                });
+                break;
+              }
             }
             if (newObj) {
               (newObj as FabricObjectWithData).data = { elementId: generateId() };
@@ -2334,7 +2354,6 @@ export function EditorCanvas({
                 });
                 break;
               case "line":
-              case "arrow":
                 newObj = new Line([0, 0, 120, 0], {
                   left: pointer.x,
                   top: pointer.y,
@@ -2342,6 +2361,28 @@ export function EditorCanvas({
                   strokeWidth: currentStrokeWidth || 2,
                 });
                 break;
+              case "arrow": {
+                // Same shaft+triangular-head Path as render-elements.ts's own
+                // "arrow" case (the load/reload path) - was previously a bare
+                // headless Line here, so a freshly-drawn arrow looked like a
+                // plain line until the page reloaded and the "real" renderer
+                // took over.
+                const lineWidth = currentStrokeWidth || 2;
+                const headSize = Math.max(6, lineWidth * 4);
+                const [tip, c1, c2] = arrowHeadPoints(0, 0, 120, 0, headSize);
+                const d =
+                  `M 0 0 L 120 0 ` +
+                  `M ${tip!.x} ${tip!.y} L ${c1!.x} ${c1!.y} ` +
+                  `L ${c2!.x} ${c2!.y} Z`;
+                newObj = new FabricPath(d, {
+                  left: pointer.x,
+                  top: pointer.y,
+                  fill: currentStrokeColor,
+                  stroke: currentStrokeColor,
+                  strokeWidth: lineWidth,
+                });
+                break;
+              }
             }
             if (newObj) {
               // Real PDF annotations require data.annotationType so the
