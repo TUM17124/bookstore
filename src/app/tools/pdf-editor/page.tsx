@@ -343,7 +343,7 @@ export default function EditorPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex h-screen w-full items-center justify-center">
+        <div className="flex h-[calc(100dvh-4rem)] w-full items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       }
@@ -408,7 +408,7 @@ function UploadToStartPrompt({
   }
 
   return (
-    <div className="flex h-screen w-full flex-col items-center justify-center gap-4 bg-background px-4 text-center">
+    <div className="flex h-[calc(100dvh-4rem)] w-full flex-col items-center justify-center gap-4 bg-background px-4 text-center">
       <FileEdit className="h-10 w-10 text-muted-foreground" />
       <div>
         <h1 className="text-lg font-semibold">PDF Editor</h1>
@@ -5406,7 +5406,7 @@ function EditorPageInner() {
 
   if (error) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex h-[calc(100dvh-4rem)] items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
           <AlertCircle className="h-12 w-12 text-destructive" />
           <div>
@@ -5449,7 +5449,7 @@ function EditorPageInner() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-background">
+    <div className="flex h-[calc(100dvh-4rem)] flex-col bg-background">
       {/* Hidden file input for image upload */}
       <input
         ref={fileInputRef}
