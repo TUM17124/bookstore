@@ -17,6 +17,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { downloadBlob } from "@giga-pdf/api";
+import { PDF_SERVICE_URL } from "@/lib/pdf-editor/pdf-service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ const SHEET_PRESETS = {
 } as const;
 type SheetPreset = keyof typeof SHEET_PRESETS;
 
-const ENDPOINT = "/api/pdf/imposition";
+const ENDPOINT = `${PDF_SERVICE_URL}/pdf/imposition`;
 
 export interface ImpositionDialogProps {
   open: boolean;
