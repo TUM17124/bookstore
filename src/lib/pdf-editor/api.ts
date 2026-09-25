@@ -68,9 +68,16 @@ export interface StoredDocument {
   deleted_at?: string | null;
 }
 
+export interface StorageInfo {
+  used_bytes: number;
+  /** 0 = unlimited (admin turned the cap off in Site settings). */
+  cap_bytes: number;
+}
+
 export interface DocumentListResponse {
   items: StoredDocument[];
   pagination: PaginationInfo;
+  storage?: StorageInfo;
 }
 
 // ===== Semantic search (OCR) types — #85 =====

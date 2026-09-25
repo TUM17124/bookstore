@@ -12,8 +12,17 @@ import {
   Upload,
 } from "lucide-react";
 import { Button } from "@giga-pdf/ui";
-import { api, getAuthToken, type StoredDocument } from "@/lib/pdf-editor/api";
+import { api, getAuthToken, type StoredDocument, type StorageInfo } from "@/lib/pdf-editor/api";
 import { PDF_SERVICE_URL } from "@/lib/pdf-editor/pdf-service";
+
+/** e.g. 1536000 -> "1.46 MB". Admin-configured cap, so no fixed unit assumed. */
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return "0 MB";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const exp = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  const value = bytes / Math.pow(1024, exp);
+  return `${value.toFixed(value >= 100 || exp === 0 ? 0 : 1)} ${units[exp]}`;
+}
 
 /**
  * "My Documents" — the PDF editor's own saved-files list.
@@ -29,6 +38,7 @@ import { PDF_SERVICE_URL } from "@/lib/pdf-editor/pdf-service";
 export default function EditorDocumentsPage() {
   const router = useRouter();
   const [documents, setDocuments] = useState<StoredDocument[]>([]);
+  const [storage, setStorage] = useState<StorageInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -46,6 +56,7 @@ export default function EditorDocumentsPage() {
         search: searchTerm || undefined,
       });
       setDocuments(res.items);
+      setStorage(res.storage ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load your documents.");
     } finally {
@@ -105,6 +116,10 @@ export default function EditorDocumentsPage() {
     try {
       await api.deleteDocument(doc.stored_document_id);
       setDocuments((prev) => prev.filter((d) => d.stored_document_id !== doc.stored_document_id));
+      // Storage freed by the delete — refresh the real number from the
+      // server rather than reconstructing it client-side (file_size_bytes
+      // only covers the current version, not a kept original).
+      void load(search);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not delete the document.");
     } finally {
@@ -140,6 +155,47 @@ export default function EditorDocumentsPage() {
           </Button>
         </div>
       </div>
+
+      {storage ? (
+        <div className="mt-4">
+          {storage.cap_bytes > 0 ? (
+            (() => {
+              const pct = Math.min(100, (storage.used_bytes / storage.cap_bytes) * 100);
+              const barColor =
+                pct >= 100
+                  ? "bg-destructive"
+                  : pct >= 90
+                    ? "bg-amber-500"
+                    : "bg-primary";
+              return (
+                <>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {formatBytes(storage.used_bytes)} of {formatBytes(storage.cap_bytes)} used
+                    </span>
+                    <span>{formatBytes(Math.max(0, storage.cap_bytes - storage.used_bytes))} left</span>
+                  </div>
+                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={`h-full rounded-full transition-all ${barColor}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  {pct >= 100 && (
+                    <p className="mt-1 text-xs text-destructive">
+                      Storage full — delete a document to save new ones.
+                    </p>
+                  )}
+                </>
+              );
+            })()
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {formatBytes(storage.used_bytes)} used · unlimited storage
+            </p>
+          )}
+        </div>
+      ) : null}
 
       <div className="relative mt-6">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
