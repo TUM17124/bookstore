@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/pdf-editor/api";
+import { PDF_SERVICE_URL } from "@/lib/pdf-editor/pdf-service";
 import { clientLogger } from "@/lib/pdf-editor/client-logger";
 import type { DocumentObject, DocumentLanguageInfo, PageObject, BookmarkObject, LayerObject, EmbeddedFileObject, Element } from "@giga-pdf/types";
 
@@ -345,7 +346,7 @@ export function useDocument(options: UseDocumentOptions): UseDocumentReturn {
       // B — analyzing : démarrer l'estimateur borné AVANT le fetch du parse.
       advanceProgress({ phase: "analyzing" });
       startAnalyzingEstimator();
-      const parseResp = await fetch("/api/pdf/parse-from-s3", {
+      const parseResp = await fetch(`${PDF_SERVICE_URL}/api/pdf/parse-from-s3`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
