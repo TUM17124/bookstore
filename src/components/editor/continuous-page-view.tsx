@@ -857,7 +857,13 @@ function ContinuousPageViewImpl(
     // navigation → pan-x pan-y : scroll natif, le pinch app garde le zoom).
     <div
       ref={scrollRef}
-      className="w-full overflow-x-auto overscroll-contain bg-gray-200"
+      // `overflow-x-auto` forces the CSS engine to compute `overflow-y` as
+      // `auto` too (spec quirk: an axis left "visible" while the other isn't
+      // becomes `auto`) - combined with `overscroll-contain` on BOTH axes,
+      // this turned into a scroll trap that swallowed vertical wheel/touch
+      // input instead of letting it bubble to the page. `overscroll-x-contain`
+      // keeps the horizontal pull-to-refresh guard without blocking that.
+      className="w-full overflow-x-auto overscroll-x-contain bg-gray-200"
       style={{ touchAction: touchActionForTool(tool) }}
     >
       {/* Pre-sized content surface: total document height, absolute children. */}
