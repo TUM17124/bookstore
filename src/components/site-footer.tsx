@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { BookOpen, Mail } from "lucide-react"
 
 const policyLinks = [
@@ -20,6 +21,12 @@ const browseLinks = [
 
 export function SiteFooter() {
   const year = new Date().getFullYear()
+  const pathname = usePathname()
+
+  // The editor is a full-screen app-like tool (own fixed toolbar, fills
+  // exactly the viewport below the nav) - the marketing footer has nowhere
+  // to go there and just adds dead scroll height below it.
+  if (pathname?.startsWith("/tools/pdf-editor")) return null
 
   return (
     <footer className="site-footer relative border-t border-foreground/5 bg-zinc-50 dark:bg-black">
