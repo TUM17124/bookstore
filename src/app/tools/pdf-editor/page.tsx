@@ -2330,7 +2330,10 @@ function EditorPageInner() {
             ? clampBoundsToMargins(
                 updates.bounds,
                 screenMarginsFromPage(
-                  resolveMargins(pageMargins[pages.indexOf(ownerPage)] ?? null),
+                  resolveMargins(pageMargins[pages.indexOf(ownerPage)] ?? null, {
+                    width: ownerPage.dimensions.width,
+                    height: ownerPage.dimensions.height,
+                  }),
                   ownerPage.dimensions.rotation,
                 ),
                 { width: ownerPage.dimensions.width, height: ownerPage.dimensions.height },

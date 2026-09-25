@@ -826,8 +826,12 @@ export function EditorCanvas({
    * completely unconstrained).
    */
   const getSafeRect = useCallback((): SafeRect => {
-    const m = resolveMargins(marginsRef.current);
     const dims = pageDimsRef.current;
+    // Validated against the page's own (display) size — an approximation
+    // for a rotated page (validating page-intrinsic margins against display
+    // dimensions), acceptable since this is only a sanity check that
+    // triggers the fallback, not the clamp math itself.
+    const m = resolveMargins(marginsRef.current, { width: dims.width, height: dims.height });
     const screen = screenMarginsFromPage(m, dims.rotation);
     return safeRectFromMargins({ width: dims.width, height: dims.height }, screen);
   }, []);

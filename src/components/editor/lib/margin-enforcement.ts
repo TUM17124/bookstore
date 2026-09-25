@@ -28,30 +28,60 @@ export interface PageSize {
 /** Fallback safe-area inset (PDF points) used by {@link resolveMargins}. */
 export const DEFAULT_FALLBACK_MARGIN_PT = 36;
 
+const FALLBACK_MARGINS: PageMargins = {
+  top: DEFAULT_FALLBACK_MARGIN_PT,
+  right: DEFAULT_FALLBACK_MARGIN_PT,
+  bottom: DEFAULT_FALLBACK_MARGIN_PT,
+  left: DEFAULT_FALLBACK_MARGIN_PT,
+};
+
 /**
  * The real per-page margins system (`lib/page-margins.ts`) estimates a
  * page's margin from its CropBox→MediaBox inset when nothing was ever
  * explicitly dragged. A freshly created or never-cropped page has NO inset
- * to estimate from, so that estimate comes back as exactly `{0,0,0,0}` — a
- * degenerate "nothing to estimate", not a deliberate zero margin (no real
- * document sets zero on all four sides at once). Treat that, and truly
- * unknown (`null`) margins, as "not configured yet" and fall back to a sane
- * default instead of leaving placement completely unconstrained — an actual
- * dragged value (even a small one) always wins since it's never exactly
- * `{0,0,0,0}`. Shared by every margin-enforcement call site so the fallback
+ * to estimate from, so that estimate comes back as exactly `{0,0,0,0}` in
+ * the common case — a degenerate "nothing to estimate", not a deliberate
+ * zero margin (no real document sets zero on all four sides at once).
+ *
+ * On some documents (confirmed live: a fresh blank page) the engine's
+ * CropBox-inset estimate instead comes back NEGATIVE or otherwise nonsense
+ * on one side, which is worse than the all-zero case: it silently produces
+ * an inverted or oversized safe rect (this shipped and was live — a text box
+ * could be dragged ~110pt past the true right edge on a 595pt-wide page
+ * before it stopped, traced to exactly this). Rather than special-case
+ * "negative" (the failure could in principle be a huge NaN/Infinity too),
+ * this validates the resulting rect HOLISTICALLY against `pageSize`: if it
+ * isn't a normal, positive-area rect inside the page, the margins are
+ * treated as unusable and the safe default wins — a real dragged value
+ * (even a small one) always still passes, since it always produces a sane
+ * rect. Shared by every margin-enforcement call site so the fallback
  * behaves identically everywhere (Fabric canvas, Properties panel fields).
  */
-export function resolveMargins(raw: PageMargins | null | undefined): PageMargins {
-  const isDegenerate =
-    !raw || (raw.top === 0 && raw.right === 0 && raw.bottom === 0 && raw.left === 0);
-  return isDegenerate
-    ? {
-        top: DEFAULT_FALLBACK_MARGIN_PT,
-        right: DEFAULT_FALLBACK_MARGIN_PT,
-        bottom: DEFAULT_FALLBACK_MARGIN_PT,
-        left: DEFAULT_FALLBACK_MARGIN_PT,
-      }
-    : raw;
+export function resolveMargins(
+  raw: PageMargins | null | undefined,
+  pageSize: PageSize,
+): PageMargins {
+  if (!raw) return FALLBACK_MARGINS;
+  const values = [raw.top, raw.right, raw.bottom, raw.left];
+  // All-zero is geometrically "sane" (the full page is a valid, if pointless,
+  // safe area) so the holistic rect check below would let it through — it
+  // needs its own explicit check, same as the original version of this
+  // function. Losing this exact case was a real regression caught by the
+  // test right below it while rewriting this function to also catch the
+  // negative-margin case (see that test's comment for the live bug).
+  const isAllZero = values.every((v) => v === 0);
+  if (isAllZero || values.some((v) => !Number.isFinite(v) || v < 0)) {
+    return FALLBACK_MARGINS;
+  }
+  const rect = safeRectFromMargins(pageSize, raw);
+  const MIN_SAFE_AREA_PT = 20; // a safe area narrower/shorter than this isn't usable
+  if (
+    rect.right - rect.left < MIN_SAFE_AREA_PT ||
+    rect.bottom - rect.top < MIN_SAFE_AREA_PT
+  ) {
+    return FALLBACK_MARGINS;
+  }
+  return raw;
 }
 
 export interface SafeRect {
