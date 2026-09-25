@@ -5559,19 +5559,13 @@ function EditorPageInner() {
         </div>
 
         <div className="flex shrink-0 items-center gap-2 md:gap-3">
-          {/* Below md these three actions collapse into the "Actions document"
+          {/* Below md these actions collapse into the "Actions document"
               menu (mirror items marked md:hidden inside it) to keep the header
-              compact; the canvas stays the priority on mobile. */}
-          <Button
-            variant="outline"
-            size="sm"
-            className="hidden gap-2 md:inline-flex"
-            onClick={() => setShowShareDialog(true)}
-            disabled={!storedDocumentId}
-          >
-            <Users className="h-4 w-4" />
-            <span className="hidden sm:inline">{t("share")}</span>
-          </Button>
+              compact; the canvas stays the priority on mobile.
+              Share is hidden, not just broken-on-click: the invite endpoint
+              was never built (real-time collaboration was explicitly cut
+              from this migration's scope), so surfacing "Failed to send
+              invitation" as a live error is worse than not offering it. */}
           <Button
             variant="outline"
             size="sm"
@@ -5615,15 +5609,8 @@ function EditorPageInner() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
               {/* Mobile mirrors of the header actions (hidden from md up where
-                  the dedicated buttons are visible). Same handlers/guards. */}
-              <DropdownMenuItem
-                className="md:hidden"
-                onClick={() => setShowShareDialog(true)}
-                disabled={!storedDocumentId}
-              >
-                <Users className="mr-2 h-4 w-4" />
-                <span>{t("share")}</span>
-              </DropdownMenuItem>
+                  the dedicated buttons are visible). Same handlers/guards.
+                  Share is omitted here too - see the header button's comment. */}
               <DropdownMenuItem className="md:hidden" onClick={handleExport}>
                 <Download className="mr-2 h-4 w-4" />
                 <span>{t("export")}</span>
