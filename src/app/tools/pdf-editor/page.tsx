@@ -5647,9 +5647,9 @@ function EditorPageInner() {
               >
                 <RotateCcw className="mr-2 h-4 w-4" />
                 <div className="flex flex-col">
-                  <span>Restaurer l&apos;original (v1)</span>
+                  <span>{t("restoreOriginal")}</span>
                   <span className="text-xs text-muted-foreground">
-                    Repart du PDF d&apos;origine, archive les modifications
+                    {t("restoreOriginalHint")}
                   </span>
                 </div>
               </DropdownMenuItem>
@@ -5660,9 +5660,9 @@ function EditorPageInner() {
               >
                 <Download className="mr-2 h-4 w-4" />
                 <div className="flex flex-col">
-                  <span>Aplatir et télécharger</span>
+                  <span>{t("flattenAndDownload")}</span>
                   <span className="text-xs text-muted-foreground">
-                    Fusionne les calques en une couche unique
+                    {t("flattenAndDownloadHint")}
                   </span>
                 </div>
               </DropdownMenuItem>
