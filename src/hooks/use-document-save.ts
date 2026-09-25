@@ -20,7 +20,7 @@ import { useLogger } from "@giga-pdf/logger";
 async function fetchPdfBlobForSave(documentId: string): Promise<Blob> {
   const { getAuthToken } = await import("@/lib/pdf-editor/api");
   const token = await getAuthToken();
-  const response = await fetch(`/api/v1/documents/${documentId}/download`, {
+  const response = await fetch(api.getDocumentDownloadUrl(documentId), {
     credentials: "include",
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });

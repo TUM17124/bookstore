@@ -954,6 +954,40 @@ function EditorPageInner() {
     deepLinkAppliedRef.current = true;
   }, [pages.length, searchParams, navigateToPage]);
 
+  // useEmbeddedFonts's built-in fetchers hit GigaPDF's original Next.js path-
+  // based routes (/api/pdf/fonts/:documentId[/:fontId]), which were never
+  // migrated and don't exist here. The PDF-math service's router only does
+  // exact-string matches (no dynamic segments), so its real replacement
+  // (bookstore_pdf_service/src/routes/fonts.ts) takes documentId/fontId as
+  // query params on ONE route instead — these injectable overrides adapt the
+  // hook to that contract. Google Fonts substitution (fetchGoogleFont) is
+  // left on the hook's own default: it's a non-fatal last-resort fallback
+  // (see use-embedded-fonts.ts) for fonts that aren't embedded at all, and
+  // failing it just skips the substitute rather than breaking font loading.
+  const fetchFontList = useCallback(async (docId: string) => {
+    const token = await getAuthToken();
+    const res = await fetch(
+      `${PDF_SERVICE_URL}/pdf/fonts?documentId=${encodeURIComponent(docId)}`,
+      { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
+    );
+    if (!res.ok) throw new Error(`Failed to fetch font list: HTTP ${res.status}`);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error ?? "Font list request failed");
+    return { fonts: json.data?.fonts ?? [] };
+  }, []);
+
+  const fetchFontData = useCallback(async (docId: string, fontId: string) => {
+    const token = await getAuthToken();
+    const res = await fetch(
+      `${PDF_SERVICE_URL}/pdf/fonts?documentId=${encodeURIComponent(docId)}&fontId=${encodeURIComponent(fontId)}`,
+      { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
+    );
+    if (!res.ok) throw new Error(`Failed to fetch font data: HTTP ${res.status}`);
+    const json = await res.json();
+    if (!json.success || !json.data) throw new Error(json.error ?? "Font data request failed");
+    return json.data;
+  }, []);
+
   // Dynamically load embedded PDF fonts via FontFace API (backed by IndexedDB cache).
   // Maps originalFont names (like "g_d0_f1") to real CSS font-family names,
   // so Fabric can render text with the SAME font as the PDF background.
@@ -965,6 +999,8 @@ function EditorPageInner() {
     documentId: documentId || "",
     enabled: Boolean(documentId),
     getAuthToken,
+    fetchFontList,
+    fetchFontData,
   });
   // Real document fonts for the picker (so typed/edited text matches the PDF).
   const documentFontOptions = useMemo(
