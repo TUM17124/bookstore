@@ -1163,7 +1163,18 @@ function PageBoxesSection({
     setStatus("loading");
     void (async () => {
       try {
-        const blob = await getBytesRef.current();
+        // On first mount `getDocumentBytes` (page.tsx's getPreparedBlob) can
+        // briefly return null before the document's binary finishes
+        // hydrating - not a real failure, just a load-order race. Poll a
+        // few times (short, bounded) before surfacing the error state, so
+        // the panel self-recovers instead of forcing a manual Retry click
+        // on every fresh document load.
+        let blob: Blob | null = null;
+        for (let attempt = 0; attempt < 10 && !aborted; attempt++) {
+          blob = await getBytesRef.current();
+          if (blob) break;
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
         if (!blob) {
           if (!aborted) setStatus("error");
           return;
