@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, Suspense } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useIsEditorFocusedRoute } from "@/lib/pdf-editor/use-is-editor-focused-route"
 import {
   Home,
   BookOpen,
@@ -90,7 +91,7 @@ const MobileThemeToggle = () => {
   )
 }
 
-export function NotchNavbar({
+function NotchNavbarInner({
   className,
   ...props
 }: React.HTMLAttributes<HTMLElement>) {
@@ -107,6 +108,7 @@ export function NotchNavbar({
   const [evictedNotice, setEvictedNotice] = useState(false)
   const accountRef = useRef<HTMLDivElement>(null)
   const pathname = usePathname()
+  const isEditorFocusedRoute = useIsEditorFocusedRoute()
 
   useEffect(() => {
     const sync = () => {
@@ -300,11 +302,13 @@ export function NotchNavbar({
     </>
   )
 
-  // The editor is a full-screen app-like tool with its own title bar (back
-  // arrow doubles as "leave the editor") - the marketing nav has nowhere to
-  // go there and only eats vertical space. The account menu stays reachable
-  // via the editor's own ⋮ menu instead.
-  if (pathname?.startsWith("/tools/pdf-editor")) return null
+  // The focused editor view is a full-screen app-like tool with its own
+  // title bar (back arrow doubles as "leave the editor") - the marketing nav
+  // has nowhere to go there and only eats vertical space. The account menu
+  // stays reachable via the editor's own ⋮ menu instead. The landing/upload
+  // prompt and My Documents are normal site pages and keep the nav
+  // (redesign #5).
+  if (isEditorFocusedRoute) return null
 
   return (
     <>
@@ -583,5 +587,19 @@ export function NotchNavbar({
         )}
       </AnimatePresence>
     </>
+  )
+}
+
+// useSearchParams() (inside useIsEditorFocusedRoute) requires a Suspense
+// boundary or the static export's build-time prerender of /_not-found fails.
+// fallback={null}: this is a synchronous, no-real-async-work hook in a
+// client-only render, so the boundary resolves same-tick in practice - null
+// is only ever visible for a page that isn't the focused editor route
+// briefly rendering with the nav not yet shown, which is imperceptible.
+export function NotchNavbar(props: React.HTMLAttributes<HTMLElement>) {
+  return (
+    <Suspense fallback={null}>
+      <NotchNavbarInner {...props} />
+    </Suspense>
   )
 }

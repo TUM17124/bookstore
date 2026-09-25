@@ -109,6 +109,8 @@
     },
     "untitled": "Untitled",
     "back": "Back to documents",
+    "home": "Home",
+    "unsavedChangesConfirm": "You have unsaved changes. Leave anyway?",
     "share": "Share",
     "export": "Export",
     "save": "Save",

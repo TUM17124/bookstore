@@ -63,6 +63,7 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  Home,
   type LucideIcon,
 } from "lucide-react";
 import { clientLogout } from "@/lib/auth-client";
@@ -1467,6 +1468,37 @@ function EditorPageInner() {
   const isActivelyEditing = isDirty || saving || pendingChanges > 0;
   const isActivelyEditingRef = useRef(isActivelyEditing);
   isActivelyEditingRef.current = isActivelyEditing;
+
+  // Redesign #5: warn before an actual browser-level navigation/close
+  // (typing a new URL, closing the tab, hitting the OS back button) when
+  // there's unsaved work — the in-app "leave the editor" paths (back arrow,
+  // ⋮ menu Home item) use the same isActivelyEditingRef signal via their own
+  // confirm() below, since a beforeunload prompt can't be triggered
+  // programmatically for same-app navigation.
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!isActivelyEditingRef.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
+
+  // Redesign #5: shared "leave the editor" guard for the back arrow and the
+  // ⋮ menu's Home item — confirm first when there's unsaved work.
+  const handleLeaveEditor = useCallback(
+    (destination: string) => {
+      if (
+        isActivelyEditingRef.current &&
+        !window.confirm(t("unsavedChangesConfirm"))
+      ) {
+        return;
+      }
+      router.push(destination);
+    },
+    [router, t],
+  );
 
   const performRemoteReload = useCallback(() => {
     if (remoteReloadTimerRef.current) {
@@ -5618,15 +5650,18 @@ function EditorPageInner() {
           (toolbarHeight) instead of a hardcoded offset. top-0: the site nav
           is hidden entirely on this route (see NotchNavbar), so there's
           nothing above this to clear. */}
-      <div ref={toolbarWrapRef} className="sticky top-0 z-30 flex flex-col bg-background">
+      <div ref={toolbarWrapRef} className="sticky top-0 z-30 flex shrink-0 flex-col bg-background">
       {/* Header */}
       <header className="flex items-center justify-between gap-2 border-b px-2 py-2 md:px-4">
         <div className="flex min-w-0 items-center gap-3">
-          <Link href="/tools/pdf-editor/documents">
-            <Button variant="ghost" size="icon" title={t("back")}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            size="icon"
+            title={t("back")}
+            onClick={() => handleLeaveEditor("/tools/pdf-editor/documents")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
           <div className="min-w-0">
             {isEditingName ? (
               <div className="flex items-center gap-1">
@@ -5729,7 +5764,13 @@ function EditorPageInner() {
             <DropdownMenuContent align="end" className="w-64">
               {/* Account menu — the site nav (and its own account dropdown)
                   is hidden on this route, so this is the only way to reach
-                  Dashboard/Settings/Log out while in the editor. */}
+                  Home/Dashboard/Settings/Log out while in the editor. Home
+                  goes through the same unsaved-changes guard as the back
+                  arrow (redesign #5). */}
+              <DropdownMenuItem onClick={() => handleLeaveEditor("/")}>
+                <Home className="mr-2 h-4 w-4" />
+                <span>{t("home")}</span>
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push("/dashboard")}>
                 <LayoutDashboard className="mr-2 h-4 w-4" />
                 <span>Dashboard</span>

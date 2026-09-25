@@ -1,8 +1,9 @@
 "use client"
 
+import { Suspense } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
 import { BookOpen, Mail } from "lucide-react"
+import { useIsEditorFocusedRoute } from "@/lib/pdf-editor/use-is-editor-focused-route"
 
 const policyLinks = [
   { href: "/terms", label: "Terms & Conditions" },
@@ -19,14 +20,16 @@ const browseLinks = [
   { href: "/?category=lifestyle", label: "Lifestyle" },
 ]
 
-export function SiteFooter() {
+function SiteFooterInner() {
   const year = new Date().getFullYear()
-  const pathname = usePathname()
+  const isEditorFocusedRoute = useIsEditorFocusedRoute()
 
-  // The editor is a full-screen app-like tool (own fixed toolbar, fills
-  // exactly the viewport below the nav) - the marketing footer has nowhere
-  // to go there and just adds dead scroll height below it.
-  if (pathname?.startsWith("/tools/pdf-editor")) return null
+  // The focused editor view is a full-screen app-like tool (own fixed
+  // toolbar, fills exactly the viewport below the nav) - the marketing
+  // footer has nowhere to go there and just adds dead scroll height below
+  // it. The landing/upload prompt and My Documents keep the footer
+  // (redesign #5).
+  if (isEditorFocusedRoute) return null
 
   return (
     <footer className="site-footer relative border-t border-foreground/5 bg-zinc-50 dark:bg-black">
@@ -195,5 +198,16 @@ export function SiteFooter() {
         </div>
       </div>
     </footer>
+  )
+}
+
+// useSearchParams() (inside useIsEditorFocusedRoute) requires a Suspense
+// boundary or the static export's build-time prerender of /_not-found fails.
+// fallback={null}: same reasoning as NotchNavbar's wrapper.
+export function SiteFooter() {
+  return (
+    <Suspense fallback={null}>
+      <SiteFooterInner />
+    </Suspense>
   )
 }
