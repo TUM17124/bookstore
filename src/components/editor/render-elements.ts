@@ -1539,7 +1539,14 @@ export async function renderElementsOverlay(
         const _indentOffset = leftIndentOffset(textElement.style);
         const { display: _displayText, prefixLen: _markerLen } =
           composeDisplayText(textElement.content || "", textElement.style);
-        const textObj = new IText(_displayText, {
+        // Textbox, not IText: IText never wraps, so a user-typed box (widened
+        // by margin-enforcement's clamp) that grew past one line would come
+        // back from a save+reparse round-trip as a single overflowing line -
+        // exactly the redesign #4 bug this fixes. Textbox at a width that
+        // already fits the content (the common case for genuinely single-
+        // line native PDF text) renders identically to IText: wrapping only
+        // ever engages when the content is actually wider than `width`.
+        const textObj = new Textbox(_displayText, {
           ...baseOptions,
           left: baseOptions.left + _indentOffset,
           top: _baselineTop,
@@ -1582,6 +1589,12 @@ export async function renderElementsOverlay(
           cornerStrokeColor: "#ffffff",
           cornerSize: 8,
           transparentCorners: false,
+          // Redesign #4: grapheme-level wrap so an unbroken token (a URL, a
+          // long word) wider than `width` still breaks instead of Fabric
+          // widening that one line past it. No-op for native PDF text that
+          // already fits its own bounds (the overwhelmingly common case) —
+          // this only ever engages when something would otherwise overflow.
+          splitByGrapheme: true,
           // Pointeur grossier : poignées tactiles élargies ({} sur desktop).
           ...coarseControlProps(),
         });
@@ -2001,7 +2014,11 @@ export async function renderElementsOverlay(
                 8,
                 Math.min(annoHeight > 0 ? annoHeight * 0.7 : 14, 16),
               );
-              fabricObj = new IText(ftText, {
+              // Textbox, not IText: a FreeText annotation IS a bounded box in
+              // the PDF spec, and IText never wraps — reloading one as IText
+              // is exactly why a saved+reparsed "Add Text" box came back as
+              // one overflowing line instead of wrapping (redesign #4).
+              fabricObj = new Textbox(ftText, {
                 ...annoOptions,
                 left: annoElement.bounds.x + 1,
                 top: annoElement.bounds.y + 1,
@@ -2012,6 +2029,10 @@ export async function renderElementsOverlay(
                 fontFamily: "Helvetica",
                 fill: annoColor,
                 editable: true,
+                // Redesign #4: guarantee no overflow even for an unbroken
+                // token wider than the box (see the single-run reload path
+                // above for the full reasoning).
+                splitByGrapheme: true,
               }) as unknown as FabricObject;
             } else {
               fabricObj = new Rect({

@@ -76,6 +76,7 @@ import {
   clampPositionToRect,
   clampSizeToRect,
   overflowsBottomMargin,
+  resolveMargins,
   type SafeRect,
   type BoundedBox,
 } from "./lib/margin-enforcement";
@@ -815,16 +816,17 @@ export function EditorCanvas({
   // the Word-like rulers/guides (marginsByPageId in page.tsx — real PDF-engine
   // values, not a separate fixed constant). Mirrored into a ref for the
   // once-registered Fabric handlers below (mouse:down/object:moving/
-  // object:scaling), same stale-closure reason as pageDimsRef. `null` means
-  // "unknown yet" — every clamp site below treats that as "don't clamp".
+  // object:scaling), same stale-closure reason as pageDimsRef.
   const marginsRef = useRef<PageMargins | null>(margins);
 
-  /** Redesign #4: current safe-area rect (scene units), or `null` when this
-   * page's margins aren't known yet — callers must skip clamping then rather
-   * than clamp against a wrong/default rect. */
-  const getSafeRect = useCallback((): SafeRect | null => {
-    const m = marginsRef.current;
-    if (!m) return null;
+  /**
+   * Redesign #4: current safe-area rect (scene units) — ALWAYS returns one,
+   * never `null` (see {@link resolveMargins} for why: a degenerate/unknown
+   * margin falls back to a sane default rather than leaving placement
+   * completely unconstrained).
+   */
+  const getSafeRect = useCallback((): SafeRect => {
+    const m = resolveMargins(marginsRef.current);
     const dims = pageDimsRef.current;
     const screen = screenMarginsFromPage(m, dims.rotation);
     return safeRectFromMargins({ width: dims.width, height: dims.height }, screen);
@@ -2276,6 +2278,11 @@ export function EditorCanvas({
                 fontFamily: documentDefaultFontFamilyRef.current,
                 fill: currentStrokeColor,
                 transparentCorners: false,
+                // Redesign #4: Fabric's word-wrap widens a line past `width`
+                // rather than breaking an unbroken token (a URL, a long word)
+                // that's wider than the box — grapheme-level wrap guarantees
+                // the box never crosses the right margin either way.
+                splitByGrapheme: true,
                 // Redesign #3: wider invisible touch hit area on the resize
                 // handles ({} on desktop — visual size is unchanged either way).
                 ...coarseControlProps(),
@@ -3504,7 +3511,57 @@ export function EditorCanvas({
       return false;
     };
 
+    // Redesign #4: arrow-key nudge for the selected object(s), clamped into
+    // the safe-area margins the same way a mouse/touch drag already is. Only
+    // when something is selected and NOT mid text-edit (there, arrow keys
+    // must move the text cursor, not the box — gated on the active object's
+    // own `isEditing`, same flag the dblclick-to-edit handler checks) so the
+    // page.tsx page-navigation ArrowUp/Down (gated on "no selection") is
+    // never shadowed.
+    const NUDGE_STEP_PT = 1;
+    const NUDGE_STEP_PT_FAST = 10;
+    const onArrowNudge = (e: KeyboardEvent) => {
+      if (
+        e.key !== "ArrowUp" &&
+        e.key !== "ArrowDown" &&
+        e.key !== "ArrowLeft" &&
+        e.key !== "ArrowRight"
+      ) {
+        return;
+      }
+      if (isTextInputFocused()) return;
+      const canvas = fabricRef.current;
+      const target = canvas?.getActiveObject() as
+        | (FabricObjectWithData & { isEditing?: boolean })
+        | null
+        | undefined;
+      if (!canvas || !target || target.isEditing === true) return;
+      if (isMarginExempt(target.data)) return;
+      const step = e.shiftKey ? NUDGE_STEP_PT_FAST : NUDGE_STEP_PT;
+      let dx = 0;
+      let dy = 0;
+      if (e.key === "ArrowUp") dy = -step;
+      else if (e.key === "ArrowDown") dy = step;
+      else if (e.key === "ArrowLeft") dx = -step;
+      else dx = step;
+      e.preventDefault();
+      const rect = getSafeRect();
+      const bbox = target.getBoundingRect();
+      const clamped = clampPositionToRect(
+        { left: bbox.left + dx, top: bbox.top + dy, width: bbox.width, height: bbox.height },
+        rect,
+      );
+      target.set({
+        left: (target.left ?? 0) + (clamped.left - bbox.left),
+        top: (target.top ?? 0) + (clamped.top - bbox.top),
+      });
+      target.setCoords();
+      canvas.requestRenderAll();
+      canvas.fire("object:modified", { target: target as unknown as FabricObject });
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
+      onArrowNudge(e);
       if (e.code !== "Space") return;
       if (isTextInputFocused()) return;
       if (isSpaceDownRef.current) return;

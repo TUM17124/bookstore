@@ -25,6 +25,35 @@ export interface PageSize {
   height: number;
 }
 
+/** Fallback safe-area inset (PDF points) used by {@link resolveMargins}. */
+export const DEFAULT_FALLBACK_MARGIN_PT = 36;
+
+/**
+ * The real per-page margins system (`lib/page-margins.ts`) estimates a
+ * page's margin from its CropBox→MediaBox inset when nothing was ever
+ * explicitly dragged. A freshly created or never-cropped page has NO inset
+ * to estimate from, so that estimate comes back as exactly `{0,0,0,0}` — a
+ * degenerate "nothing to estimate", not a deliberate zero margin (no real
+ * document sets zero on all four sides at once). Treat that, and truly
+ * unknown (`null`) margins, as "not configured yet" and fall back to a sane
+ * default instead of leaving placement completely unconstrained — an actual
+ * dragged value (even a small one) always wins since it's never exactly
+ * `{0,0,0,0}`. Shared by every margin-enforcement call site so the fallback
+ * behaves identically everywhere (Fabric canvas, Properties panel fields).
+ */
+export function resolveMargins(raw: PageMargins | null | undefined): PageMargins {
+  const isDegenerate =
+    !raw || (raw.top === 0 && raw.right === 0 && raw.bottom === 0 && raw.left === 0);
+  return isDegenerate
+    ? {
+        top: DEFAULT_FALLBACK_MARGIN_PT,
+        right: DEFAULT_FALLBACK_MARGIN_PT,
+        bottom: DEFAULT_FALLBACK_MARGIN_PT,
+        left: DEFAULT_FALLBACK_MARGIN_PT,
+      }
+    : raw;
+}
+
 export interface SafeRect {
   left: number;
   top: number;
@@ -87,4 +116,35 @@ export function clampSizeToRect(
 /** Whether a box's bottom edge has grown past the safe area's bottom margin. */
 export function overflowsBottomMargin(box: BoundedBox, rect: SafeRect): boolean {
   return box.top + box.height > rect.bottom + 0.5; // 0.5pt tolerance vs FP jitter
+}
+
+/**
+ * Clamp an element's PDF USER SPACE bounds (bottom-left origin, Y increases
+ * upward — the `element.bounds` convention used by the Properties panel's X/
+ * Y/Width/Height fields and page.tsx's handleElementUpdate) into `margins`.
+ * DELIBERATELY separate from {@link clampPositionToRect}/{@link
+ * clampSizeToRect} above, which work in Fabric's scene space (top-left
+ * origin, Y down) — mixing the two conventions up is exactly the
+ * top-left/bottom-left bug this file exists to avoid. No rotation mapping
+ * needed here: `element.bounds` is already page-intrinsic, the same frame
+ * `PageMargins` itself is defined in (only the Fabric canvas render is in
+ * rotated/screen space).
+ */
+export function clampBoundsToMargins(
+  bounds: { x: number; y: number; width: number; height: number },
+  margins: PageMargins,
+  pageSize: PageSize,
+): { x: number; y: number; width: number; height: number } {
+  const minX = margins.left;
+  const maxX = pageSize.width - margins.right;
+  const minY = margins.bottom;
+  const maxY = pageSize.height - margins.top;
+
+  const width = Math.max(1, Math.min(bounds.width, maxX - minX));
+  const height = Math.max(1, Math.min(bounds.height, maxY - minY));
+
+  const x = Math.min(Math.max(bounds.x, minX), Math.max(minX, maxX - width));
+  const y = Math.min(Math.max(bounds.y, minY), Math.max(minY, maxY - height));
+
+  return { x, y, width, height };
 }

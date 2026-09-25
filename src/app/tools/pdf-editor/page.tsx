@@ -177,6 +177,10 @@ import {
   type PageMargins,
 } from "@/components/editor/lib/page-margins";
 import {
+  clampBoundsToMargins,
+  resolveMargins,
+} from "@/components/editor/lib/margin-enforcement";
+import {
   applyHeaderFooter,
   removeHeaderFooter,
   detectHeaderFooter,
@@ -2310,9 +2314,27 @@ function EditorPageInner() {
         (e) => e.elementId === elementId,
       );
       if (ownerPage && existing) {
+        // Redesign #4: clamp Properties-panel X/Y/Width/Height edits into
+        // the page's safe-area margins too — mouse/touch drags are already
+        // clamped inside editor-canvas.tsx (Fabric scene space, top-left
+        // origin), but typing into these fields bypasses Fabric entirely and
+        // writes straight to `element.bounds`, which is PDF USER SPACE
+        // (bottom-left origin, Y up) — a DIFFERENT convention, hence the
+        // separate clampBoundsToMargins helper rather than reusing the
+        // Fabric-side one. Annotations are exempt, same reasoning as the
+        // canvas side: they mark up existing content wherever it is.
+        const boundsUpdate =
+          updates.bounds && existing.type !== "annotation"
+            ? clampBoundsToMargins(
+                updates.bounds,
+                resolveMargins(pageMargins[pages.indexOf(ownerPage)] ?? null),
+                { width: ownerPage.dimensions.width, height: ownerPage.dimensions.height },
+              )
+            : updates.bounds;
         const merged = {
           ...existing,
           ...updates,
+          ...(boundsUpdate ? { bounds: boundsUpdate } : {}),
           elementId: existing.elementId,
         } as Element;
         updateElementInPage(elementId, merged);
