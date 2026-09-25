@@ -323,6 +323,40 @@
       "errorDescription": "The header / footer could not be changed. Please try again."
     },
     "watermark": {
+      "dialogTitle": "Add watermark",
+      "close": "Close",
+      "textTab": "Text",
+      "imageTab": "Image",
+      "textLabel": "Text",
+      "textPlaceholder": "e.g. CONFIDENTIAL",
+      "positionLabel": "Position",
+      "positionOptions": {
+        "centerDiagonal": "Center diagonal",
+        "header": "Header",
+        "footer": "Footer",
+        "topLeft": "Top-left corner",
+        "topRight": "Top-right corner",
+        "bottomLeft": "Bottom-left corner",
+        "bottomRight": "Bottom-right corner"
+      },
+      "imageLabel": "Image",
+      "chooseImage": "Choose an image…",
+      "anchorLabel": "Anchor",
+      "anchorOptions": {
+        "center": "Center",
+        "topLeft": "Top-left corner",
+        "topRight": "Top-right corner",
+        "bottomLeft": "Bottom-left corner",
+        "bottomRight": "Bottom-right corner"
+      },
+      "rotationLabel": "Rotation: {rotation}°",
+      "tileLabel": "Repeat across the whole page",
+      "opacityLabel": "Opacity: {opacity}%",
+      "pagesLabel": "Pages (optional)",
+      "pagesPlaceholder": "e.g. 1-3, 5, 7-9 (blank = all)",
+      "failedFallback": "Failed to add watermark.",
+      "cancel": "Cancel",
+      "apply": "Apply",
       "modeLabel": "Result",
       "applyToDocument": "Apply to document",
       "applyToDocumentHint": "The watermark is baked into the document you are editing",
@@ -450,6 +484,7 @@
       "appliedDescription": "The document has been replaced with the compressed version."
     },
     "ocr": {
+      "close": "Close",
       "modeLabel": "Output",
       "modeText": "Extract text",
       "modeTextHint": "Shows the recognized text, exportable as .txt",
@@ -645,6 +680,8 @@
       "convert": "Convert",
       "flatten": "Flatten",
       "compress": "Compress",
+      "search": "Search",
+      "watermark": "Watermark",
       "zoomLevel": "Zoom level",
       "indexOcr": "Index OCR",
       "fields": {

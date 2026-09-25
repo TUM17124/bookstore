@@ -38,22 +38,22 @@ type Anchor =
   | "bottom-left"
   | "bottom-right";
 
-const POSITIONS: { value: Position; label: string }[] = [
-  { value: "center-diagonal", label: "Diagonale centrale" },
-  { value: "header", label: "En-tête" },
-  { value: "footer", label: "Pied de page" },
-  { value: "top-left", label: "Coin haut gauche" },
-  { value: "top-right", label: "Coin haut droit" },
-  { value: "bottom-left", label: "Coin bas gauche" },
-  { value: "bottom-right", label: "Coin bas droit" },
+const POSITIONS: { value: Position; labelKey: string }[] = [
+  { value: "center-diagonal", labelKey: "positionOptions.centerDiagonal" },
+  { value: "header", labelKey: "positionOptions.header" },
+  { value: "footer", labelKey: "positionOptions.footer" },
+  { value: "top-left", labelKey: "positionOptions.topLeft" },
+  { value: "top-right", labelKey: "positionOptions.topRight" },
+  { value: "bottom-left", labelKey: "positionOptions.bottomLeft" },
+  { value: "bottom-right", labelKey: "positionOptions.bottomRight" },
 ];
 
-const ANCHORS: { value: Anchor; label: string }[] = [
-  { value: "center", label: "Centre" },
-  { value: "top-left", label: "Coin haut gauche" },
-  { value: "top-right", label: "Coin haut droit" },
-  { value: "bottom-left", label: "Coin bas gauche" },
-  { value: "bottom-right", label: "Coin bas droit" },
+const ANCHORS: { value: Anchor; labelKey: string }[] = [
+  { value: "center", labelKey: "anchorOptions.center" },
+  { value: "top-left", labelKey: "anchorOptions.topLeft" },
+  { value: "top-right", labelKey: "anchorOptions.topRight" },
+  { value: "bottom-left", labelKey: "anchorOptions.bottomLeft" },
+  { value: "bottom-right", labelKey: "anchorOptions.bottomRight" },
 ];
 
 /**
@@ -184,13 +184,13 @@ export function WatermarkDialog({
               id="watermark-dialog-title"
               className="text-lg font-semibold text-foreground"
             >
-              Ajouter un filigrane
+              {t("dialogTitle")}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Fermer"
+            aria-label={t("close")}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <X size={16} />
@@ -211,7 +211,7 @@ export function WatermarkDialog({
                     : "border-input hover:bg-muted text-muted-foreground"
                 }`}
               >
-                {m === "text" ? "Texte" : "Image"}
+                {m === "text" ? t("textTab") : t("imageTab")}
               </button>
             ))}
           </div>
@@ -221,12 +221,12 @@ export function WatermarkDialog({
             <>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">
-                  Texte
+                  {t("textLabel")}
                 </label>
                 <input
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  placeholder="ex. CONFIDENTIEL"
+                  placeholder={t("textPlaceholder")}
                   className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   required={mode === "text"}
                 />
@@ -234,7 +234,7 @@ export function WatermarkDialog({
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">
-                  Position
+                  {t("positionLabel")}
                 </label>
                 <select
                   value={position}
@@ -243,7 +243,7 @@ export function WatermarkDialog({
                 >
                   {POSITIONS.map((p) => (
                     <option key={p.value} value={p.value}>
-                      {p.label}
+                      {t(p.labelKey)}
                     </option>
                   ))}
                 </select>
@@ -256,7 +256,7 @@ export function WatermarkDialog({
             <>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">
-                  Image
+                  {t("imageLabel")}
                 </label>
                 <label className="flex items-center gap-2 w-full px-3 py-2 rounded-md border border-input bg-background text-sm cursor-pointer hover:bg-muted transition-colors">
                   <input
@@ -268,14 +268,14 @@ export function WatermarkDialog({
                     }
                   />
                   <span className="text-muted-foreground truncate">
-                    {imageFile ? imageFile.name : "Choisir une image…"}
+                    {imageFile ? imageFile.name : t("chooseImage")}
                   </span>
                 </label>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">
-                  Ancrage
+                  {t("anchorLabel")}
                 </label>
                 <select
                   value={anchor}
@@ -285,7 +285,7 @@ export function WatermarkDialog({
                 >
                   {ANCHORS.map((a) => (
                     <option key={a.value} value={a.value}>
-                      {a.label}
+                      {t(a.labelKey)}
                     </option>
                   ))}
                 </select>
@@ -293,7 +293,7 @@ export function WatermarkDialog({
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">
-                  Rotation : {rotation}°
+                  {t("rotationLabel", { rotation })}
                 </label>
                 <input
                   type="range"
@@ -314,7 +314,7 @@ export function WatermarkDialog({
                   className="accent-primary"
                 />
                 <span className="text-sm text-foreground">
-                  Répéter sur toute la page
+                  {t("tileLabel")}
                 </span>
               </label>
             </>
@@ -323,7 +323,7 @@ export function WatermarkDialog({
           {/* ── Shared fields ── */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
-              Opacité : {opacity}%
+              {t("opacityLabel", { opacity })}
             </label>
             <input
               type="range"
@@ -338,12 +338,12 @@ export function WatermarkDialog({
 
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
-              Pages (optionnel)
+              {t("pagesLabel")}
             </label>
             <input
               value={pagesInput}
               onChange={(e) => setPagesInput(e.target.value)}
-              placeholder="ex. 1-3, 5, 7-9 (vide = toutes)"
+              placeholder={t("pagesPlaceholder")}
               className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
@@ -405,7 +405,7 @@ export function WatermarkDialog({
                   | Error
                   | null
                   | undefined
-              )?.message ?? "Échec du filigrane."}
+              )?.message ?? t("failedFallback")}
             </p>
           )}
 
@@ -415,7 +415,7 @@ export function WatermarkDialog({
               onClick={onClose}
               className="px-4 py-2 text-sm rounded-md border border-input hover:bg-muted"
             >
-              Annuler
+              {t("cancel")}
             </button>
             <button
               type="submit"
@@ -423,7 +423,7 @@ export function WatermarkDialog({
               className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
             >
               {isPending && <Loader2 size={14} className="animate-spin" />}
-              Appliquer
+              {t("apply")}
             </button>
           </div>
         </form>

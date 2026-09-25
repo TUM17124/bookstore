@@ -1004,8 +1004,8 @@ export function EditorToolbar({
     { key: "convert", icon: FileCode, label: t("convert"), onSelect: () => setShowConvertDialog(true) },
     { key: "flatten", icon: Layers, label: t("flatten"), onSelect: () => onFlattenPdf?.() },
     { key: "compress", icon: Minimize2, label: t("compress"), onSelect: () => setShowCompressDialog(true) },
-    { key: "search", icon: Search, label: "Rechercher", onSelect: () => setShowSearchDialog(true) },
-    { key: "watermark", icon: Droplet, label: "Filigrane", onSelect: () => setShowWatermarkDialog(true) },
+    { key: "search", icon: Search, label: t("search"), onSelect: () => setShowSearchDialog(true) },
+    { key: "watermark", icon: Droplet, label: t("watermark"), onSelect: () => setShowWatermarkDialog(true) },
     { key: "ocr", icon: ScanText, label: "OCR", onSelect: () => setShowOcrDialog(true) },
     ...(onIndexOcr
       ? [

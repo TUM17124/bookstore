@@ -302,7 +302,7 @@ export function OcrDialog({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Fermer"
+            aria-label={t("close")}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <X size={16} />

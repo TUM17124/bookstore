@@ -873,21 +873,26 @@ export const pdfService = {
 
   /**
    * Convert HTML to PDF
+   *
+   * The route (ported near-verbatim from GigaPDF's real
+   * apps/web/src/app/api/pdf/convert/route.ts) expects a JSON body with a
+   * required `source: "html" | "url"` discriminator - this method used to
+   * send FormData instead, a mismatch present in GigaPDF's own original
+   * frontend too (never a working contract there either). Fixed here to
+   * match the route's real, documented JSON shape.
    */
   convertToPdf: async (options: ConvertOptions): Promise<Blob> => {
-    const form = new FormData();
-
-    if (options.html) form.append('html', options.html);
-    if (options.url) form.append('url', options.url);
-    if (options.format) form.append('format', options.format);
-    if (options.landscape !== undefined) form.append('landscape', String(options.landscape));
-    if (options.pageSize) form.append('pageSize', options.pageSize);
-    if (options.margin) form.append('margin', options.margin);
+    const body: Record<string, unknown> = options.url
+      ? { source: 'url', url: options.url }
+      : { source: 'html', html: options.html ?? '' };
+    if (options.format ?? options.pageSize) body.format = options.format ?? options.pageSize;
+    if (options.landscape !== undefined) body.landscape = options.landscape;
+    if (options.margin) body.margin = options.margin;
 
     const response = await fetch(`${PDF_SERVICE_URL}/pdf/convert`, {
       method: 'POST',
-      headers: getAuthHeaders(),
-      body: form,
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     });
 
     return handleBlobResponse(response);
