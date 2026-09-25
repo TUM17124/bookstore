@@ -58,8 +58,14 @@ import {
   FileType,
   Hash,
   BookOpen,
+  LayoutDashboard,
+  Settings,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
   type LucideIcon,
 } from "lucide-react";
+import { clientLogout } from "@/lib/auth-client";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -343,7 +349,7 @@ export default function EditorPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex h-[calc(100dvh-4rem)] w-full items-center justify-center">
+        <div className="flex h-dvh w-full items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       }
@@ -408,7 +414,7 @@ function UploadToStartPrompt({
   }
 
   return (
-    <div className="flex h-[calc(100dvh-4rem)] w-full flex-col items-center justify-center gap-4 bg-background px-4 text-center">
+    <div className="flex h-dvh w-full flex-col items-center justify-center gap-4 bg-background px-4 text-center">
       <FileEdit className="h-10 w-10 text-muted-foreground" />
       <div>
         <h1 className="text-lg font-semibold">PDF Editor</h1>
@@ -457,6 +463,13 @@ function EditorPageInner() {
   const searchParams = useSearchParams();
   const t = useTranslations("editor");
   const { toast } = useToast();
+
+  // The site nav (and its account dropdown) is hidden on this route - these
+  // are the only way to reach Dashboard/Settings/Log out from the editor.
+  const handleAccountLogout = useCallback(() => {
+    clientLogout();
+    router.push("/");
+  }, [router]);
 
   // ID du document stocké (depuis l'URL) — a query param, not a path segment,
   // so this route has no dynamic path param and is statically buildable
@@ -1735,6 +1748,43 @@ function EditorPageInner() {
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+
+  // Pages/Properties sidebars collapse independently and remember their state
+  // across sessions (small-screen desktop users kept re-collapsing them every
+  // reload to reclaim canvas width). Read once on mount from localStorage,
+  // same lazy-init pattern as contentModifications above.
+  const [pagesSidebarCollapsed, setPagesSidebarCollapsedState] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem("gigapdf:sidebar:pagesCollapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setPagesSidebarCollapsed = useCallback((next: boolean) => {
+    setPagesSidebarCollapsedState(next);
+    try {
+      window.localStorage.setItem("gigapdf:sidebar:pagesCollapsed", next ? "1" : "0");
+    } catch {
+      // Storage disabled — collapse state just won't persist.
+    }
+  }, []);
+  const [propertiesSidebarCollapsed, setPropertiesSidebarCollapsedState] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem("gigapdf:sidebar:propertiesCollapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setPropertiesSidebarCollapsed = useCallback((next: boolean) => {
+    setPropertiesSidebarCollapsedState(next);
+    try {
+      window.localStorage.setItem("gigapdf:sidebar:propertiesCollapsed", next ? "1" : "0");
+    } catch {
+      // Storage disabled — collapse state just won't persist.
+    }
   }, []);
 
   // Undo/Redo state via canvas handle
@@ -5428,7 +5478,7 @@ function EditorPageInner() {
 
   if (error) {
     return (
-      <div className="flex h-[calc(100dvh-4rem)] items-center justify-center">
+      <div className="flex h-dvh items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
           <AlertCircle className="h-12 w-12 text-destructive" />
           <div>
@@ -5471,7 +5521,7 @@ function EditorPageInner() {
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-4rem)] flex-col bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       {/* Hidden file input for image upload */}
       <input
         ref={fileInputRef}
@@ -5499,13 +5549,10 @@ function EditorPageInner() {
       {/* Sticky toolbar stack (header + ribbon + edit-tools bar) — pinned to
           the top of the viewport as the document scrolls with the page, so
           the sidebars below can stick flush under its measured height
-          (toolbarHeight) instead of a hardcoded offset. */}
-      {/* top-16 (4rem): the site's own NotchNavbar is fixed at the very top
-          (h-16, z-50) - sticking this wrapper at top-0 would tuck it behind
-          that nav once scrolled, hiding the header row. Sticking at 4rem
-          puts it flush below the nav instead, matching where it already
-          sits in normal (unscrolled) flow via site-main-offset's padding. */}
-      <div ref={toolbarWrapRef} className="sticky top-16 z-30 flex flex-col bg-background">
+          (toolbarHeight) instead of a hardcoded offset. top-0: the site nav
+          is hidden entirely on this route (see NotchNavbar), so there's
+          nothing above this to clear. */}
+      <div ref={toolbarWrapRef} className="sticky top-0 z-30 flex flex-col bg-background">
       {/* Header */}
       <header className="flex items-center justify-between gap-2 border-b px-2 py-2 md:px-4">
         <div className="flex min-w-0 items-center gap-3">
@@ -5614,6 +5661,22 @@ function EditorPageInner() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
+              {/* Account menu — the site nav (and its own account dropdown)
+                  is hidden on this route, so this is the only way to reach
+                  Dashboard/Settings/Log out while in the editor. */}
+              <DropdownMenuItem onClick={() => router.push("/dashboard")}>
+                <LayoutDashboard className="mr-2 h-4 w-4" />
+                <span>Dashboard</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/settings")}>
+                <Settings className="mr-2 h-4 w-4" />
+                <span>Settings</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleAccountLogout}>
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Log out</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               {/* Mobile mirrors of the header actions (hidden from md up where
                   the dedicated buttons are visible). Same handlers/guards.
                   Share is omitted here too - see the header button's comment. */}
@@ -5941,25 +6004,50 @@ function EditorPageInner() {
             served through the left Sheet (footer PanelLeft button). Sticks
             just below the toolbar stack as the page scrolls, with its own
             independent scroll for a long thumbnail list — that's a normal
-            sidebar scroll, not the nested document-canvas scroll we removed. */}
+            sidebar scroll, not the nested document-canvas scroll we removed.
+            Collapsible on md+ (state remembered in localStorage) so users on
+            smaller desktop widths can reclaim canvas space. */}
         <div
           className="hidden md:flex md:sticky md:self-start"
-          style={{ top: `calc(4rem + ${toolbarHeight}px)`, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
+          style={{ top: toolbarHeight, height: `calc(100dvh - ${toolbarHeight}px)` }}
         >
-          <PagesSidebar
-          pages={pages}
-          currentPageIndex={effectivePageIndex}
-          onPageSelect={(index) => navigateToPage(index, "start")}
-          onPageAdd={handleAddPage}
-          onPageDelete={handleDeletePage}
-          onPageReorder={handleReorderPages}
-          onPageDuplicate={handleDuplicatePage}
-          previewBaseUrl={process.env.NEXT_PUBLIC_API_URL}
-          onPageRotate={handlePageRotate}
-          onPageExtract={handlePageExtract}
-          onPageResize={handlePageResize}
-          thumbnails={thumbnails}
-          />
+          {pagesSidebarCollapsed ? (
+            <button
+              type="button"
+              onClick={() => setPagesSidebarCollapsed(false)}
+              title={t("expandPagesSidebar")}
+              aria-label={t("expandPagesSidebar")}
+              className="flex w-6 items-center justify-center border-r bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <ChevronRight size={14} />
+            </button>
+          ) : (
+            <div className="relative flex h-full">
+              <PagesSidebar
+              pages={pages}
+              currentPageIndex={effectivePageIndex}
+              onPageSelect={(index) => navigateToPage(index, "start")}
+              onPageAdd={handleAddPage}
+              onPageDelete={handleDeletePage}
+              onPageReorder={handleReorderPages}
+              onPageDuplicate={handleDuplicatePage}
+              previewBaseUrl={process.env.NEXT_PUBLIC_API_URL}
+              onPageRotate={handlePageRotate}
+              onPageExtract={handlePageExtract}
+              onPageResize={handlePageResize}
+              thumbnails={thumbnails}
+              />
+              <button
+                type="button"
+                onClick={() => setPagesSidebarCollapsed(true)}
+                title={t("collapsePagesSidebar")}
+                aria-label={t("collapsePagesSidebar")}
+                className="absolute -right-3 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
+              >
+                <ChevronLeft size={14} />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Canvas — continuous virtualised scroller OR legacy single page.
@@ -6183,32 +6271,56 @@ function EditorPageInner() {
         {/* Properties panel — inline from lg up; below lg the SAME component
             opens in a right Sheet on demand (footer button), so a selection
             never steals the canvas automatically. Sticks below the toolbar
-            like the Pages sidebar. */}
+            like the Pages sidebar. Collapsible on lg+ (state remembered in
+            localStorage), same pattern as the Pages sidebar. */}
         <div
           className="hidden lg:flex md:sticky md:self-start"
-          style={{ top: `calc(4rem + ${toolbarHeight}px)`, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
+          style={{ top: toolbarHeight, height: `calc(100dvh - ${toolbarHeight}px)` }}
         >
-          <PropertiesPanel
-          documentFonts={documentFontOptions}
-          selectedElements={selectedElements}
-          onElementUpdate={handleElementUpdate}
-          pageInfo={pageInfo}
-          zoom={zoom}
-          allFieldNames={allFieldNames}
-          userLayers={userLayers}
-          onAssignElementToLayer={handleAssignElementToLayer}
-          pageNumber={effectivePageIndex + 1}
-          getDocumentBytes={getPreparedBlob}
-          onPageBoxesApplied={(bytes) =>
-            updateCurrentPdfFile(
-              new File([new Uint8Array(bytes)], currentPdfFile?.name ?? "document.pdf", {
-                type: "application/pdf",
-              })
-            )
-          }
-          onApplyTextStyle={handleApplyTextStyle}
-          onReplaceImage={handleReplaceImage}
-          />
+          {propertiesSidebarCollapsed ? (
+            <button
+              type="button"
+              onClick={() => setPropertiesSidebarCollapsed(false)}
+              title={t("expandPropertiesSidebar")}
+              aria-label={t("expandPropertiesSidebar")}
+              className="flex w-6 items-center justify-center border-l bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <ChevronLeft size={14} />
+            </button>
+          ) : (
+            <div className="relative flex h-full">
+              <button
+                type="button"
+                onClick={() => setPropertiesSidebarCollapsed(true)}
+                title={t("collapsePropertiesSidebar")}
+                aria-label={t("collapsePropertiesSidebar")}
+                className="absolute -left-3 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
+              >
+                <ChevronRight size={14} />
+              </button>
+              <PropertiesPanel
+              documentFonts={documentFontOptions}
+              selectedElements={selectedElements}
+              onElementUpdate={handleElementUpdate}
+              pageInfo={pageInfo}
+              zoom={zoom}
+              allFieldNames={allFieldNames}
+              userLayers={userLayers}
+              onAssignElementToLayer={handleAssignElementToLayer}
+              pageNumber={effectivePageIndex + 1}
+              getDocumentBytes={getPreparedBlob}
+              onPageBoxesApplied={(bytes) =>
+                updateCurrentPdfFile(
+                  new File([new Uint8Array(bytes)], currentPdfFile?.name ?? "document.pdf", {
+                    type: "application/pdf",
+                  })
+                )
+              }
+              onApplyTextStyle={handleApplyTextStyle}
+              onReplaceImage={handleReplaceImage}
+              />
+            </div>
+          )}
         </div>
 
         {/* Document info sidebar (TOC, Layers, Embedded Files). Layers reflect
@@ -6217,7 +6329,7 @@ function EditorPageInner() {
             toolbar like the other sidebars. */}
         <div
           className="hidden xl:flex md:sticky md:self-start"
-          style={{ top: `calc(4rem + ${toolbarHeight}px)`, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
+          style={{ top: toolbarHeight, height: `calc(100dvh - ${toolbarHeight}px)` }}
         >
           <DocumentInfoSidebar
           outlines={outlines}
@@ -6265,7 +6377,7 @@ function EditorPageInner() {
         {showFormsPanel && (
           <div
             className="hidden lg:flex md:sticky md:self-start"
-            style={{ top: `calc(4rem + ${toolbarHeight}px)`, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
+            style={{ top: toolbarHeight, height: `calc(100dvh - ${toolbarHeight}px)` }}
           >
             <FormsPanel
             currentFile={currentPdfFile}

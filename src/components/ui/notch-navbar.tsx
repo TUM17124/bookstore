@@ -300,6 +300,12 @@ export function NotchNavbar({
     </>
   )
 
+  // The editor is a full-screen app-like tool with its own title bar (back
+  // arrow doubles as "leave the editor") - the marketing nav has nowhere to
+  // go there and only eats vertical space. The account menu stays reachable
+  // via the editor's own ⋮ menu instead.
+  if (pathname?.startsWith("/tools/pdf-editor")) return null
+
   return (
     <>
       <header

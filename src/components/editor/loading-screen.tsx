@@ -50,7 +50,7 @@ export function LoadingScreen({
   const showPages = phase === "elements" && pagesTotal > 0;
 
   return (
-    <div className="flex h-[calc(100dvh-4rem)] items-center justify-center">
+    <div className="flex h-dvh items-center justify-center">
       <div className="flex flex-col items-center gap-6">
         <LoadingPagesAnimation />
 

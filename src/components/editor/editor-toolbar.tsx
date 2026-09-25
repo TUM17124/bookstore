@@ -981,11 +981,13 @@ export function EditorToolbar({
     );
 
   // "PDF tools" — SINGLE source of truth rendered on two surfaces:
-  // - lg+  : the historical row of individual ToolButtons;
-  // - < lg : ONE Radix "Outils" dropdown (same handlers, same icons, same
-  //          labels) so the toolbar stays within 2-3 wrapped rows on mobile.
-  // Pure CSS switching (hidden lg:contents / lg:hidden): no breakpoint JS, no
-  // hydration risk. Every dialog stays mounted below regardless of surface.
+  // - md+ (any desktop width) : ONE Radix "Tools" dropdown, always collapsed
+  //   so the toolbar stays a single row (the old lg+ "expand into individual
+  //   buttons" surface was removed — it was what caused a second wrapped row
+  //   at common desktop sizes like 1366x768);
+  // - < md : the same items surfaced inside the mobile bottom-sheet instead.
+  // Pure CSS switching: no breakpoint JS, no hydration risk. Every dialog
+  // stays mounted regardless of surface.
   const pdfToolItems: {
     key: string;
     icon: LucideIcon;
@@ -2239,28 +2241,14 @@ export function EditorToolbar({
         />
       </span>
 
-      {/* PDF Tools — lg+ surface: the historical row of individual buttons.
-          `lg:contents` keeps each button an independent flex item so the
-          toolbar's flex-wrap can break BETWEEN tools (a plain wrapper div
-          would wrap as one unbreakable ~800px chunk). */}
-      <div className="hidden lg:contents">
-        <Separator />
-        {pdfToolItems.map(({ key, icon: Icon, label, onSelect, disabled, isActive }) => (
-          <ToolButton
-            key={key}
-            icon={<Icon size={20} />}
-            label={label}
-            onClick={onSelect}
-            {...(disabled !== undefined ? { disabled } : {})}
-            {...(isActive !== undefined ? { isActive } : {})}
-          />
-        ))}
-      </div>
-
-      {/* PDF Tools — md..lg surface: ONE collapsed "Outils" menu (same
-          handlers, icons and labels as the buttons above — no functionality
-          removed). Below md the tools live in the bottom-sheet instead. */}
-      <div className="hidden items-center md:flex lg:hidden">
+      {/* PDF Tools — md+ surface: ONE collapsed "Tools" (More) menu holding
+          every math-op tool (merge, split, encrypt, sign, forms, metadata,
+          convert, flatten, compress, search, watermark, OCR, PDF/A,
+          presentation, imposition, etc). Kept collapsed at every desktop
+          width — not just md..lg — so the toolbar stays a single row instead
+          of wrapping onto a second one at common desktop sizes (e.g.
+          1366x768). Below md the tools live in the bottom-sheet instead. */}
+      <div className="hidden items-center md:flex">
         <Separator />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
