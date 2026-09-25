@@ -12,18 +12,22 @@ import {
   uploadWithProgress,
   type UploadProgressEvent,
 } from "./upload-with-progress";
+import type {
+  UserSignatureMark,
+  SignatureKind,
+} from "@/components/editor/lib/user-signatures";
 
 export type { DocumentObject };
 export { getAuthToken, invalidateAuthToken };
 
-// API base URL for PlugYard's Django backend. The 11 load-bearing methods
-// below (save/load/restore-original/create-version/get-elements/
-// create-element/update-element/delete-element/batch-elements/
-// upload-thumbnail/index-ocr-blocks/get-download-url) target Django's real
-// /api/editor/* routes (see bookstore_backend/shop/urls.py + views_editor.py).
-// The ~80 other methods on this client are dead code for this editor route
-// (confirmed unused by grep) and still point at GigaPDF's own /api/v1/*
-// paths - left untouched since nothing calls them.
+// API base URL for PlugYard's Django backend. The load-bearing methods below
+// (save/load/restore-original/create-version/get-elements/create-element/
+// update-element/delete-element/batch-elements/upload-thumbnail/
+// index-ocr-blocks/get-download-url/list+save+delete-user-signatures) target
+// Django's real /api/editor/* routes (see bookstore_backend/shop/urls.py +
+// views_editor.py). The ~80 other methods on this client are dead code for
+// this editor route (confirmed unused by grep) and still point at GigaPDF's
+// own /api/v1/* paths - left untouched since nothing calls them.
 const API_BASE_URL = process.env.NEXT_PUBLIC_EDITOR_API_URL ?? "http://localhost:8000";
 
 
@@ -558,6 +562,33 @@ class APIClient {
   async deleteDocument(storedDocumentId: string): Promise<void> {
     await this.request<APIResponse<{ deleted: boolean }>>(
       `/api/editor/documents/${storedDocumentId}/`,
+      { method: "DELETE" }
+    );
+  }
+
+  /** Backend: GET /api/editor/signatures/ (Django) — NOT envelope-wrapped,
+   * matches user-signatures.ts's UserSignatureMark[] contract directly. */
+  async listUserSignatures(): Promise<{ signatures: UserSignatureMark[] }> {
+    return this.request<{ signatures: UserSignatureMark[] }>(
+      "/api/editor/signatures/"
+    );
+  }
+
+  async saveUserSignature(mark: {
+    kind: SignatureKind;
+    dataUrl: string;
+    width: number;
+    height: number;
+  }): Promise<UserSignatureMark> {
+    return this.request<UserSignatureMark>("/api/editor/signatures/", {
+      method: "POST",
+      body: JSON.stringify(mark),
+    });
+  }
+
+  async deleteUserSignature(id: string): Promise<void> {
+    await this.request<void>(
+      `/api/editor/signatures/?id=${encodeURIComponent(id)}`,
       { method: "DELETE" }
     );
   }

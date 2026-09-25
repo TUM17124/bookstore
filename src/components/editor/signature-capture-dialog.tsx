@@ -5,6 +5,8 @@ import { useTranslations } from "@/lib/pdf-editor/use-translations";
 import { X, PenLine, Type, Upload, Trash2, FileSignature } from "lucide-react";
 import {
   fetchUserSignatures,
+  saveUserSignature,
+  deleteUserSignature,
   type SignatureInsertPayload,
   type SignatureKind,
   type UserSignatureMark,
@@ -83,8 +85,8 @@ const INK_ALPHA_THRESHOLD = 10;
  * CSS-hidden so its bitmap survives), its own typed text, its own upload and
  * its own active method. Toggling kinds never destroys the other pad.
  *
- * Optionally the mark is persisted to the caller's account
- * (`/api/user/signatures`); previously-saved marks of the current kind are
+ * Optionally the mark is persisted to the caller's account (Django's
+ * `/api/editor/signatures/`); previously-saved marks of the current kind are
  * listed as one-click inserts. Insertion is never blocked by a failed save.
  */
 export function SignatureCaptureDialog({
@@ -382,21 +384,12 @@ export function SignatureCaptureDialog({
     if (!sig) return;
     if (saveToAccount) {
       // Best-effort persist FIRST; a failure must never block insertion.
-      try {
-        await fetch("/api/user/signatures", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            kind,
-            dataUrl: sig.dataUrl,
-            width: sig.width,
-            height: sig.height,
-          }),
-        });
-      } catch {
-        // Ignore — the user still gets their signature inserted.
-      }
+      await saveUserSignature({
+        kind,
+        dataUrl: sig.dataUrl,
+        width: sig.width,
+        height: sig.height,
+      });
     }
     onInsert({ ...sig, kind });
     onClose();
@@ -415,14 +408,7 @@ export function SignatureCaptureDialog({
   const handleDeleteSaved = async (id: string) => {
     // Optimistically drop it from the list; tolerate a failed request.
     setSaved((prev) => prev.filter((s) => s.id !== id));
-    try {
-      await fetch(`/api/user/signatures?id=${encodeURIComponent(id)}`, {
-        method: "DELETE",
-        credentials: "same-origin",
-      });
-    } catch {
-      // Ignore — a stale entry is harmless and refreshed on next open.
-    }
+    await deleteUserSignature(id);
   };
 
   if (!open) return null;
