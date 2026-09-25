@@ -3005,8 +3005,8 @@ export function EditorCanvas({
       const docId = documentIdRef.current;
       if (docId) {
         try {
-          const pdfUrl = `/backend-api/api/v1/documents/${docId}/download`;
-          const { getAuthToken } = await import("@/lib/pdf-editor/api");
+          const { api, getAuthToken } = await import("@/lib/pdf-editor/api");
+          const pdfUrl = api.getDocumentDownloadUrl(docId);
           const token = await getAuthToken();
           const response = await fetch(pdfUrl, {
             credentials: "include",
