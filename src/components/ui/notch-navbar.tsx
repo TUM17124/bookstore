@@ -23,6 +23,7 @@ import {
   ChevronDown,
   User,
   Crown,
+  FileEdit,
 } from "lucide-react"
 import { BookSearchModal } from "@/components/book-search-modal"
 import { cn } from "@/lib/utils"
@@ -376,6 +377,15 @@ export function NotchNavbar({
                     )}
                   </Link>
 
+                  <Link
+                    href="/tools/pdf-editor"
+                    className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-foreground/5 transition-colors text-foreground/70 hover:text-foreground"
+                    aria-label="PDF Editor"
+                    title="PDF Editor"
+                  >
+                    <FileEdit className="w-4 h-4" />
+                  </Link>
+
                   {authReady && !user && (
                     <Link
                       href="/pro"
@@ -501,6 +511,10 @@ export function NotchNavbar({
               <Link href="/bookmarks" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
                 <Bookmark className="w-5 h-5 opacity-70" />
                 <span className="font-medium text-foreground/90">Bookmarks</span>
+              </Link>
+              <Link href="/tools/pdf-editor" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
+                <FileEdit className="w-5 h-5 opacity-70" />
+                <span className="font-medium text-foreground/90">PDF Editor</span>
               </Link>
 
               <div className="h-px bg-foreground/10 my-3" />

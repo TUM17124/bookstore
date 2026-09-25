@@ -2,7 +2,17 @@
 
 import Link from "next/link"
 import { useEffect, useState, type ReactNode } from "react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { isLoggedIn } from "@/lib/auth-client"
+
+// Scoped to this route rather than the app root - the vendored @giga-pdf/api
+// hooks (use-documents, use-elements, use-auth, etc.) call useQueryClient()
+// and need a provider somewhere above them in the tree. One instance per
+// layout mount is correct here (the editor is the only consumer).
+function useEditorQueryClient() {
+  const [client] = useState(() => new QueryClient())
+  return client
+}
 
 // Auth is a client-side token check (bookstore's own pattern, see
 // src/app/settings/page-client.tsx), and the document id is read from a
@@ -12,6 +22,7 @@ import { isLoggedIn } from "@/lib/auth-client"
 export default function PdfEditorLayout({ children }: { children?: ReactNode }) {
   const [ready, setReady] = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
+  const queryClient = useEditorQueryClient()
 
   useEffect(() => {
     setLoggedIn(isLoggedIn())
@@ -42,5 +53,7 @@ export default function PdfEditorLayout({ children }: { children?: ReactNode }) 
     )
   }
 
-  return <>{children}</>
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
 }
