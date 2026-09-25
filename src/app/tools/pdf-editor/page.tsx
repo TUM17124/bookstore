@@ -386,7 +386,7 @@ function UploadToStartPrompt({
     setError(null);
     try {
       const token = await getAuthToken();
-      const blankResp = await fetch(`${PDF_SERVICE_URL}/api/pdf/blank`, {
+      const blankResp = await fetch(`${PDF_SERVICE_URL}/pdf/blank`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1246,7 +1246,7 @@ function EditorPageInner() {
         form.append("format", "png");
         form.append("maxWidth", "480");
         form.append("maxHeight", "640");
-        const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/preview`, {
+        const res = await fetch(`${PDF_SERVICE_URL}/pdf/preview`, {
           method: "POST",
           credentials: "include",
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -2619,7 +2619,7 @@ function EditorPageInner() {
         // Garantit que la version exportée reflète l'état courant
         if (isDirty) await save();
         const token = await getAuthToken();
-        const res = await fetch(`${PDF_SERVICE_URL}/api/office/export`, {
+        const res = await fetch(`${PDF_SERVICE_URL}/office/export`, {
           method: "POST",
           credentials: "include",
           headers: {
@@ -2740,7 +2740,7 @@ function EditorPageInner() {
         // load attaches. Without it, the first page op of a session silently
         // dropped the paragraph grouping (heuristic fallback) until reload.
         form.append('blockGroups', 'true');
-        const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/parse`, {
+        const res = await fetch(`${PDF_SERVICE_URL}/pdf/parse`, {
           method: 'POST',
           credentials: 'include',
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -3809,7 +3809,7 @@ function EditorPageInner() {
           form.append("page", String(effectivePageIndex + 1));
           form.append("imageIndex", String(index));
           form.append("image", imageFile, imageFile.name);
-          const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/replace-image`, {
+          const res = await fetch(`${PDF_SERVICE_URL}/pdf/replace-image`, {
             method: "POST",
             credentials: "include",
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -3869,7 +3869,7 @@ function EditorPageInner() {
           form.append("points", JSON.stringify(points));
           form.append("rgb", String(rgb));
           form.append("lineWidth", String(lineWidth));
-          const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/ink`, {
+          const res = await fetch(`${PDF_SERVICE_URL}/pdf/ink`, {
             method: "POST",
             credentials: "include",
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -3923,7 +3923,7 @@ function EditorPageInner() {
         // `page` omitted → OCR every page (full, consistent index).
         form.append("granularity", "line");
 
-        const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/ocr-page`, {
+        const res = await fetch(`${PDF_SERVICE_URL}/pdf/ocr-page`, {
           method: "POST",
           credentials: "include",
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -4142,7 +4142,7 @@ function EditorPageInner() {
           fd.append("name", value.name);
         }
 
-        const resp = await fetch(`${PDF_SERVICE_URL}/api/pdf/links`, { method: "POST", body: fd });
+        const resp = await fetch(`${PDF_SERVICE_URL}/pdf/links`, { method: "POST", body: fd });
         if (!resp.ok) throw new Error(`links action failed: ${resp.status}`);
         const blob = await resp.blob();
         // namedCreate moves nothing; namedLink adds an annotation we re-parse so
@@ -4215,7 +4215,7 @@ function EditorPageInner() {
         fd.append("y", String(placement.y));
         fd.append("w", String(placement.w));
         fd.append("h", String(placement.h));
-        const resp = await fetch(`${PDF_SERVICE_URL}/api/pdf/insert-svg`, { method: "POST", body: fd });
+        const resp = await fetch(`${PDF_SERVICE_URL}/pdf/insert-svg`, { method: "POST", body: fd });
         if (!resp.ok) throw new Error(`insert svg failed: ${resp.status}`);
         const blob = await resp.blob();
         adoptModifiedPdf(blob, { reparse: true });
@@ -4393,7 +4393,7 @@ function EditorPageInner() {
     form.append("file", file, file.name);
     form.append("action", "detect");
 
-    const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/structure`, {
+    const res = await fetch(`${PDF_SERVICE_URL}/pdf/structure`, {
       method: "POST",
       credentials: "include",
       body: form,
@@ -4427,7 +4427,7 @@ function EditorPageInner() {
           form.append("pageNumber", String(effectivePageIndex + 1));
           form.append("action", kind);
 
-          const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/annotations`, {
+          const res = await fetch(`${PDF_SERVICE_URL}/pdf/annotations`, {
             method: "POST",
             credentials: "include",
             body: form,
@@ -4483,7 +4483,7 @@ function EditorPageInner() {
           form.append("index", String(index));
           form.append("spans", JSON.stringify(spans));
 
-          const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/text-style`, {
+          const res = await fetch(`${PDF_SERVICE_URL}/pdf/text-style`, {
             method: "POST",
             credentials: "include",
             body: form,
@@ -4522,7 +4522,7 @@ function EditorPageInner() {
       const form = new FormData();
       form.append("file", file, file.name);
       form.append("action", "list");
-      const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/annotations`, {
+      const res = await fetch(`${PDF_SERVICE_URL}/pdf/annotations`, {
         method: "POST",
         credentials: "include",
         body: form,
@@ -4547,7 +4547,7 @@ function EditorPageInner() {
         form.append("action", "remove");
         form.append("page", String(page));
         form.append("index", String(index));
-        const res = await fetch(`${PDF_SERVICE_URL}/api/pdf/annotations`, {
+        const res = await fetch(`${PDF_SERVICE_URL}/pdf/annotations`, {
           method: "POST",
           credentials: "include",
           body: form,
@@ -4987,7 +4987,7 @@ function EditorPageInner() {
           fd.append("file", new File([working], docName, { type: "application/pdf" }));
           fd.append("action", "add");
           fd.append("attachment", f);
-          const resp = await fetch(`${PDF_SERVICE_URL}/api/pdf/attachments`, {
+          const resp = await fetch(`${PDF_SERVICE_URL}/pdf/attachments`, {
             method: "POST",
             body: fd,
           });
@@ -5020,7 +5020,7 @@ function EditorPageInner() {
         fd.append("file", new File([source], docName, { type: "application/pdf" }));
         fd.append("action", "remove");
         fd.append("name", file.name);
-        const resp = await fetch(`${PDF_SERVICE_URL}/api/pdf/attachments`, {
+        const resp = await fetch(`${PDF_SERVICE_URL}/pdf/attachments`, {
           method: "POST",
           body: fd,
         });

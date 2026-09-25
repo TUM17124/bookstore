@@ -346,7 +346,7 @@ export function useDocument(options: UseDocumentOptions): UseDocumentReturn {
       // B — analyzing : démarrer l'estimateur borné AVANT le fetch du parse.
       advanceProgress({ phase: "analyzing" });
       startAnalyzingEstimator();
-      const parseResp = await fetch(`${PDF_SERVICE_URL}/api/pdf/parse-from-s3`, {
+      const parseResp = await fetch(`${PDF_SERVICE_URL}/pdf/parse-from-s3`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
