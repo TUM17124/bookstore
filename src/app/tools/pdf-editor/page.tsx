@@ -5494,7 +5494,12 @@ function EditorPageInner() {
           the top of the viewport as the document scrolls with the page, so
           the sidebars below can stick flush under its measured height
           (toolbarHeight) instead of a hardcoded offset. */}
-      <div ref={toolbarWrapRef} className="sticky top-0 z-30 flex flex-col bg-background">
+      {/* top-16 (4rem): the site's own NotchNavbar is fixed at the very top
+          (h-16, z-50) - sticking this wrapper at top-0 would tuck it behind
+          that nav once scrolled, hiding the header row. Sticking at 4rem
+          puts it flush below the nav instead, matching where it already
+          sits in normal (unscrolled) flow via site-main-offset's padding. */}
+      <div ref={toolbarWrapRef} className="sticky top-16 z-30 flex flex-col bg-background">
       {/* Header */}
       <header className="flex items-center justify-between gap-2 border-b px-2 py-2 md:px-4">
         <div className="flex min-w-0 items-center gap-3">
@@ -5946,7 +5951,7 @@ function EditorPageInner() {
             sidebar scroll, not the nested document-canvas scroll we removed. */}
         <div
           className="hidden md:flex md:sticky md:self-start"
-          style={{ top: toolbarHeight, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
+          style={{ top: `calc(4rem + ${toolbarHeight}px)`, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
         >
           <PagesSidebar
           pages={pages}
@@ -6188,7 +6193,7 @@ function EditorPageInner() {
             like the Pages sidebar. */}
         <div
           className="hidden lg:flex md:sticky md:self-start"
-          style={{ top: toolbarHeight, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
+          style={{ top: `calc(4rem + ${toolbarHeight}px)`, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
         >
           <PropertiesPanel
           documentFonts={documentFontOptions}
@@ -6219,7 +6224,7 @@ function EditorPageInner() {
             toolbar like the other sidebars. */}
         <div
           className="hidden xl:flex md:sticky md:self-start"
-          style={{ top: toolbarHeight, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
+          style={{ top: `calc(4rem + ${toolbarHeight}px)`, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
         >
           <DocumentInfoSidebar
           outlines={outlines}
@@ -6267,7 +6272,7 @@ function EditorPageInner() {
         {showFormsPanel && (
           <div
             className="hidden lg:flex md:sticky md:self-start"
-            style={{ top: toolbarHeight, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
+            style={{ top: `calc(4rem + ${toolbarHeight}px)`, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
           >
             <FormsPanel
             currentFile={currentPdfFile}
