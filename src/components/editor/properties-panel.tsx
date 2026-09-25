@@ -1172,7 +1172,14 @@ function PageBoxesSection({
         form.append("file", new File([blob], "document.pdf", { type: "application/pdf" }));
         form.append("page", String(pageNumber));
         form.append("mode", "get");
-        const res = await fetch("/api/pdf/page-boxes", { method: "POST", body: form });
+        const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
+        const { getAuthToken } = await import("@/lib/pdf-editor/api");
+        const token = await getAuthToken();
+        const res = await fetch(`${PDF_SERVICE_URL}/pdf/page-boxes`, {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          body: form,
+        });
         if (aborted) return;
         if (!res.ok) {
           setStatus("error");
@@ -1226,7 +1233,14 @@ function PageBoxesSection({
       form.append("y", String(y));
       form.append("w", String(w));
       form.append("h", String(h));
-      const res = await fetch("/api/pdf/page-boxes", { method: "POST", body: form });
+      const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
+      const { getAuthToken } = await import("@/lib/pdf-editor/api");
+      const token = await getAuthToken();
+      const res = await fetch(`${PDF_SERVICE_URL}/pdf/page-boxes`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      });
       if (!res.ok) {
         setStatus("error");
         return;
@@ -1421,7 +1435,14 @@ async function postColorBake(
   const form = new FormData();
   form.append("file", new File([blob], "document.pdf", { type: "application/pdf" }));
   for (const { key, value } of fields) form.append(key, value);
-  const res = await fetch("/api/pdf/color", { method: "POST", body: form });
+  const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
+  const { getAuthToken } = await import("@/lib/pdf-editor/api");
+  const token = await getAuthToken();
+  const res = await fetch(`${PDF_SERVICE_URL}/pdf/color`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: form,
+  });
   if (!res.ok) throw new Error(`bake-failed-${res.status}`);
   return new Uint8Array(await res.arrayBuffer());
 }

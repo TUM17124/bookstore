@@ -130,7 +130,14 @@ async function postFormsAction(
   fd.append("file", file);
   for (const [key, value] of Object.entries(params)) fd.append(key, value);
 
-  const res = await fetch("/api/pdf/forms", { method: "POST", body: fd });
+  const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
+  const { getAuthToken } = await import("@/lib/pdf-editor/api");
+  const token = await getAuthToken();
+  const res = await fetch(`${PDF_SERVICE_URL}/pdf/forms`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: fd,
+  });
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
     try {

@@ -84,7 +84,8 @@ async function postMetadataSet(
   if (payload.pageLayout) form.append("pageLayout", payload.pageLayout);
   if (payload.pageMode) form.append("pageMode", payload.pageMode);
 
-  const response = await fetch("/api/pdf/metadata", {
+  const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
+  const response = await fetch(`${PDF_SERVICE_URL}/pdf/metadata`, {
     method: "POST",
     headers: getAuthHeader(),
     body: form,

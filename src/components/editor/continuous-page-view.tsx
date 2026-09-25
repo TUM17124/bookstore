@@ -288,7 +288,19 @@ function ContinuousPageViewImpl(
   }: ContinuousPageViewProps,
   ref: React.ForwardedRef<ContinuousPageViewHandle>,
 ) {
+  // `scrollRef` no longer scrolls internally — the browser's own page scroll
+  // carries the document (single scrollbar, no nested one cutting pages off).
+  // These two helpers translate "scroll position within the document surface"
+  // to/from the real page-level scroll, so every piece of windowing/pinch/
+  // scroll-to-page math below keeps working against a stable coordinate space
+  // instead of a no-longer-existent `root.scrollTop`.
   const scrollRef = useRef<HTMLDivElement>(null);
+  const rootDocTop = () => {
+    const root = scrollRef.current;
+    if (!root) return 0;
+    return root.getBoundingClientRect().top + window.scrollY;
+  };
+  const contentScrollTop = () => Math.max(0, window.scrollY - rootDocTop());
 
   // Mirror of the current zoom so the fit-zoom effect can compare against it
   // without re-subscribing its ResizeObserver on every zoom change (same
@@ -554,9 +566,12 @@ function ContinuousPageViewImpl(
         publishVisible();
       },
       {
-        root,
+        // `root: null` = the browser viewport - the document surface no
+        // longer scrolls internally, so intersection is measured against the
+        // real visible window, exactly like every other on-scroll effect now.
+        root: null,
         // Expand the root by a ~BUFFER_PAGES band so neighbours pre-hydrate.
-        rootMargin: `${root.clientHeight}px 0px ${root.clientHeight}px 0px`,
+        rootMargin: `${window.innerHeight}px 0px ${window.innerHeight}px 0px`,
         threshold: 0,
       },
     );
@@ -577,20 +592,27 @@ function ContinuousPageViewImpl(
   }, [pages.length, slots, publishVisible]);
 
   // ── Viewport size tracking (drives the rootMargin buffer + focus maths) ────
+  // Width still comes from the content surface (root); height now comes from
+  // the real browser viewport (root's own height is content-driven, not
+  // viewport-driven, now that it no longer scrolls internally).
   useEffect(() => {
     const root = scrollRef.current;
     if (!root) {
       return;
     }
-    const update = () => setViewport(root.clientWidth, root.clientHeight);
+    const update = () => setViewport(root.clientWidth, window.innerHeight);
     update();
+    window.addEventListener("resize", update);
 
     if (typeof ResizeObserver === "undefined") {
-      return;
+      return () => window.removeEventListener("resize", update);
     }
     const ro = new ResizeObserver(update);
     ro.observe(root);
-    return () => ro.disconnect();
+    return () => {
+      window.removeEventListener("resize", update);
+      ro.disconnect();
+    };
   }, [setViewport]);
 
   // ── Adaptive fit-zoom (page/width) for the CONTINUOUS scroller ─────────────
@@ -615,7 +637,9 @@ function ContinuousPageViewImpl(
         return;
       }
       const availW = root.clientWidth - FIT_PADDING_PX * 2;
-      const availH = root.clientHeight - FIT_PADDING_PX * 2;
+      // Available height = the real visible viewport now (root's own height
+      // is content-driven, not viewport-driven, since it no longer scrolls).
+      const availH = window.innerHeight - FIT_PADDING_PX * 2;
       if (availW <= 0 || availH <= 0) {
         return;
       }
@@ -631,12 +655,16 @@ function ContinuousPageViewImpl(
       }
     };
     recompute();
+    window.addEventListener("resize", recompute);
     if (typeof ResizeObserver === "undefined") {
-      return;
+      return () => window.removeEventListener("resize", recompute);
     }
     const ro = new ResizeObserver(recompute);
     ro.observe(root);
-    return () => ro.disconnect();
+    return () => {
+      window.removeEventListener("resize", recompute);
+      ro.disconnect();
+    };
   }, [fitMode, onFitZoomChange, pages, activePageIndex]);
 
   // ── rAF-throttled scroll handler: focus page + fling detection ─────────────
@@ -661,7 +689,7 @@ function ContinuousPageViewImpl(
       if (!root) {
         return;
       }
-      const top = root.scrollTop;
+      const top = contentScrollTop();
       const now = performance.now();
 
       // Velocity (px/ms) since the previous sample → fling detection.
@@ -673,7 +701,7 @@ function ContinuousPageViewImpl(
       setScrollTop(top);
 
       const currentSlots = slotsRef.current;
-      const focus = pageIndexAtScroll(currentSlots, top, root.clientHeight);
+      const focus = pageIndexAtScroll(currentSlots, top, window.innerHeight);
       setCurrentPageIndex(focus);
 
       // Track the focused page and refresh the window when it changes so the
@@ -696,6 +724,14 @@ function ContinuousPageViewImpl(
       }
     });
   }, [setScrollTop, setCurrentPageIndex, setFastScrolling, publishVisible]);
+
+  // The document surface no longer scrolls internally, so the scroll signal
+  // that used to be `onScroll` on `scrollRef` now comes from the window.
+  useEffect(() => {
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [handleScroll]);
 
   useEffect(() => {
     return () => {
@@ -751,7 +787,7 @@ function ContinuousPageViewImpl(
         const rect = root.getBoundingClientRect();
         const viewX = center.x - rect.left;
         const viewY = center.y - rect.top;
-        const contentY = root.scrollTop + viewY;
+        const contentY = contentScrollTop() + viewY;
         const currentSlots = slotsRef.current;
         // Page la plus proche de l'ancre + fraction verticale dans son slot
         // (peut déborder [0,1] dans les gouttières — extrapolation linéaire).
@@ -787,10 +823,11 @@ function ContinuousPageViewImpl(
     if (!root || !slot) {
       return;
     }
-    root.scrollTop = Math.max(
+    const targetContentTop = Math.max(
       0,
       slot.top + pending.frac * slot.height - pending.viewY,
     );
+    window.scrollTo({ top: rootDocTop() + targetContentTop });
     root.scrollLeft = Math.max(0, pending.contentX * pending.ratio - pending.viewX);
   }, [slots]);
 
@@ -806,9 +843,9 @@ function ContinuousPageViewImpl(
         }
         const top =
           align === "center"
-            ? slot.top - Math.max(0, (root.clientHeight - slot.height) / 2)
+            ? slot.top - Math.max(0, (window.innerHeight - slot.height) / 2)
             : slot.top;
-        root.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+        window.scrollTo({ top: rootDocTop() + Math.max(0, top), behavior: "smooth" });
       },
     }),
     [slots],
@@ -820,9 +857,8 @@ function ContinuousPageViewImpl(
     // navigation → pan-x pan-y : scroll natif, le pinch app garde le zoom).
     <div
       ref={scrollRef}
-      className="h-full w-full overflow-auto overscroll-contain bg-gray-200"
+      className="w-full overflow-x-auto overscroll-contain bg-gray-200"
       style={{ touchAction: touchActionForTool(tool) }}
-      onScroll={handleScroll}
     >
       {/* Pre-sized content surface: total document height, absolute children. */}
       <div className="relative mx-auto" style={{ height: totalHeight }}>

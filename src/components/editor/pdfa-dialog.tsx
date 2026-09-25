@@ -95,7 +95,8 @@ export function PdfADialog({
         if (alts.length > 0) form.append("figureAlts", JSON.stringify(alts));
       }
 
-      const response = await fetch("/api/pdf/pdfa", {
+      const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
+      const response = await fetch(`${PDF_SERVICE_URL}/pdf/pdfa`, {
         method: "POST",
         headers: authHeaders(),
         body: form,

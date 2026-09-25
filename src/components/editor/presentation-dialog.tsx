@@ -261,7 +261,8 @@ export function PresentationDialog({
         form.append("file", currentFile);
         form.append("action", "transition");
         form.append("op", "get");
-        const res = await fetch("/api/pdf/presentation", {
+        const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
+        const res = await fetch(`${PDF_SERVICE_URL}/pdf/presentation`, {
           method: "POST",
           headers: authHeaders(),
           body: form,
@@ -331,7 +332,8 @@ export function PresentationDialog({
       form.append("file", currentFile);
       for (const [key, value] of Object.entries(fields)) form.append(key, value);
 
-      const response = await fetch("/api/pdf/presentation", {
+      const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
+      const response = await fetch(`${PDF_SERVICE_URL}/pdf/presentation`, {
         method: "POST",
         headers: authHeaders(),
         body: form,

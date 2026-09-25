@@ -1715,6 +1715,22 @@ function EditorPageInner() {
   // Ref pour le canvas (pour la position du curseur)
   const canvasRef = useRef<HTMLDivElement>(null);
 
+  // Sticky toolbar height — the Pages/Properties/Document Info sidebars stick
+  // just below the (variable-height) toolbar rows rather than under a
+  // hardcoded offset, so they never overlap it as content wraps/changes.
+  const toolbarWrapRef = useRef<HTMLDivElement>(null);
+  const [toolbarHeight, setToolbarHeight] = useState(0);
+  useEffect(() => {
+    const el = toolbarWrapRef.current;
+    if (!el) return;
+    const update = () => setToolbarHeight(el.offsetHeight);
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // Undo/Redo state via canvas handle
   const canUndo = canvasHandle?.canUndo() ?? false;
   const canRedo = canvasHandle?.canRedo() ?? false;
@@ -5449,7 +5465,7 @@ function EditorPageInner() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-4rem)] flex-col bg-background">
+    <div className="flex min-h-[calc(100dvh-4rem)] flex-col bg-background">
       {/* Hidden file input for image upload */}
       <input
         ref={fileInputRef}
@@ -5474,6 +5490,11 @@ function EditorPageInner() {
         </div>
       ) : null}
 
+      {/* Sticky toolbar stack (header + ribbon + edit-tools bar) — pinned to
+          the top of the viewport as the document scrolls with the page, so
+          the sidebars below can stick flush under its measured height
+          (toolbarHeight) instead of a hardcoded offset. */}
+      <div ref={toolbarWrapRef} className="sticky top-0 z-30 flex flex-col bg-background">
       {/* Header */}
       <header className="flex items-center justify-between gap-2 border-b px-2 py-2 md:px-4">
         <div className="flex min-w-0 items-center gap-3">
@@ -5909,14 +5930,24 @@ function EditorPageInner() {
         tableEditActive={showTableEdit}
         tableCount={documentTables.length}
       />
+      </div>
 
       {/* Main content — `relative` so the floating mobile zoom cluster can
           anchor bottom-right of the canvas row (above the footer) in BOTH view
-          modes (continuous main is overflow-hidden, single-page main scrolls). */}
-      <div className="relative flex flex-1 overflow-hidden">
+          modes. The canvas flows at its natural content height (no nested
+          scroll) — the browser's own page scroll carries the document, while
+          the Pages/Properties/Document Info sidebars stick just below the
+          toolbar (toolbarHeight) so they stay usable throughout. */}
+      <div className="relative flex flex-1">
         {/* Pages sidebar — inline from md up; below md the SAME component is
-            served through the left Sheet (footer PanelLeft button). */}
-        <div className="hidden md:flex">
+            served through the left Sheet (footer PanelLeft button). Sticks
+            just below the toolbar stack as the page scrolls, with its own
+            independent scroll for a long thumbnail list — that's a normal
+            sidebar scroll, not the nested document-canvas scroll we removed. */}
+        <div
+          className="hidden md:flex md:sticky md:self-start"
+          style={{ top: toolbarHeight, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
+        >
           <PagesSidebar
           pages={pages}
           currentPageIndex={effectivePageIndex}
@@ -5934,18 +5965,14 @@ function EditorPageInner() {
         </div>
 
         {/* Canvas — continuous virtualised scroller OR legacy single page.
-            Continuous mode owns its own scroll container, so the <main> does
-            not scroll there; single mode keeps the historical overflow + the
-            mouse-move collaboration cursor tracking. */}
+            Neither owns its own scroll container any more: both flow at
+            their natural content height so the BROWSER's page scroll carries
+            the document (single scroll, no nested scrollbar cutting the page
+            off). min-w-0 still lets the canvas shrink instead of forcing
+            horizontal page scroll on narrow viewports. */}
         <main
           ref={canvasRef}
-          className={
-            // min-w-0: allow the canvas to shrink inside the flex row instead
-            // of forcing horizontal page scroll on narrow viewports.
-            isContinuous
-              ? "relative min-w-0 flex-1 overflow-hidden"
-              : "relative min-w-0 flex-1 overflow-auto"
-          }
+          className="relative min-w-0 flex-1"
           onMouseMove={isContinuous ? undefined : handleMouseMove}
         >
           {/* Deep content-edit (#98): one provider wraps BOTH views so the
@@ -6157,8 +6184,12 @@ function EditorPageInner() {
 
         {/* Properties panel — inline from lg up; below lg the SAME component
             opens in a right Sheet on demand (footer button), so a selection
-            never steals the canvas automatically. */}
-        <div className="hidden lg:flex">
+            never steals the canvas automatically. Sticks below the toolbar
+            like the Pages sidebar. */}
+        <div
+          className="hidden lg:flex md:sticky md:self-start"
+          style={{ top: toolbarHeight, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
+        >
           <PropertiesPanel
           documentFonts={documentFontOptions}
           selectedElements={selectedElements}
@@ -6184,8 +6215,12 @@ function EditorPageInner() {
 
         {/* Document info sidebar (TOC, Layers, Embedded Files). Layers reflect
             the active page (the focused page in continuous mode). Secondary
-            feature: simply hidden below xl (no drawer). */}
-        <div className="hidden xl:flex">
+            feature: simply hidden below xl (no drawer). Sticks below the
+            toolbar like the other sidebars. */}
+        <div
+          className="hidden xl:flex md:sticky md:self-start"
+          style={{ top: toolbarHeight, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
+        >
           <DocumentInfoSidebar
           outlines={outlines}
           layers={layers}
@@ -6227,9 +6262,13 @@ function EditorPageInner() {
         </div>
 
         {/* Forms panel (conditionally shown) — inline from lg up; below lg the
-            same toggle opens it in a right Sheet (see mobile drawers below). */}
+            same toggle opens it in a right Sheet (see mobile drawers below).
+            Sticks below the toolbar like the other sidebars. */}
         {showFormsPanel && (
-          <div className="hidden lg:flex">
+          <div
+            className="hidden lg:flex md:sticky md:self-start"
+            style={{ top: toolbarHeight, height: `calc(100dvh - 4rem - ${toolbarHeight}px)` }}
+          >
             <FormsPanel
             currentFile={currentPdfFile}
             mode={formsMode}

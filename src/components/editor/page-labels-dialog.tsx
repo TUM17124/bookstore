@@ -71,7 +71,8 @@ async function fetchPageLabels(file: File): Promise<PageLabelsGetResult> {
   form.append("file", file);
   form.append("action", "get");
 
-  const response = await fetch("/api/pdf/page-labels", {
+  const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
+  const response = await fetch(`${PDF_SERVICE_URL}/pdf/page-labels`, {
     method: "POST",
     headers: getAuthHeader(),
     body: form,
@@ -95,7 +96,8 @@ async function postPageLabelsSet(
   form.append("action", "set");
   form.append("ranges", JSON.stringify(ranges));
 
-  const response = await fetch("/api/pdf/page-labels", {
+  const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
+  const response = await fetch(`${PDF_SERVICE_URL}/pdf/page-labels`, {
     method: "POST",
     headers: getAuthHeader(),
     body: form,
