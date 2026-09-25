@@ -39,6 +39,7 @@ import {
   Download,
   Users,
   Loader2,
+  FileEdit,
   AlertCircle,
   Wifi,
   WifiOff,
@@ -349,6 +350,68 @@ export default function EditorPage() {
     >
       <EditorPageInner />
     </Suspense>
+  );
+}
+
+// Shown at /tools/pdf-editor with no ?id= - e.g. reached via the site nav
+// link, which has nowhere else to send a first-time visitor. Uploads a PDF
+// via the same saveDocument() the editor's own save path uses, then hands
+// off to the real editor at ?id=<new document>. Self-contained (own hooks)
+// so it can be rendered conditionally from EditorPageInner without touching
+// that component's existing hook order.
+function UploadToStartPrompt({
+  onUploaded,
+}: {
+  onUploaded: (documentId: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFile(file: File | undefined | null) {
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.saveDocument({ file, name: file.name });
+      onUploaded(result.stored_document_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex h-screen w-full flex-col items-center justify-center gap-4 bg-background px-4 text-center">
+      <FileEdit className="h-10 w-10 text-muted-foreground" />
+      <div>
+        <h1 className="text-lg font-semibold">PDF Editor</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Upload a PDF to start editing.
+        </p>
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="application/pdf"
+        className="hidden"
+        onChange={(e) => handleFile(e.target.files?.[0])}
+      />
+      <Button
+        onClick={() => inputRef.current?.click()}
+        disabled={busy}
+      >
+        {busy ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Uploading…
+          </>
+        ) : (
+          "Choose PDF"
+        )}
+      </Button>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </div>
   );
 }
 
@@ -5342,6 +5405,17 @@ function EditorPageInner() {
         time: lastSaved.toLocaleTimeString(),
       })
     : t("notSaved");
+
+  // No ?id= means there's no document to edit yet (e.g. reached via the
+  // site nav with nothing else to link to) - safe here since every hook
+  // above has already run unconditionally for this render.
+  if (!storedDocumentId) {
+    return (
+      <UploadToStartPrompt
+        onUploaded={(id) => router.replace(`/tools/pdf-editor?id=${id}`)}
+      />
+    );
+  }
 
   return (
     <div className="flex h-screen flex-col bg-background">
