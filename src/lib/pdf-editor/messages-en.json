@@ -138,6 +138,7 @@
     },
     "canvas": {
       "defaultText": "Text",
+      "marginOverflowWarning": "Text overflows the bottom margin",
       "textPlaceholder": "Text field",
       "multilinePlaceholder": "Multiline text area",
       "dateHint": "DD/MM/YYYY",

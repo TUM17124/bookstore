@@ -67,6 +67,18 @@ import { PageMarginOverlay } from "./page-margin-overlay";
 import { PageRulers } from "./page-rulers";
 import type { PageMargins } from "./lib/page-margins";
 import type { RulerUnit } from "./lib/ruler-ticks";
+import { screenMarginsFromPage } from "./lib/margin-rotation";
+// Redesign #4 (content margins): ENFORCEMENT on top of the margins above —
+// new placement / move / resize stays inside the same per-page safe area the
+// rulers/guides already display. Pure geometry; no separate margin concept.
+import {
+  safeRectFromMargins,
+  clampPositionToRect,
+  clampSizeToRect,
+  overflowsBottomMargin,
+  type SafeRect,
+  type BoundedBox,
+} from "./lib/margin-enforcement";
 // Tactile editing (mobile lot 2): per-tool touch-action, Fabric touch flags,
 // touch-safe client coordinates (hand-tool pan) and app-level pinch-to-zoom.
 import {
@@ -797,6 +809,48 @@ export function EditorCanvas({
     height: height,
     rotation: 0,
   });
+  // Redesign #4 (content margins): the SAME per-page margins already shown by
+  // the Word-like rulers/guides (marginsByPageId in page.tsx — real PDF-engine
+  // values, not a separate fixed constant). Mirrored into a ref for the
+  // once-registered Fabric handlers below (mouse:down/object:moving/
+  // object:scaling), same stale-closure reason as pageDimsRef. `null` means
+  // "unknown yet" — every clamp site below treats that as "don't clamp".
+  const marginsRef = useRef<PageMargins | null>(margins);
+
+  /** Redesign #4: current safe-area rect (scene units), or `null` when this
+   * page's margins aren't known yet — callers must skip clamping then rather
+   * than clamp against a wrong/default rect. */
+  const getSafeRect = useCallback((): SafeRect | null => {
+    const m = marginsRef.current;
+    if (!m) return null;
+    const dims = pageDimsRef.current;
+    const screen = screenMarginsFromPage(m, dims.rotation);
+    return safeRectFromMargins({ width: dims.width, height: dims.height }, screen);
+  }, []);
+
+  /** Redesign #4: content that marks up/covers EXISTING material wherever it
+   * happens to sit (redaction, annotations over parsed text) is exempt from
+   * margin clamping — the whole point of those tools is to reach content that
+   * may be right at an edge, so clamping them would defeat the tool. */
+  const isMarginExempt = useCallback(
+    (data: FabricObjectWithData["data"] | undefined): boolean =>
+      Boolean(data && (data.redactionMark || data.annotationType)),
+    [],
+  );
+
+  // Whether the faint dashed safe-area indicator is shown — true only while
+  // actively moving/resizing/editing content (not tied to the separate
+  // "Rulers & Margins" toggle, which owns the DRAGGABLE guide/ruler surface).
+  // Never rendered into the export: this is a plain CSS overlay, not a Fabric
+  // canvas object, so it can't be serialised into the PDF at all.
+  const [showMarginIndicator, setShowMarginIndicator] = useState(false);
+
+  // Redesign #4: bottom-margin overflow indicator for the text box currently
+  // being edited — a small badge, NOT any change to the Fabric object itself
+  // (no stroke/backgroundColor on the text), so there is zero risk of a
+  // warning tint ever leaking into the exported PDF. Scene-space box of the
+  // overflowing object, or `null` when nothing overflows right now.
+  const [overflowBox, setOverflowBox] = useState<BoundedBox | null>(null);
 
   // Invite de saisie rapide pour la création d'un GROUPE de boutons radio :
   // le clic avec fieldKind="radio_group" ouvre ce mini-formulaire (nom du
@@ -880,6 +934,7 @@ export function EditorCanvas({
         rotation: page.dimensions.rotation,
       };
     }
+    marginsRef.current = margins;
     openRadioPromptRef.current = (x: number, y: number) => {
       setRadioGroupName(`groupe_${Date.now().toString(36)}`);
       setRadioOptionsText(
@@ -2060,7 +2115,7 @@ export function EditorCanvas({
     import("fabric").then((fabricModule) => {
       // Conservé pour la construction hors-loadPage (session de paragraphe).
       fabricModuleRef.current = fabricModule;
-      const { Canvas, Rect, Circle, Ellipse, Triangle, Line, IText, Group, FabricText, Polyline, Path: FabricPath } = fabricModule;
+      const { Canvas, Rect, Circle, Ellipse, Triangle, Line, IText, Textbox, Group, FabricText, Polyline, Path: FabricPath } = fabricModule;
 
       const host = containerRef.current;
       // Le container a pu se démonter pendant l'import async (mode continu :
@@ -2192,10 +2247,21 @@ export function EditorCanvas({
         try {
           switch (currentTool) {
             case "text": {
-              clientLogger.debug("[EditorCanvas] Creating IText with:", { pointer, strokeColor: currentStrokeColor });
-              newObj = new IText(t("defaultText") || "Text", {
+              clientLogger.debug("[EditorCanvas] Creating Textbox with:", { pointer, strokeColor: currentStrokeColor });
+              // Redesign #4: a Textbox (not IText) so the box WRAPS at a fixed
+              // width instead of running off the page — the width is bounded
+              // by the safe area so text never crosses the right margin. Falls
+              // back to a plain default width when margins aren't known yet
+              // (e.g. document still loading) rather than blocking creation.
+              const safeRectAtCreate = getSafeRect();
+              const DEFAULT_TEXT_WIDTH = 220;
+              const textWidth = safeRectAtCreate
+                ? Math.max(60, Math.min(DEFAULT_TEXT_WIDTH, safeRectAtCreate.right - safeRectAtCreate.left))
+                : DEFAULT_TEXT_WIDTH;
+              newObj = new Textbox(t("defaultText") || "Text", {
                 left: pointer.x,
                 top: pointer.y,
+                width: textWidth,
                 fontSize: 16,
                 // Famille dominante du document (memoïsée) — un nouveau texte
                 // doit ressembler au reste de la page, pas à un Arial générique.
@@ -2203,7 +2269,7 @@ export function EditorCanvas({
                 fill: currentStrokeColor,
               });
               (newObj as FabricObjectWithData).data = { elementId: generateId() };
-              clientLogger.debug("[EditorCanvas] IText created successfully:", newObj);
+              clientLogger.debug("[EditorCanvas] Textbox created successfully:", newObj);
               break;
             }
 
@@ -2686,6 +2752,27 @@ export function EditorCanvas({
         }
 
         if (newObj) {
+          // Redesign #4: keep NEW placement inside the page's safe-area
+          // margins — pin the top-left in if it would land outside. Skip for
+          // redaction/annotation marks, which must be able to reach existing
+          // content anywhere on the page, including right at an edge.
+          const newObjData = (newObj as FabricObjectWithData).data;
+          if (!isMarginExempt(newObjData)) {
+            const rect = getSafeRect();
+            if (rect) {
+              const bbox = newObj.getBoundingRect();
+              const clamped = clampPositionToRect(bbox, rect);
+              const dx = clamped.left - bbox.left;
+              const dy = clamped.top - bbox.top;
+              if (dx !== 0 || dy !== 0) {
+                newObj.set({
+                  left: (newObj.left ?? 0) + dx,
+                  top: (newObj.top ?? 0) + dy,
+                });
+                newObj.setCoords();
+              }
+            }
+          }
           clientLogger.debug("[EditorCanvas] Adding new object to canvas:", currentTool, (newObj as FabricObjectWithData).data?.elementId);
           currentCanvas.add(newObj);
           currentCanvas.setActiveObject(newObj);
@@ -2863,6 +2950,97 @@ export function EditorCanvas({
         }
         if (bestDx !== null) target.set({ left: left + bestDx });
         if (bestDy !== null) target.set({ top: top + bestDy });
+      });
+
+      // Redesign #4 (content margins): keep interactive MOVE/RESIZE inside
+      // the page's safe area too (creation is clamped separately, above), and
+      // surface a faint dashed indicator while the user is actively moving,
+      // resizing or editing text — independent of the separate "Rulers &
+      // Margins" toggle, which owns the DRAGGABLE guide/ruler surface, not
+      // this passive indicator.
+      canvas.on("object:moving", (opt) => {
+        const target = opt.target as FabricObjectWithData | undefined;
+        if (!target) return;
+        setShowMarginIndicator(true);
+        if (isMarginExempt(target.data)) return;
+        const rect = getSafeRect();
+        if (!rect) return;
+        const bbox = target.getBoundingRect();
+        const clamped = clampPositionToRect(bbox, rect);
+        const dx = clamped.left - bbox.left;
+        const dy = clamped.top - bbox.top;
+        if (dx !== 0 || dy !== 0) {
+          target.set({
+            left: (target.left ?? 0) + dx,
+            top: (target.top ?? 0) + dy,
+          });
+        }
+      });
+
+      canvas.on("object:scaling", (opt) => {
+        const target = opt.target as FabricObjectWithData | undefined;
+        if (!target) return;
+        setShowMarginIndicator(true);
+        if (isMarginExempt(target.data)) return;
+        const rect = getSafeRect();
+        if (!rect) return;
+        // Cap growth so the box's far edge stops at the margin instead of
+        // crossing it (the common bottom/right-handle drag).
+        let bbox = target.getBoundingRect();
+        const capped = clampSizeToRect(bbox, rect);
+        const scaleSet: { scaleX?: number; scaleY?: number } = {};
+        if (bbox.width > 0 && capped.width < bbox.width) {
+          scaleSet.scaleX = (target.scaleX ?? 1) * (capped.width / bbox.width);
+        }
+        if (bbox.height > 0 && capped.height < bbox.height) {
+          scaleSet.scaleY = (target.scaleY ?? 1) * (capped.height / bbox.height);
+        }
+        if (scaleSet.scaleX !== undefined || scaleSet.scaleY !== undefined) {
+          target.set(scaleSet);
+        }
+        // Re-clamp position too, for a top/left-handle drag that pushed the
+        // near edge past the OPPOSITE margin.
+        bbox = target.getBoundingRect();
+        const clamped = clampPositionToRect(bbox, rect);
+        const dx = clamped.left - bbox.left;
+        const dy = clamped.top - bbox.top;
+        if (dx !== 0 || dy !== 0) {
+          target.set({
+            left: (target.left ?? 0) + dx,
+            top: (target.top ?? 0) + dy,
+          });
+        }
+      });
+
+      canvas.on("mouse:up", () => setShowMarginIndicator(false));
+      canvas.on("selection:cleared", () => {
+        setShowMarginIndicator(false);
+        setOverflowBox(null);
+      });
+      canvas.on("text:editing:entered", () => setShowMarginIndicator(true));
+      canvas.on("text:editing:exited", () => {
+        setShowMarginIndicator(false);
+        setOverflowBox(null);
+      });
+
+      // Redesign #4: bottom-margin overflow badge while typing. Pure React
+      // state (see `overflowBox` above) — never touches the Fabric object, so
+      // it can't be exported. Recomputed on every keystroke; a Textbox grows
+      // its own height live as it wraps, so `getBoundingRect()` already
+      // reflects the post-keystroke size.
+      canvas.on("text:changed", (opt) => {
+        const target = opt.target as FabricObjectWithData | undefined;
+        if (!target || isMarginExempt(target.data)) {
+          setOverflowBox(null);
+          return;
+        }
+        const rect = getSafeRect();
+        if (!rect) {
+          setOverflowBox(null);
+          return;
+        }
+        const bbox = target.getBoundingRect();
+        setOverflowBox(overflowsBottomMargin(bbox, rect) ? bbox : null);
       });
 
       const endPan = () => {
@@ -3382,6 +3560,22 @@ export function EditorCanvas({
               scaleX,
               scaleY,
             });
+            // Redesign #4: keep a plain (non-Fill&Sign) image placement inside
+            // the safe area. Skipped for the `target` branch above — that one
+            // must land exactly inside the signature widget rect it was asked
+            // to fill, not be nudged by the page margins.
+            if (!target) {
+              const rect = getSafeRect();
+              if (rect) {
+                const bbox = img.getBoundingRect();
+                const clamped = clampPositionToRect(bbox, rect);
+                const dx = clamped.left - bbox.left;
+                const dy = clamped.top - bbox.top;
+                if (dx !== 0 || dy !== 0) {
+                  img.set({ left: (img.left ?? 0) + dx, top: (img.top ?? 0) + dy });
+                }
+              }
+            }
             (img as FabricObjectWithData).data = {
               elementId: generateId(),
               // Remplir & Signer : lie l'image posée à SON widget signature —
@@ -4223,6 +4417,14 @@ export function EditorCanvas({
   const canvasWidth = page?.dimensions?.width || width;
   const canvasHeight = page?.dimensions?.height || height;
 
+  // Redesign #4: this page's margins in SCREEN space (post-rotation), for the
+  // passive dashed indicator below — same conversion the draggable rulers/
+  // guides already use, kept in sync with `page`'s rotation.
+  const screenMargins = useMemo(
+    () => (margins ? screenMarginsFromPage(margins, page?.dimensions?.rotation ?? 0) : null),
+    [margins, page?.dimensions?.rotation],
+  );
+
   // Conteneur canvas + overlays — IDENTIQUE dans les deux modes (standalone et
   // intégré). En mode intégré il est rendu seul (le slot du défileur est déjà
   // dimensionné à page×zoom) ; en standalone il est enveloppé dans le viewport
@@ -4284,6 +4486,41 @@ export function EditorCanvas({
             unit={rulerUnit}
           />
         )
+      ) : null}
+
+      {/* Redesign #4: faint dashed safe-area indicator while actively moving,
+          resizing or typing — independent of the "Rulers & Margins" toggle
+          above (that one owns the DRAGGABLE guide surface; this is a passive
+          hint, shown in both standalone and embedded/continuous modes). Pure
+          CSS on a plain div, never a Fabric object, so it can never end up in
+          the exported PDF. */}
+      {showMarginIndicator && screenMargins ? (
+        <div
+          className="pointer-events-none absolute z-20 border border-dashed border-amber-500/60"
+          style={{
+            left: screenMargins.left * zoom,
+            top: screenMargins.top * zoom,
+            width: Math.max(0, canvasWidth - screenMargins.left - screenMargins.right) * zoom,
+            height: Math.max(0, canvasHeight - screenMargins.top - screenMargins.bottom) * zoom,
+          }}
+        />
+      ) : null}
+
+      {/* Redesign #4: bottom-margin overflow badge for the text box currently
+          being typed into. Pure React/DOM state (`overflowBox`), never a
+          Fabric object or a style change on the text itself — zero risk of a
+          warning leaking into the exported PDF. */}
+      {overflowBox ? (
+        <div
+          className="pointer-events-none absolute z-20 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold leading-none text-white shadow"
+          style={{
+            left: (overflowBox.left + overflowBox.width) * zoom - 8,
+            top: (overflowBox.top + overflowBox.height) * zoom - 8,
+          }}
+          title={t("marginOverflowWarning")}
+        >
+          !
+        </div>
       ) : null}
 
       {/* Mini-formulaire de création d'un groupe de boutons radio. */}
