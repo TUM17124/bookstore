@@ -381,13 +381,39 @@ function UploadToStartPrompt({
     }
   }
 
+  async function handleBlank() {
+    setBusy(true);
+    setError(null);
+    try {
+      const token = await getAuthToken();
+      const blankResp = await fetch(`${PDF_SERVICE_URL}/api/pdf/blank`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ size: "a4", orientation: "portrait" }),
+      });
+      if (!blankResp.ok) {
+        throw new Error(`Could not create a blank document (${blankResp.status}).`);
+      }
+      const blob = await blankResp.blob();
+      const file = new File([blob], "Untitled.pdf", { type: "application/pdf" });
+      const result = await api.saveDocument({ file, name: "Untitled" });
+      onUploaded(result.stored_document_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start a blank document.");
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="flex h-screen w-full flex-col items-center justify-center gap-4 bg-background px-4 text-center">
       <FileEdit className="h-10 w-10 text-muted-foreground" />
       <div>
         <h1 className="text-lg font-semibold">PDF Editor</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Upload a PDF to start editing.
+          Upload a PDF, or start with a blank page.
         </p>
       </div>
       <input
@@ -397,19 +423,24 @@ function UploadToStartPrompt({
         className="hidden"
         onChange={(e) => handleFile(e.target.files?.[0])}
       />
-      <Button
-        onClick={() => inputRef.current?.click()}
-        disabled={busy}
-      >
-        {busy ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Uploading…
-          </>
-        ) : (
-          "Choose PDF"
-        )}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+        >
+          {busy ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Working…
+            </>
+          ) : (
+            "Choose PDF"
+          )}
+        </Button>
+        <Button variant="outline" onClick={handleBlank} disabled={busy}>
+          Start blank
+        </Button>
+      </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
   );
