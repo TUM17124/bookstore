@@ -3026,6 +3026,13 @@ export function EditorCanvas({
             left: (target.left ?? 0) + dx,
             top: (target.top ?? 0) + dy,
           });
+          // Without this, Fabric's cached hit-test geometry (aCoords) keeps
+          // the PRE-clamp position: the object then renders at the clamped
+          // spot but a subsequent click/drag attempt hit-tests against where
+          // it WOULD have been, missing the object entirely — reported live
+          // as "sometimes a text box can't be dragged" (any time the drag
+          // that placed it there got clamped).
+          target.setCoords();
         }
       });
 
@@ -3049,6 +3056,10 @@ export function EditorCanvas({
         }
         if (scaleSet.scaleX !== undefined || scaleSet.scaleY !== undefined) {
           target.set(scaleSet);
+          // Must refresh the cached hit-test geometry before re-reading
+          // getBoundingRect() below — otherwise it reflects the PRE-cap
+          // size, same stale-aCoords issue as the object:moving handler.
+          target.setCoords();
         }
         // Re-clamp position too, for a top/left-handle drag that pushed the
         // near edge past the OPPOSITE margin.
@@ -3061,6 +3072,7 @@ export function EditorCanvas({
             left: (target.left ?? 0) + dx,
             top: (target.top ?? 0) + dy,
           });
+          target.setCoords();
         }
       });
 
@@ -3675,6 +3687,7 @@ export function EditorCanvas({
                 const dy = clamped.top - bbox.top;
                 if (dx !== 0 || dy !== 0) {
                   img.set({ left: (img.left ?? 0) + dx, top: (img.top ?? 0) + dy });
+                  img.setCoords();
                 }
               }
             }
