@@ -64,6 +64,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Home,
+  Send,
   type LucideIcon,
 } from "lucide-react";
 import { clientLogout } from "@/lib/auth-client";
@@ -488,6 +489,26 @@ function EditorPageInner() {
 
   // Share dialog (GED) — partage le document STOCKÉ (storedDocumentId)
   const [showShareDialog, setShowShareDialog] = useState(false);
+
+  // Publish/Edit-published-book integration: null = not yet loaded/unpublished,
+  // a Book id once this saved document has been attached to a Book. Fetched
+  // separately from useDocument (which loads PDF content, not Book linkage).
+  const [publishedBookId, setPublishedBookId] = useState<number | null>(null);
+  useEffect(() => {
+    if (!storedDocumentId) return;
+    let cancelled = false;
+    void api.getStoredDocument(storedDocumentId).then(
+      (doc) => {
+        if (!cancelled) setPublishedBookId(doc.published_book_id ?? null);
+      },
+      () => {
+        /* metadata fetch failure just hides the button - not fatal */
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [storedDocumentId]);
 
   // Mobile layout — the side panels become drawers (Sheet) on small screens.
   // Both media hooks default to DESKTOP (false) at SSR/jsdom, so the server
@@ -5771,6 +5792,24 @@ function EditorPageInner() {
                 <Home className="mr-2 h-4 w-4" />
                 <span>{t("home")}</span>
               </DropdownMenuItem>
+              {storedDocumentId && (
+                <DropdownMenuItem
+                  onClick={() =>
+                    handleLeaveEditor(
+                      publishedBookId
+                        ? `/dashboard?edit_book_id=${publishedBookId}&editor_document_id=${storedDocumentId}`
+                        : `/publish?editor_document_id=${storedDocumentId}`,
+                    )
+                  }
+                >
+                  {publishedBookId ? (
+                    <BookOpen className="mr-2 h-4 w-4" />
+                  ) : (
+                    <Send className="mr-2 h-4 w-4" />
+                  )}
+                  <span>{publishedBookId ? "Edit published book" : "Publish"}</span>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => router.push("/dashboard")}>
                 <LayoutDashboard className="mr-2 h-4 w-4" />
                 <span>Dashboard</span>

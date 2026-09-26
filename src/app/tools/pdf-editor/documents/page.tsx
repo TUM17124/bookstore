@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  BookOpen,
   FileEdit,
   FileText,
   Loader2,
   Plus,
   Search,
+  Send,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -124,6 +126,18 @@ export default function EditorDocumentsPage() {
       setError(err instanceof Error ? err.message : "Could not delete the document.");
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  function handlePublishClick(doc: StoredDocument, e: React.MouseEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    if (doc.published_book_id) {
+      router.push(
+        `/dashboard?edit_book_id=${doc.published_book_id}&editor_document_id=${doc.stored_document_id}`
+      );
+    } else {
+      router.push(`/publish?editor_document_id=${doc.stored_document_id}`);
     }
   }
 
@@ -259,19 +273,34 @@ export default function EditorDocumentsPage() {
                       {new Date(doc.modified_at).toLocaleDateString()}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    aria-label="Delete document"
-                    onClick={(e) => void handleDelete(doc, e)}
-                    disabled={deletingId === doc.stored_document_id}
-                    className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                  >
-                    {deletingId === doc.stored_document_id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                  </button>
+                  <div className="flex shrink-0 items-start gap-1">
+                    <button
+                      type="button"
+                      aria-label={doc.published_book_id ? "Edit published book" : "Publish"}
+                      title={doc.published_book_id ? "Edit published book" : "Publish"}
+                      onClick={(e) => handlePublishClick(doc, e)}
+                      className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-primary/10 hover:text-primary group-hover:opacity-100"
+                    >
+                      {doc.published_book_id ? (
+                        <BookOpen className="h-4 w-4" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Delete document"
+                      onClick={(e) => void handleDelete(doc, e)}
+                      disabled={deletingId === doc.stored_document_id}
+                      className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                    >
+                      {deletingId === doc.stored_document_id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </button>
             ))}

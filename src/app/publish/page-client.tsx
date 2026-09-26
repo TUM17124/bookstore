@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { getToken } from '@/lib/api'
+import { api as editorApi } from '@/lib/pdf-editor/api'
 
 const API = process.env.NEXT_PUBLIC_API_URL!
 
@@ -14,7 +16,10 @@ const CATEGORIES = [
   { value: 'lifestyle', label: 'Lifestyle' },
 ]
 
-export default function PublishPage() {
+function PublishPageInner() {
+  const searchParams = useSearchParams()
+  const editorDocumentId = searchParams.get('editor_document_id') || ''
+
   const [loggedIn, setLoggedIn] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -22,10 +27,24 @@ export default function PublishPage() {
   const [isFree, setIsFree] = useState(false)
   const [ebookDownloadable, setEbookDownloadable] = useState(true)
   const [audiobookDownloadable, setAudiobookDownloadable] = useState(true)
+  // Attached from the PDF editor's "Publish" button - the PDF is copied
+  // server-side from the saved document, so the browser never
+  // downloads/re-uploads it. "Remove" reverts to a normal file upload.
+  const [attachedName, setAttachedName] = useState('')
+  const [attachRemoved, setAttachRemoved] = useState(false)
+  const hasAttachment = Boolean(editorDocumentId) && !attachRemoved
 
   useEffect(() => {
     setLoggedIn(!!getToken())
   }, [])
+
+  useEffect(() => {
+    if (!editorDocumentId) return
+    editorApi.getStoredDocument(editorDocumentId).then(
+      (doc) => setAttachedName(doc.name || 'Untitled.pdf'),
+      () => setAttachedName('Untitled.pdf'),
+    )
+  }, [editorDocumentId])
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -50,7 +69,10 @@ export default function PublishPage() {
       setError('Back cover is required (1600×2400).')
       return
     }
-    if (!fd.get('pdf') || !(fd.get('pdf') as File).size) {
+    if (hasAttachment) {
+      fd.delete('pdf')
+      fd.set('editor_document_id', editorDocumentId)
+    } else if (!fd.get('pdf') || !(fd.get('pdf') as File).size) {
       setError('PDF file is required.')
       return
     }
@@ -157,7 +179,22 @@ export default function PublishPage() {
         <label className="text-sm font-medium">Back cover *</label>
         <input name="image_back" type="file" accept="image/*" required />
         <label className="text-sm font-medium">PDF *</label>
-        <input name="pdf" type="file" accept="application/pdf" required />
+        {hasAttachment ? (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-foreground/15 bg-foreground/[0.03] px-3 py-2 text-sm">
+            <span className="min-w-0 truncate">
+              Already attached: <span className="font-medium">{attachedName || 'Loading…'}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setAttachRemoved(true)}
+              className="shrink-0 text-xs font-medium text-foreground/60 underline hover:text-foreground"
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <input name="pdf" type="file" accept="application/pdf" required />
+        )}
         <label className="text-sm font-medium">Audiobook (optional MP3)</label>
         <input name="audio" type="file" accept="audio/*" />
 
@@ -217,5 +254,15 @@ export default function PublishPage() {
         </button>
       </form>
     </main>
+  )
+}
+
+// useSearchParams() requires a Suspense boundary or the static export's
+// build-time prerender of /_not-found fails.
+export default function PublishPage() {
+  return (
+    <Suspense fallback={null}>
+      <PublishPageInner />
+    </Suspense>
   )
 }

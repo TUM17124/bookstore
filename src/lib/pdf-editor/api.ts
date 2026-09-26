@@ -66,6 +66,8 @@ export interface StoredDocument {
   thumbnail_url: string | null;
   /** Non-null only for trashed documents (GET /storage/documents?trashed=true). */
   deleted_at?: string | null;
+  /** Set once this document has been published/attached as a Book's PDF - drives the Publish vs "Edit published book" button. */
+  published_book_id?: number | null;
 }
 
 export interface StorageInfo {
