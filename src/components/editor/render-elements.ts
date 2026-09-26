@@ -68,6 +68,10 @@ import {
   shiftStylesForMarker,
 } from "./lib/list-format";
 import { clampCombValue, computeCombLayout } from "./lib/comb-layout";
+import {
+  applyTextBoxControls,
+  TEXTBOX_CONTROL_SIZE_OPTIONS,
+} from "./lib/text-box-controls";
 
 type FabricModule = typeof FabricNamespace;
 
@@ -1587,7 +1591,6 @@ export async function renderElementsOverlay(
           borderScaleFactor: 1,
           cornerColor: "rgb(0, 100, 200)",
           cornerStrokeColor: "#ffffff",
-          cornerSize: 8,
           transparentCorners: false,
           // Redesign #4: grapheme-level wrap so an unbroken token (a URL, a
           // long word) wider than `width` still breaks instead of Fabric
@@ -1595,8 +1598,10 @@ export async function renderElementsOverlay(
           // already fits its own bounds (the overwhelmingly common case) —
           // this only ever engages when something would otherwise overflow.
           splitByGrapheme: true,
-          // Pointeur grossier : poignées tactiles élargies ({} sur desktop).
-          ...coarseControlProps(),
+          // Side-handles-only sizing (first-paint value — applyTextBoxControls
+          // sets the actual handle visibility once this is a confirmed plain
+          // text element, back at the shared canvas.add(fabricObj) point).
+          ...TEXTBOX_CONTROL_SIZE_OPTIONS,
         });
         // Fit the run to its exact /Widths box for ANY font (embedded too). Even the
         // exact embedded subset renders at the FontFace's hmtx advance, which is a
@@ -2527,6 +2532,12 @@ export async function renderElementsOverlay(
         ...(fabricObj as FabricObjectWithData).data,
         locked: element.locked === true,
       };
+      // Side-handles-only resize (redesign: text box drag/resize fixes) for
+      // a plain text element's Textbox specifically — not the annotation/
+      // form-field/shape Textboxes that share this same add-to-canvas point.
+      if (element.type === "text" && fabricObj.type === "textbox") {
+        applyTextBoxControls(fabricObj);
+      }
       canvas.add(fabricObj);
     }
   }
@@ -2916,10 +2927,11 @@ export function beginParagraphEditSession(
     borderScaleFactor: 1,
     cornerColor: "rgb(0, 100, 200)",
     cornerStrokeColor: "#ffffff",
-    cornerSize: 8,
     transparentCorners: false,
-    // Pointeur grossier : poignées tactiles élargies ({} sur desktop).
-    ...coarseControlProps(),
+    // Side-handles-only sizing (see applyTextBoxControls below, which also
+    // sets which handles are visible — this is just the first-paint size,
+    // so there's no flash of Fabric's smaller defaults before it runs).
+    ...TEXTBOX_CONTROL_SIZE_OPTIONS,
   });
   if (Object.keys(styles).length > 0) {
     (tb as unknown as { set: (k: string, v: unknown) => void }).set(
@@ -3004,6 +3016,7 @@ export function beginParagraphEditSession(
   };
 
   paragraphSessionRestore.set(tb as unknown as FabricObject, { members });
+  applyTextBoxControls(tb as unknown as FabricObject);
   canvas.add(tb as unknown as FabricObject);
   canvas.setActiveObject(tb as unknown as FabricObject);
   (tb as unknown as { enterEditing?: () => void }).enterEditing?.();

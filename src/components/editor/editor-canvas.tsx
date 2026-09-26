@@ -87,9 +87,12 @@ import {
   allowTouchScrollingForTool,
   clientPointFromEvent,
   isCoarsePointer,
-  coarseControlProps,
 } from "./lib/touch-interaction";
 import { attachPinchZoom } from "./lib/pinch-zoom";
+import {
+  applyTextBoxControls,
+  TEXTBOX_CONTROL_SIZE_OPTIONS,
+} from "./lib/text-box-controls";
 
 /** Zoom hard bounds (10% – 800%) shared by wheel, toolbar and fit modes. */
 const MIN_ZOOM = 0.1;
@@ -123,6 +126,7 @@ type EditableTextObject = FabricObject & {
     endIndex?: number,
     complete?: boolean,
   ) => FabricCharStyle[];
+  exitEditing?: () => void;
 };
 
 /**
@@ -844,6 +848,72 @@ export function EditorCanvas({
     (data: FabricObjectWithData["data"] | undefined): boolean =>
       Boolean(data && (data.redactionMark || data.annotationType)),
     [],
+  );
+
+  /**
+   * Clamps a live Fabric object into the page's safe area — the SAME check,
+   * reused everywhere an object's position/size can change: drag
+   * (object:moving), side-handle width resize (object:resizing), typing or
+   * pasting (text:changed), a font-size change on a text sub-selection
+   * (applySelectionStyle), and shape/image corner-scaling (object:scaling).
+   *
+   * Root cause this specifically fixes (drag/resize escaping the margin):
+   * Fabric updates an object's left/top/scaleX/scaleY DIRECTLY via `.set()`
+   * and fires object:moving/object:scaling/object:resizing SYNCHRONOUSLY
+   * right after — before anything recomputes `aCoords` (Fabric's cached
+   * hit-test/bounding-box corners). `getBoundingRect()` reads that cache, so
+   * calling it before a fresh `setCoords()` returns the PREVIOUS tick's
+   * position/size, one drag/resize frame stale. The clamp then compares
+   * against outdated geometry and only "catches up" a frame late — on a fast
+   * drag/flick, or if the user releases before another moving event fires to
+   * correct it, the box is left sitting past the margin. `setCoords()` at
+   * the top of this function (not only after OUR OWN corrections, as before)
+   * is the fix: it forces aCoords to reflect Fabric's own just-applied
+   * change, so every read below is the object's true current geometry.
+   */
+  const clampTextObjectToMargins = useCallback(
+    (target: FabricObjectWithData) => {
+      if (isMarginExempt(target.data)) return;
+      target.setCoords();
+      const rect = getSafeRect();
+      if (!rect) return;
+
+      // Width clamp — side-handle resize (or any direct width write) can
+      // never push the box's right edge past the right margin: shrink
+      // `width` itself (never scaleX, which Fabric's Textbox never touches
+      // for ml/mr anyway) so the FIXED edge — the one opposite whichever
+      // handle is being dragged — stays exactly where it was, and the text
+      // rewraps at the new width. Never narrower than roughly one
+      // character at the box's own font size, never wider than the full
+      // margin-to-margin span.
+      if (target.type === "textbox" && typeof target.width === "number") {
+        const maxWidth = Math.max(1, rect.right - rect.left);
+        const fontSize = (target as unknown as { fontSize?: number }).fontSize;
+        const approxCharWidth = (fontSize ?? 16) * 0.6;
+        const minWidth = Math.max(8, Math.min(maxWidth, approxCharWidth));
+        const nextWidth = Math.min(Math.max(target.width, minWidth), maxWidth);
+        if (nextWidth !== target.width) {
+          target.set({ width: nextWidth });
+          target.setCoords();
+        }
+      }
+
+      // Position clamp — a drag, or a resize whose anchor shifted the box
+      // (e.g. dragging the LEFT handle moves `left` to keep the right edge
+      // fixed), can still land the box outside the safe area.
+      const bbox = target.getBoundingRect();
+      const clamped = clampPositionToRect(bbox, rect);
+      const dx = clamped.left - bbox.left;
+      const dy = clamped.top - bbox.top;
+      if (dx !== 0 || dy !== 0) {
+        target.set({
+          left: (target.left ?? 0) + dx,
+          top: (target.top ?? 0) + dy,
+        });
+        target.setCoords();
+      }
+    },
+    [getSafeRect, isMarginExempt],
   );
 
   // Whether the faint dashed safe-area indicator is shown — true only while
@@ -2287,10 +2357,11 @@ export function EditorCanvas({
                 // that's wider than the box — grapheme-level wrap guarantees
                 // the box never crosses the right margin either way.
                 splitByGrapheme: true,
-                // Redesign #3: wider invisible touch hit area on the resize
-                // handles ({} on desktop — visual size is unchanged either way).
-                ...coarseControlProps(),
+                // Side-handles-only sizing (first-paint value — applyTextBoxControls
+                // right below sets which handles are visible).
+                ...TEXTBOX_CONTROL_SIZE_OPTIONS,
               });
+              applyTextBoxControls(newObj);
               (newObj as FabricObjectWithData).data = { elementId: generateId() };
               clientLogger.debug("[EditorCanvas] Textbox created successfully:", newObj);
               break;
@@ -3014,26 +3085,21 @@ export function EditorCanvas({
         const target = opt.target as FabricObjectWithData | undefined;
         if (!target) return;
         setShowMarginIndicator(true);
-        if (isMarginExempt(target.data)) return;
-        const rect = getSafeRect();
-        if (!rect) return;
-        const bbox = target.getBoundingRect();
-        const clamped = clampPositionToRect(bbox, rect);
-        const dx = clamped.left - bbox.left;
-        const dy = clamped.top - bbox.top;
-        if (dx !== 0 || dy !== 0) {
-          target.set({
-            left: (target.left ?? 0) + dx,
-            top: (target.top ?? 0) + dy,
-          });
-          // Without this, Fabric's cached hit-test geometry (aCoords) keeps
-          // the PRE-clamp position: the object then renders at the clamped
-          // spot but a subsequent click/drag attempt hit-tests against where
-          // it WOULD have been, missing the object entirely — reported live
-          // as "sometimes a text box can't be dragged" (any time the drag
-          // that placed it there got clamped).
-          target.setCoords();
-        }
+        clampTextObjectToMargins(target);
+      });
+
+      // Fabric's Textbox binds its ml/mr (side) handles to a WIDTH-only
+      // resize (its built-in changeWidth action handler — sets `width`
+      // directly, keeps scaleX at 1, text rewraps) that fires "resizing",
+      // a DIFFERENT event from "scaling". Without this handler that resize
+      // had NO margin clamp at all: the box could grow past the right
+      // margin freely, which is what showed up as "typing outside the
+      // margin" — the box itself was already sitting past it.
+      canvas.on("object:resizing", (opt) => {
+        const target = opt.target as FabricObjectWithData | undefined;
+        if (!target) return;
+        setShowMarginIndicator(true);
+        clampTextObjectToMargins(target);
       });
 
       canvas.on("object:scaling", (opt) => {
@@ -3041,6 +3107,12 @@ export function EditorCanvas({
         if (!target) return;
         setShowMarginIndicator(true);
         if (isMarginExempt(target.data)) return;
+        // Same one-tick-stale aCoords issue as object:moving (see
+        // clampTextObjectToMargins) — Fabric applies the scale via `.set()`
+        // and fires this event before anything recomputes aCoords, so the
+        // FIRST getBoundingRect() below must run after a fresh setCoords(),
+        // not only after our own corrections further down.
+        target.setCoords();
         const rect = getSafeRect();
         if (!rect) return;
         // Cap growth so the box's far edge stops at the margin instead of
@@ -3098,6 +3170,12 @@ export function EditorCanvas({
           setOverflowBox(null);
           return;
         }
+        // Safety net for typing/pasting: a Textbox's fixed `width` means
+        // content wraps rather than pushing the right edge past the
+        // margin, but re-running the same clamp here catches the box
+        // already being out of bounds for any other reason (also handles
+        // setCoords() staleness the same way as drag/resize).
+        clampTextObjectToMargins(target);
         const rect = getSafeRect();
         if (!rect) {
           setOverflowBox(null);
@@ -3561,6 +3639,13 @@ export function EditorCanvas({
       else if (e.key === "ArrowLeft") dx = -step;
       else dx = step;
       e.preventDefault();
+      // Same one-tick-stale aCoords issue as object:moving/scaling (see
+      // clampTextObjectToMargins) — without this, repeated nudges in the
+      // same direction can walk the box past the margin because each
+      // getBoundingRect() below reads the position from BEFORE the
+      // previous nudge's target.set() rather than the box's true current
+      // spot.
+      target.setCoords();
       const rect = getSafeRect();
       const bbox = target.getBoundingRect();
       const clamped = clampPositionToRect(
@@ -3578,6 +3663,23 @@ export function EditorCanvas({
 
     const onKeyDown = (e: KeyboardEvent) => {
       onArrowNudge(e);
+      // Esc while typing: exit inline-edit mode but keep the box SELECTED
+      // (Fabric's exitEditing() only flips isEditing — it never touches
+      // hasControls/selectable, see its _saveEditingProps/_restoreEditingProps
+      // round-trip), so handles are shown immediately and the box can be
+      // resized right away, same as clicking outside it (Fabric's own
+      // TextEditingManager already calls exitEditing() on that path — this
+      // is the one path Fabric doesn't cover on its own, since nothing else
+      // in this codebase listens for Escape while a hidden <textarea> has
+      // focus: page.tsx's own Escape handler explicitly skips it).
+      if (e.key === "Escape") {
+        const editing = editingTextRef.current as EditableTextObject | null;
+        if (editing?.isEditing && typeof editing.exitEditing === "function") {
+          editing.exitEditing();
+          fabricRef.current?.requestRenderAll();
+          return;
+        }
+      }
       if (e.code !== "Space") return;
       if (isTextInputFocused()) return;
       if (isSpaceDownRef.current) return;
@@ -3989,6 +4091,10 @@ export function EditorCanvas({
           editing.selectionStart,
           editing.selectionEnd,
         );
+        // Safety net: a font-size bump re-wraps within the box's fixed
+        // width (no horizontal risk in the common case), but re-running
+        // the margin clamp here costs nothing and catches any edge case.
+        clampTextObjectToMargins(editing as unknown as FabricObjectWithData);
         const elementId = (editing as FabricObjectWithData).data?.elementId;
         if (elementId) selectionStyleDirtyRef.current.add(elementId);
         fabricRef.current?.requestRenderAll();
