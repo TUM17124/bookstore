@@ -1306,6 +1306,11 @@ function EditorPageInner() {
   // éviter un texte de recherche figé sur un scene graph périmé.
   const lastGedRefreshRef = useRef(0);
   const pagesRef = useRef<PageObject[]>(pages);
+  // Where a text overflow should move the caret once the new pages exist.
+  const pendingFlowNavRef = useRef<{ index: number; elementId: string } | null>(
+    null,
+  );
+  const [flowEditElementId, setFlowEditElementId] = useState<string | null>(null);
   useEffect(() => {
     pagesRef.current = pages;
   }, [pages]);
@@ -4331,6 +4336,15 @@ function EditorPageInner() {
       // on existing pages (including the just-edited source textbox) instead
       // of replacing them with a parse of the pre-bake PDF and losing unsaved
       // scene-graph changes.
+      const lastContinuation = continuations[continuations.length - 1];
+      if (lastContinuation) {
+        // Set before the state updates so the effect below can move the caret
+        // onto the last new page once that page actually contains the text.
+        pendingFlowNavRef.current = {
+          index: sourcePageIndex + continuations.length,
+          elementId: lastContinuation.elementId,
+        };
+      }
       const nextPages = [
         ...currentPages.slice(0, sourcePageIndex + 1),
         ...parsedPages.slice(
@@ -4363,6 +4377,21 @@ function EditorPageInner() {
       toast,
     ],
   );
+
+  // Text that spills past a page is inserted on new pages below it. Navigate
+  // there only after those pages and their text elements are in the scene
+  // graph — navigateToPage clamps against the previous page count, so calling
+  // it in the same turn as replacePages would stay on the source page and the
+  // caret would never follow the text.
+  useEffect(() => {
+    const pending = pendingFlowNavRef.current;
+    if (!pending) return;
+    const page = pages[pending.index];
+    if (!page?.elements.some((el) => el.elementId === pending.elementId)) return;
+    pendingFlowNavRef.current = null;
+    setFlowEditElementId(pending.elementId);
+    navigateToPage(pending.index, "start");
+  }, [pages, navigateToPage]);
 
   const handleAddPage = useCallback(async () => {
     // afterPage=pages.length inserts at the end. pdf-engine treats it as
@@ -6502,6 +6531,7 @@ function EditorPageInner() {
               onManualZoomChange={handleManualZoomChange}
               onElementAdded={handleElementAdded}
               onTextOverflow={handleTextOverflow}
+              resumeTextEditId={flowEditElementId}
               onInkDrawn={handleAddInk}
               onElementModified={handleElementModified}
               onElementReordered={handleElementReordered}
@@ -6582,6 +6612,7 @@ function EditorPageInner() {
                 onTablePlaced={handleTablePlaced}
                 onElementAdded={handleElementAdded}
                 onTextOverflow={handleTextOverflow}
+                resumeTextEditId={flowEditElementId}
                 onInkDrawn={handleAddInk}
                 onElementModified={handleElementModified}
                 onElementReordered={handleElementReordered}

@@ -24,6 +24,7 @@ import { clientLogger } from "@/lib/pdf-editor/client-logger";
 import { addPdfBackground, backgroundRenderScale } from "./lib/pdf-background";
 import { effectivePagePoints } from "./lib/page-layout";
 import type { PageRenderPool } from "./lib/page-render-pool";
+import { renderElementsOverlay } from "./render-elements";
 
 export interface PageCanvasHostProps {
   /** Page to render. */
@@ -41,6 +42,18 @@ export interface PageCanvasHostProps {
    * bitmap is kept (no re-raster for pages that did not change).
    */
   bgRevision?: number;
+  /**
+   * Resolves embedded PDF fonts the same way the active editor does, so a
+   * page you are only scrolling past uses the same type as the page you clicked.
+   */
+  getFontFaceName?: (
+    originalName: string,
+    wantVariant?: { bold?: boolean; italic?: boolean },
+    text?: string,
+    fontId?: string,
+  ) => { name: string; embedded: boolean; exact: boolean } | null;
+  /** True while embedded fonts are still loading. A change re-paints the text. */
+  fontsLoading?: boolean;
   /** Notified once the page background has finished rendering. */
   onReady?: (index: number) => void;
   /** Notified when the host releases its pool slot on unmount. */
@@ -58,6 +71,8 @@ export function PageCanvasHost({
   scale,
   pool,
   bgRevision = 0,
+  getFontFaceName,
+  fontsLoading = false,
   onReady,
   onDispose,
 }: PageCanvasHostProps) {
@@ -75,14 +90,25 @@ export function PageCanvasHost({
   // re-rasterise the page) merely because a parent passed new closures.
   const onReadyRef = useRef(onReady);
   const onDisposeRef = useRef(onDispose);
+  const getFontFaceNameRef = useRef(getFontFaceName);
   useEffect(() => {
     onReadyRef.current = onReady;
     onDisposeRef.current = onDispose;
+    getFontFaceNameRef.current = getFontFaceName;
   });
 
   const { w: pageW, h: pageH } = effectivePagePoints(page);
   const cssWidth = pageW * scale;
   const cssHeight = pageH * scale;
+  // Repaint when the arranged text changes, not only when the PDF bytes do.
+  // Otherwise a paste that fills the next pages stays invisible until click.
+  const overlayKey = page.elements
+    .map((el) =>
+      el.type === "text"
+        ? `${el.elementId}\t${el.content}\t${el.bounds.x}\t${el.bounds.y}\t${el.bounds.width}\t${el.bounds.height}`
+        : el.elementId,
+    )
+    .join("\n");
 
   useEffect(() => {
     const host = containerRef.current;
@@ -170,6 +196,27 @@ export function PageCanvasHost({
         return;
       }
 
+      // Scene-graph text, read-only. This is what makes a flowed paste stay
+      // neatly arranged on every visible page, including ones the user has
+      // only scrolled to. The active editor paints the same elements itself.
+      if (page.elements.length > 0) {
+        try {
+          const fontResolver = getFontFaceNameRef.current;
+          await renderElementsOverlay(canvas, page.elements, await import("fabric"), {
+            readonly: true,
+            ...(fontResolver ? { getFontFaceName: fontResolver } : {}),
+            ...(page.blockGroups && page.blockGroups.length > 0
+              ? { blockGroups: page.blockGroups }
+              : {}),
+          });
+        } catch (err) {
+          clientLogger.warn("[PageCanvasHost] text overlay failed:", err);
+        }
+      }
+      if (cancelled) {
+        return;
+      }
+
       try {
         withDims.requestRenderAll();
       } catch {
@@ -204,7 +251,7 @@ export function PageCanvasHost({
     // bump (this page's content was re-baked → re-rasterise against the pool's
     // new bytes). Callbacks are read via refs (kept stable) so new closures
     // don't force re-rasterisation.
-  }, [pool, index, page.pageId, scale, cssWidth, cssHeight, bgRevision]);
+  }, [pool, index, page, overlayKey, fontsLoading, scale, cssWidth, cssHeight, bgRevision]);
 
   return (
     <div

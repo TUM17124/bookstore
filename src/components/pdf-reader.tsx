@@ -4,7 +4,15 @@ import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type Cl
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { getToken } from '@/lib/api'
-import { getPdfProgress, savePdfProgress } from '@/lib/api'
+import { getPdfProgress, savePdfProgress, getPdfNotes, addPdfNote, deletePdfNote } from '@/lib/api'
+import {
+  notesStorageKey,
+  normalizeNoteText,
+  piecesBetween,
+  quoteRanges,
+  type PdfThought,
+  type TextPiece,
+} from '@/lib/pdf-notes'
 import {
   getProStatus,
   getTtsUsage,
@@ -188,6 +196,48 @@ function splitForTts(text: string, max = MAX_TTS_CHARS): string[] {
   return parts
 }
 
+function readStoredThoughts(bookId: string | undefined, url: string): PdfThought[] {
+  try {
+    const raw = localStorage.getItem(notesStorageKey(bookId, url))
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as PdfThought[]
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (row) =>
+        row &&
+        typeof row.id === 'string' &&
+        typeof row.quote === 'string' &&
+        Number.isFinite(row.page),
+    )
+  } catch {
+    return []
+  }
+}
+
+function writeStoredThoughts(
+  bookId: string | undefined,
+  url: string,
+  rows: PdfThought[],
+) {
+  try {
+    localStorage.setItem(notesStorageKey(bookId, url), JSON.stringify(rows))
+  } catch {
+    // ignore a full or private store
+  }
+}
+
+function locateSentences(text: string): Array<{ sentence: string; start: number }> {
+  const clean = text.replace(/\s+/g, ' ').trim()
+  const sentences = splitSentences(clean)
+  let cursor = 0
+  return sentences.map((sentence) => {
+    const at = clean.indexOf(sentence, cursor)
+    const start = at < 0 ? cursor : at
+    cursor = start + sentence.length
+    return { sentence, start }
+  })
+}
+
 function splitSentences(text: string): string[] {
   const clean = text.replace(/\s+/g, ' ').trim()
   if (!clean) return []
@@ -242,6 +292,15 @@ export function PdfReader({
   const [marked, setMarked] = useState(0)
   const [resumeAt, setResumeAt] = useState(0)
   const [obscured, setObscured] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
+  const [thoughts, setThoughts] = useState<PdfThought[]>([])
+  const [draft, setDraft] = useState<{
+    page: number
+    quote: string
+    thought: string
+  } | null>(null)
+  const [savingNote, setSavingNote] = useState(false)
+  const [noteMsg, setNoteMsg] = useState('')
 
   const { pipWindow, supported: pipSupported, open: openPip, close: closePip } =
     usePictureInPicture('#f4efe4')
@@ -753,6 +812,131 @@ export function PdfReader({
       await savePdfProgress(bookId, n)
     } catch {
       // ignore
+    }
+  }
+
+  useEffect(() => {
+    const local = readStoredThoughts(bookId, url)
+    setThoughts(local)
+    if (!loggedIn || !bookId) return
+    let cancelled = false
+    getPdfNotes(bookId)
+      .then((rows) => {
+        if (cancelled || !Array.isArray(rows)) return
+        const cloud: PdfThought[] = rows
+          .map((row) => ({
+            id: String(row.id),
+            page: Number(row.page) || 1,
+            quote: normalizeNoteText(row.quote || ''),
+            thought: normalizeNoteText(row.thought || row.note || ''),
+          }))
+          .filter((row) => row.quote.length >= 2)
+        const merged = new Map<string, PdfThought>()
+        for (const row of local) merged.set(`${row.page}:${row.quote}`, row)
+        for (const row of cloud) merged.set(`${row.page}:${row.quote}`, row)
+        const next = [...merged.values()]
+        setThoughts(next)
+        writeStoredThoughts(bookId, url, next)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [bookId, url, loggedIn])
+
+  function quotesOnPage(pageNum: number): string[] {
+    return thoughts
+      .filter((row) => row.page === pageNum)
+      .map((row) => row.quote)
+  }
+
+  function paintPieces(pieces: TextPiece[], keyPrefix: string) {
+    return pieces.map((piece, index) =>
+      piece.marked ? (
+        <mark
+          key={`${keyPrefix}-${index}`}
+          className="rounded-sm bg-[#f6e27a] px-0.5 text-inherit"
+        >
+          {piece.text}
+        </mark>
+      ) : (
+        <span key={`${keyPrefix}-${index}`}>{piece.text}</span>
+      ),
+    )
+  }
+
+  function captureHighlight() {
+    if (!notesOpen) return
+    window.setTimeout(() => {
+    const selection = window.getSelection()
+    if (!selection || selection.isCollapsed) return
+    const quote = normalizeNoteText(selection.toString()).slice(0, 500)
+    if (quote.length < 2) return
+    const anchor = selection.anchorNode
+    const element =
+      anchor instanceof Element ? anchor : anchor?.parentElement
+    const section = element?.closest('section[id^="read-page-"]')
+    const pageNum =
+      Number(section?.id.replace('read-page-', '')) || pageRef.current
+    setDraft({ page: pageNum, quote, thought: '' })
+    setNoteMsg('')
+    }, 0)
+  }
+
+  async function saveThought() {
+    if (!draft || savingNote) return
+    const quote = normalizeNoteText(draft.quote).slice(0, 500)
+    if (quote.length < 2) {
+      setNoteMsg('Highlight a passage first.')
+      return
+    }
+    const thought = draft.thought.trim().slice(0, 280)
+    setSavingNote(true)
+    const existing = thoughts.find(
+      (row) => row.page === draft.page && row.quote === quote,
+    )
+    const row: PdfThought = {
+      id: existing?.id || `local-${Date.now()}`,
+      page: draft.page,
+      quote,
+      thought,
+    }
+    const next = existing
+      ? thoughts.map((item) => (item.id === existing.id ? row : item))
+      : [...thoughts, row]
+    setThoughts(next)
+    writeStoredThoughts(bookId, url, next)
+    setDraft(null)
+    window.getSelection()?.removeAllRanges()
+    if (!loggedIn || !bookId) {
+      setNoteMsg('Saved on this device.')
+      setSavingNote(false)
+      return
+    }
+    try {
+      if (existing && /^\d+$/.test(existing.id)) {
+        await deletePdfNote(existing.id).catch(() => {})
+      }
+      const saved = await addPdfNote(bookId, row.page, row.quote, row.thought)
+      const id = String(saved?.id || row.id)
+      const swapped = next.map((item) =>
+        item.id === row.id ? { ...item, id } : item,
+      )
+      setThoughts(swapped)
+      writeStoredThoughts(bookId, url, swapped)
+      setNoteMsg('')
+    } catch {
+      setNoteMsg('Saved on this device.')
+    }
+    setSavingNote(false)
+  }
+
+  function removeThought(row: PdfThought) {
+    const next = thoughts.filter((item) => item.id !== row.id)
+    setThoughts(next)
+    writeStoredThoughts(bookId, url, next)
+    if (loggedIn && /^\d+$/.test(row.id)) {
+      void deletePdfNote(row.id).catch(() => {})
     }
   }
 
@@ -2441,10 +2625,10 @@ export function PdfReader({
     pageNum: number,
     text: string,
   ) {
-    const sentences =
-      splitSentences(text)
+    const located = locateSentences(text)
+    const ranges = quoteRanges(text, quotesOnPage(pageNum))
 
-    if (!sentences.length) {
+    if (!located.length) {
       return (
         <p
           className="font-semibold leading-relaxed text-black"
@@ -2467,19 +2651,31 @@ export function PdfReader({
           fontSize: `${fontSize}px`,
         }}
       >
-        {sentences.map(
-          (s: string, i: number) => (
+        {located.map(
+          ({ sentence, start }, i: number) => (
             <span
               key={i}
               role="button"
               tabIndex={0}
-              title="Start robot reader from here"
-              onClick={() =>
+              title={
+                notesOpen
+                  ? 'Select text to highlight it'
+                  : 'Start robot reader from here'
+              }
+              onClick={() => {
+                const selection = window.getSelection()
+                if (
+                  selection &&
+                  !selection.isCollapsed &&
+                  normalizeNoteText(selection.toString()).length >= 2
+                ) {
+                  return
+                }
                 void startFromSentence(
                   pageNum,
                   i,
                 )
-              }
+              }}
               onKeyDown={(
                 e: KeyboardEvent<HTMLSpanElement>,
               ) => {
@@ -2497,7 +2693,10 @@ export function PdfReader({
               }}
               className="cursor-pointer rounded px-0.5 hover:bg-[#f591ac]/25"
             >
-              {s}{' '}
+              {paintPieces(
+                piecesBetween(sentence, start, ranges),
+                `${pageNum}-${i}`,
+              )}{' '}
             </span>
           ),
         )}
@@ -2690,14 +2889,10 @@ export function PdfReader({
                 'pip-tts-sentence',
               )
             ) : (
-              <p
-                className="font-semibold leading-relaxed text-black"
-                style={{
-                  fontSize: `${fontSize}px`,
-                }}
-              >
-                {pipPageText}
-              </p>
+              renderClickablePage(
+                visiblePipPage,
+                pipPageText,
+              )
             )}
           </div>
         </div>
@@ -2929,6 +3124,21 @@ export function PdfReader({
           Mark page {page}
         </button>
 
+        <button
+          type="button"
+          onClick={() => {
+            setNotesOpen((open) => !open)
+            setNoteMsg('')
+          }}
+          className={`rounded-full px-3 py-1 text-sm font-bold ${
+            notesOpen
+              ? 'bg-[#f591ac] text-[#141a32]'
+              : 'bg-black/10 text-black'
+          }`}
+        >
+          Notes{thoughts.length ? ` (${thoughts.length})` : ''}
+        </button>
+
         {marked > 0 && (
           <button
             type="button"
@@ -3093,6 +3303,99 @@ export function PdfReader({
         </div>
       )}
 
+      {notesOpen ? (
+        <div className="shrink-0 border-b border-black/10 bg-[#efe8d8] px-4 py-3">
+          <p className="text-[12px] font-bold uppercase tracking-wider text-black/45">
+            Highlight and thoughts
+          </p>
+          <p className="mt-1 text-[13px] text-black/60">
+            Select a passage on the page, then type what it made you think.
+          </p>
+          {draft ? (
+            <div className="mt-3">
+              <p className="rounded-xl bg-[#f6e27a] px-3 py-2 text-sm font-semibold leading-relaxed text-black">
+                {draft.quote}
+              </p>
+              <p className="mt-1 text-[11px] font-bold uppercase tracking-wider text-black/40">
+                Page {draft.page}
+              </p>
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={draft.thought}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setDraft({ ...draft, thought: e.target.value })
+                  }
+                  placeholder="Type a thought"
+                  maxLength={280}
+                  disabled={savingNote}
+                  className="min-w-0 flex-1 rounded-full border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  disabled={savingNote}
+                  onClick={() => void saveThought()}
+                  className="rounded-full bg-[#f591ac] px-3 py-2 text-sm font-bold text-[#141a32] disabled:opacity-60"
+                >
+                  {savingNote ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-2 text-[13px] text-black/45">
+              No passage selected yet.
+            </p>
+          )}
+          {noteMsg ? (
+            <p className="mt-2 text-[12px] font-semibold text-[#c45b78]">
+              {noteMsg}
+            </p>
+          ) : null}
+          <ul className="mt-3 space-y-2">
+            {thoughts.map((row) => (
+              <li key={row.id} className="flex items-start gap-2 text-sm">
+                <button
+                  type="button"
+                  onClick={() => void gotoPage(row.page)}
+                  className="shrink-0 font-bold text-[#c45b78]"
+                >
+                  p.{row.page}
+                </button>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold text-black">
+                    {row.quote}
+                  </span>
+                  {row.thought ? (
+                    <span className="block truncate text-black/60">
+                      {row.thought}
+                    </span>
+                  ) : null}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeThought(row)}
+                  className="text-black/40"
+                  aria-label="Delete note"
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+          {!loggedIn ? (
+            <p className="mt-3 text-[13px] text-black/55">
+              <Link href={loginHref} className="font-semibold text-[#c45b78] underline">
+                Log in
+              </Link>
+              {' · '}
+              <Link href={signupHref} className="font-semibold text-[#c45b78] underline">
+                Sign up
+              </Link>{' '}
+              to keep these notes on your account. Until then they stay on this device.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {renderReaderNotices()}
 
       {canUseTts ? (
@@ -3137,7 +3440,9 @@ export function PdfReader({
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="min-h-0 flex-1 select-none overflow-auto"
+        className={`min-h-0 flex-1 overflow-auto ${
+          notesOpen ? 'select-text' : 'select-none'
+        }`}
       >
         {status ? (
           <p className="p-6 text-sm font-semibold text-black/50">
@@ -3180,7 +3485,11 @@ export function PdfReader({
           </p>
         )}
 
-        <article className="mx-auto max-w-2xl px-4 py-6">
+        <article
+          className="mx-auto max-w-2xl px-4 py-6"
+          onMouseUp={captureHighlight}
+          onTouchEnd={captureHighlight}
+        >
           {numbers.map((n) => (
             <section
               key={n}

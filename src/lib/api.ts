@@ -664,6 +664,34 @@ export async function deleteAudioNote(id: number) {
   return api(`/audio-notes/${id}/`, { method: "DELETE" })
 }
 
+export type PdfNoteRow = {
+  id: number | string
+  page: number
+  quote: string
+  thought?: string
+  note?: string
+}
+
+export async function getPdfNotes(bookId: string) {
+  return api<PdfNoteRow[]>(`/books/${bookId}/pdf-notes/`)
+}
+
+export async function addPdfNote(
+  bookId: string,
+  page: number,
+  quote: string,
+  thought: string,
+) {
+  return api<PdfNoteRow>(`/books/${bookId}/pdf-notes/`, {
+    method: "POST",
+    body: JSON.stringify({ page, quote, thought, note: thought }),
+  })
+}
+
+export async function deletePdfNote(id: string) {
+  return api(`/pdf-notes/${id}/`, { method: "DELETE" })
+}
+
 export async function getPdfProgress(bookId: string) {
   return api<{ page: number }>(`/books/${bookId}/pdf-progress/`)
 }

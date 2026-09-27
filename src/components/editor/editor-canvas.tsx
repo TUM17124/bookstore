@@ -94,6 +94,13 @@ import {
   applyTextBoxControls,
   TEXTBOX_CONTROL_SIZE_OPTIONS,
 } from "./lib/text-box-controls";
+import {
+  flowLinesFromMeasured,
+  flowSliceContent,
+  paginateFlowLines,
+  wrapPlainText,
+  type FlowLine,
+} from "./lib/text-pagination";
 
 /** Zoom hard bounds (10% – 800%) shared by wheel, toolbar and fit modes. */
 const MIN_ZOOM = 0.1;
@@ -465,6 +472,11 @@ export interface EditorCanvasProps {
     continuations: TextElement[],
     pageIndex: number,
   ) => Promise<boolean> | void;
+  /**
+   * After text flows onto a following page, that page's canvas should put the
+   * caret at the end of this element once the page has loaded.
+   */
+  resumeTextEditId?: string | null;
   /** 0-based document index for this canvas when embedded in a page flow. */
   pageIndex?: number;
   /** Callback quand un élément est modifié. oldBounds = bounds AVANT
@@ -707,45 +719,80 @@ function removeFieldHitTwin(canvas: FabricCanvas, elementId: string): void {
   if (twin) canvas.remove(twin);
 }
 
-function textLineOffsets(content: string, lines: string[]): number[] {
-  const offsets: number[] = [];
-  let cursor = 0;
-  for (const line of lines) {
-    if (line.length > 0) {
-      const start = content.indexOf(line, cursor);
-      if (start < 0) return [];
-      cursor = start + line.length;
-    }
-    if (content[cursor] === "\n") cursor += 1;
-    offsets.push(cursor);
-  }
-  return offsets;
+interface FlowMeasurable {
+  text?: string;
+  textLines?: string[];
+  width?: number;
+  fontSize?: number;
+  lineHeight?: number;
+  top?: number;
+  originX?: string;
+  originY?: string;
+  isEditing?: boolean;
+  dynamicMinWidth?: number;
+  getHeightOfLine?: (lineIndex: number) => number;
+  missingNewlineOffset?: (lineIndex: number) => number;
+  getPointByOrigin?: (originX: string, originY: string) => { x: number; y: number };
+  set?: (props: Record<string, unknown>) => void;
+  setCoords?: () => void;
+  exitEditing?: () => void;
 }
 
-function sliceTextElement(
-  element: TextElement,
-  start: number,
-  end: number,
+/** Grow downward from the top-left. Fabric's default center origin makes a
+ * typing box expand upward and downward at once, so the caret crosses the
+ * bottom margin while `top` still looks like it has room. */
+function pinTextOriginTopLeft(obj: FlowMeasurable): void {
+  if (obj.originX === "left" && obj.originY === "top") return;
+  if (!obj.getPointByOrigin || !obj.set) return;
+  const corner = obj.getPointByOrigin("left", "top");
+  obj.set({ originX: "left", originY: "top", left: corner.x, top: corner.y });
+  obj.setCoords?.();
+}
+
+function measureFlowLines(obj: FlowMeasurable): FlowLine[] {
+  const text = obj.text ?? "";
+  const visual = obj.textLines ?? [];
+  const fallbackHeight = (obj.fontSize || 16) * (obj.lineHeight || 1.16);
+  const measured = flowLinesFromMeasured(
+    text.length,
+    visual.map((line, index) => ({
+      text: line,
+      gapAfter:
+        index < visual.length - 1 && obj.missingNewlineOffset
+          ? obj.missingNewlineOffset(index)
+          : 0,
+      height: obj.getHeightOfLine
+        ? obj.getHeightOfLine(index)
+        : fallbackHeight,
+    })),
+  );
+  if (measured) return measured;
+  const width = Math.max(obj.width ?? 0, 1);
+  const fontSize = obj.fontSize || 16;
+  const charsPerLine = Math.max(8, Math.floor(width / (fontSize * 0.5)));
+  return wrapPlainText(text, charsPerLine, Math.max(fallbackHeight, 1));
+}
+
+function continuationFromText(
+  template: TextElement,
+  content: string,
   y: number,
   height: number,
 ): TextElement {
-  const base = { ...element };
-  delete base.index;
-  delete base.segments;
-  const runs = element.runs
-    ?.map((run) => ({
-      ...run,
-      start: Math.max(run.start, start) - start,
-      end: Math.min(run.end, end) - start,
-    }))
-    .filter((run) => run.end > run.start);
-  return {
-    ...base,
+  const next: TextElement = {
+    ...template,
     elementId: generateId(),
-    content: element.content.slice(start, end),
-    bounds: { ...element.bounds, y, height },
-    ...(runs && runs.length > 0 ? { runs } : { runs: undefined }),
+    content,
+    bounds: {
+      ...template.bounds,
+      y,
+      height: Math.max(height, template.style.fontSize || 16),
+    },
+    runs: undefined,
   };
+  delete next.index;
+  delete (next as { segments?: unknown }).segments;
+  return next;
 }
 
 /**
@@ -781,6 +828,7 @@ export function EditorCanvas({
   onTablePlaced,
   onElementAdded,
   onTextOverflow,
+  resumeTextEditId = null,
   pageIndex,
   onElementModified,
   onElementReordered,
@@ -1440,6 +1488,23 @@ export function EditorCanvas({
   // character selection (`selectionStart`/`selectionEnd`) so the toolbar can
   // apply bold/italic/colour/… to a SUB-RANGE instead of the whole element.
   const editingTextRef = useRef<FabricObjectWithData | null>(null);
+  // Held while a page-break mutates the text box, so the text:changed that
+  // mutation fires cannot start a second break.
+  const textFlowLockRef = useRef(false);
+  const resumeTextEditIdRef = useRef<string | null>(resumeTextEditId);
+  resumeTextEditIdRef.current = resumeTextEditId;
+  const consumedResumeEditRef = useRef<string | null>(null);
+  const commitLiveTextEdit = useCallback(() => {
+    const editing = editingTextRef.current as
+      | (FabricObjectWithData & {
+          isEditing?: boolean;
+          exitEditing?: () => void;
+        })
+      | null;
+    if (editing?.isEditing && typeof editing.exitEditing === "function") {
+      editing.exitEditing();
+    }
+  }, []);
   // elementIds whose per-character `styles` map was mutated during the current
   // edit session (via applySelectionStyle). Drained on text:editing:exited so
   // the style change is forwarded for the PDF bake even when `content` is
@@ -1811,6 +1876,64 @@ export function EditorCanvas({
     canvas?.requestRenderAll?.();
   }, [beginProgrammaticApply, endProgrammaticApply]);
 
+  // Stop a text box at the bottom margin. Called from text:changed (which is
+  // re-attached whenever edit handlers refresh). The old page-break lived in a
+  // second text:changed listener registered only inside the Fabric init, and
+  // that listener was removed by the first `canvas.off("text:changed")` — after
+  // which the caret could walk off the page and a paste never split.
+  const keepTextOnPage = useCallback(
+    (obj: FabricObject) => {
+      if (textFlowLockRef.current) return;
+      const target = obj as FabricObjectWithData & FlowMeasurable;
+      if (target.data?.type !== "text" || target.data?.locked === true) {
+        setOverflowBox(null);
+        return;
+      }
+      if ((target as FabricObject & { type?: string }).type !== "textbox") {
+        setOverflowBox(null);
+        return;
+      }
+      pinTextOriginTopLeft(target);
+      const rect = getSafeRect();
+      const maxWidth = Math.max(40, rect.right - (target.left ?? rect.left));
+      // Width changes reflow the text and can re-enter text:changed. Hold the
+      // lock across that reflow and across the edit exit that moves the overflow.
+      textFlowLockRef.current = true;
+      try {
+        if ((target.width ?? 0) > maxWidth + 0.5 && target.set) {
+          target.set({ width: maxWidth });
+        }
+        if ((target.dynamicMinWidth ?? 0) > maxWidth + 0.5 && target.set) {
+          // A single token wider than the column. Break it instead of letting
+          // the box push past the right margin; ordinary words stay word-wrapped.
+          target.set({ width: maxWidth, splitByGrapheme: true });
+        }
+        clampTextObjectToMargins(target);
+        const top = target.top ?? rect.top;
+        const lines = measureFlowLines(target);
+        const slices = paginateFlowLines(
+          lines,
+          rect.bottom - top,
+          rect.bottom - rect.top,
+        );
+        if (
+          slices.length > 1 &&
+          target.isEditing === true &&
+          typeof target.exitEditing === "function"
+        ) {
+          setOverflowBox(null);
+          target.exitEditing();
+          return;
+        }
+      } finally {
+        textFlowLockRef.current = false;
+      }
+      const bbox = target.getBoundingRect();
+      setOverflowBox(overflowsBottomMargin(bbox, rect) ? bbox : null);
+    },
+    [clampTextObjectToMargins, getSafeRect],
+  );
+
   // Handler appele quand le texte change en temps reel
   const handleTextChanged = useCallback((e: { target?: FabricObject }) => {
     if (!e.target) return;
@@ -1827,7 +1950,10 @@ export function EditorCanvas({
     //     police RÉTRÉCIT en direct (auto-size Adobe) et regrandit vers la
     //     taille de base quand des caractères sont effacés.
     const data = obj.data;
-    if (data?.type !== "form_field") return;
+    if (data?.type !== "form_field") {
+      keepTextOnPage(obj);
+      return;
+    }
     const field = data.formFieldElement as FormFieldElement | undefined;
     if (!field) return;
     const isComb = field.properties?.comb === true;
@@ -1891,7 +2017,7 @@ export function EditorCanvas({
     }
 
     if (dirty) editable.canvas?.requestRenderAll?.();
-  }, []);
+  }, [keepTextOnPage]);
 
   // Word-like partial formatting: the IText caret/selection moved while editing
   // (Fabric `text:selection:changed`) — push the aggregated style of the new
@@ -2016,68 +2142,49 @@ export function EditorCanvas({
       ? originalContentRef.current.get(elementId)
       : undefined;
     if (
-      obj.data?.isUserTextBox === true &&
+      typeName === "textbox" &&
+      obj.data?.type === "text" &&
+      obj.data?.locked !== true &&
+      obj.data?.isRunSegment !== true &&
       pageIndex !== undefined &&
       onTextOverflow &&
-      textObject.textLines &&
-      textObject.textLines.length > 0
+      currentText.length > 0
     ) {
+      const measurable = textObject as FlowMeasurable;
+      pinTextOriginTopLeft(measurable);
       const safeRect = getSafeRect();
-      const fontSize = textObject.fontSize || 16;
-      const lineHeight = fontSize * (textObject.lineHeight || 1.2);
-      const firstPageLines = Math.max(
-        1,
-        Math.floor(
-          (safeRect.bottom - (textObject.top ?? safeRect.top)) / lineHeight,
-        ),
+      const top = measurable.top ?? safeRect.top;
+      const lines = measureFlowLines(measurable);
+      const slices = paginateFlowLines(
+        lines,
+        safeRect.bottom - top,
+        safeRect.bottom - safeRect.top,
       );
-      if (textObject.textLines.length > firstPageLines) {
-        const offsets = textLineOffsets(currentText, textObject.textLines);
-        const serialized = fabricObjectToElement(obj);
-        if (
-          offsets.length === textObject.textLines.length &&
-          serialized?.type === "text"
-        ) {
-          const firstEnd = offsets[firstPageLines - 1] ?? 0;
-          const linesPerPage = Math.max(
-            1,
-            Math.floor((safeRect.bottom - safeRect.top) / lineHeight),
-          );
-          const continuations: TextElement[] = [];
-          for (
-            let lineStart = firstPageLines;
-            lineStart < offsets.length;
-            lineStart += linesPerPage
-          ) {
-            const lineEnd = Math.min(
-              lineStart + linesPerPage,
-              offsets.length,
-            );
-            const start = offsets[lineStart - 1] ?? firstEnd;
-            const end = offsets[lineEnd - 1] ?? currentText.length;
-            if (end > start) {
-              continuations.push(
-                sliceTextElement(
-                  serialized,
-                  start,
-                  end,
-                  safeRect.top,
-                  Math.max(1, lineEnd - lineStart) * lineHeight,
-                ),
-              );
-            }
+      // Serialise BEFORE clipping so the template still carries the full style.
+      // Character offsets below refer to `currentText`, not the joined visual
+      // lines the serialiser may store for the bake.
+      const serialized = fabricObjectToElement(obj);
+      if (slices.length > 1 && serialized?.type === "text" && measurable.set) {
+        const fullText = currentText;
+        const pageText = flowSliceContent(fullText, lines, slices[0]!);
+        const continuations = slices.slice(1).map((slice) =>
+          continuationFromText(
+            serialized,
+            flowSliceContent(fullText, lines, slice),
+            safeRect.top,
+            slice.height,
+          ),
+        );
+        if (continuations.length > 0) {
+          textFlowLockRef.current = true;
+          try {
+            measurable.set({ text: pageText });
+            measurable.setCoords?.();
+          } finally {
+            textFlowLockRef.current = false;
           }
-          if (firstEnd > 0 && continuations.length > 0 && textObject.set) {
-            const fullText = currentText;
-            textObject.set({ text: currentText.slice(0, firstEnd) });
-            textObject.setCoords?.();
-            currentText = currentText.slice(0, firstEnd);
-            overflowToPaginate = {
-              continuations,
-              fullText,
-              pageText: currentText,
-            };
-          }
+          currentText = pageText;
+          overflowToPaginate = { continuations, fullText, pageText };
         }
       }
     }
@@ -2145,15 +2252,19 @@ export function EditorCanvas({
       const { continuations, fullText, pageText } = overflowToPaginate;
       const canvas = fabricRef.current;
       const restoreOverflow = () => {
-        if (
-          fabricRef.current !== canvas ||
-          textObject.text !== pageText
-        ) {
-          return;
+        const canvasGone = fabricRef.current !== canvas;
+        if (!canvasGone && textObject.text !== pageText) return;
+        textFlowLockRef.current = true;
+        try {
+          textObject.set?.({ text: fullText });
+          textObject.setCoords?.();
+        } finally {
+          textFlowLockRef.current = false;
         }
-        textObject.set?.({ text: fullText });
-        textObject.setCoords?.();
-        canvas?.requestRenderAll();
+        if (!canvasGone) canvas?.requestRenderAll();
+        // The page may already have unmounted (the user moved on while the
+        // break was still saving). Put the full text back into the scene
+        // graph anyway — dropping it here is how a page change lost the paste.
         if (elementId) forwardElementModified(obj);
       };
       try {
@@ -2592,16 +2703,17 @@ export function EditorCanvas({
                 top: textTop,
                 width: textWidth,
                 fontSize: 16,
+                // Top-left so the box grows down the page. Word wrap (not
+                // grapheme wrap) keeps a paste in words; an overlong token is
+                // broken later, only if it would cross the right margin.
+                originX: "left",
+                originY: "top",
+                splitByGrapheme: false,
                 // Famille dominante du document (memoïsée) — un nouveau texte
                 // doit ressembler au reste de la page, pas à un Arial générique.
                 fontFamily: documentDefaultFontFamilyRef.current,
                 fill: currentStrokeColor,
                 transparentCorners: false,
-                // Redesign #4: Fabric's word-wrap widens a line past `width`
-                // rather than breaking an unbroken token (a URL, a long word)
-                // that's wider than the box — grapheme-level wrap guarantees
-                // the box never crosses the right margin either way.
-                splitByGrapheme: true,
                 selectable: true,
                 hasControls: true,
                 // Side-handles-only sizing (first-paint value — applyTextBoxControls
@@ -3419,60 +3531,7 @@ export function EditorCanvas({
         setOverflowBox(null);
       });
 
-      // Page-break inserted text as soon as it exceeds the current page. Exiting
-      // edit mode runs handleTextEditingExited, which keeps the fitting lines
-      // here and moves every remaining line into as many continuation pages as
-      // needed. This also handles a large paste in one text:changed event.
-      canvas.on("text:changed", (opt) => {
-        const target = opt.target as
-          | (FabricObjectWithData & {
-              exitEditing?: () => void;
-              fontSize?: number;
-              isEditing?: boolean;
-              lineHeight?: number;
-              textLines?: string[];
-              top?: number;
-            })
-          | undefined;
-        if (!target || isMarginExempt(target.data)) {
-          setOverflowBox(null);
-          return;
-        }
-        // Safety net for typing/pasting: a Textbox's fixed `width` means
-        // content wraps rather than pushing the right edge past the
-        // margin, but re-running the same clamp here catches the box
-        // already being out of bounds for any other reason (also handles
-        // setCoords() staleness the same way as drag/resize).
-        clampTextObjectToMargins(target);
-        const rect = getSafeRect();
-        if (!rect) {
-          setOverflowBox(null);
-          return;
-        }
-        if (
-          target.data?.isUserTextBox === true &&
-          target.isEditing === true &&
-          typeof target.exitEditing === "function" &&
-          pageIndex !== undefined &&
-          onTextOverflow &&
-          target.textLines &&
-          target.textLines.length > 0
-        ) {
-          const fontSize = target.fontSize || 16;
-          const lineHeight = fontSize * (target.lineHeight || 1.2);
-          const firstPageLines = Math.max(
-            1,
-            Math.floor((rect.bottom - (target.top ?? rect.top)) / lineHeight),
-          );
-          if (target.textLines.length > firstPageLines) {
-            setOverflowBox(null);
-            target.exitEditing();
-            return;
-          }
-        }
-        const bbox = target.getBoundingRect();
-        setOverflowBox(overflowsBottomMargin(bbox, rect) ? bbox : null);
-      });
+
 
       const endPan = () => {
         // Freehand pencil: finalise the stroke on pointer-up / pointer-out.
@@ -3578,6 +3637,12 @@ export function EditorCanvas({
     });
 
     return () => {
+      // Fabric's canvas.dispose() drops the text-editing manager WITHOUT
+      // exitEditing(), so a page change (this canvas unmounts) threw away
+      // every character still in the hidden textarea. Commit first — that
+      // fires text:editing:exited, which forwards the text and, when it runs
+      // past the margin, continues it on the following pages.
+      try { commitLiveTextEdit(); } catch { /* commit best-effort */ }
       // dispose() est ASYNC en fabric v7 (la restauration du DOM par Fabric
       // n'aura pas lieu avant le démontage React) — on ne l'attend pas.
       try { fabricRef.current?.dispose(); } catch { /* dispose best-effort */ }
@@ -3641,6 +3706,10 @@ export function EditorCanvas({
   const loadPage = useCallback(
     async (pageData: PageObject, fabricModule: typeof import("fabric")) => {
       if (!fabricRef.current) return false;
+      // Switching the page shown by this canvas clears every object. Commit
+      // the live edit first or the text that was being typed never reaches
+      // the scene graph.
+      commitLiveTextEdit();
       const canvas = fabricRef.current;
       const loadVersion = ++pageLoadVersionRef.current;
       const isCurrentLoad = () =>
@@ -3739,6 +3808,7 @@ export function EditorCanvas({
         if (isCurrentLoad()) {
           setReadyPageId(pageData.pageId);
           onPageLoadingChangeRef.current?.(false);
+          focusResumedTextEdit(canvas);
         }
       }
     },
@@ -3749,6 +3819,32 @@ export function EditorCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
+
+  // Put the caret at the end of the element text just flowed onto this page.
+  // Runs after programmatic apply so enterEditing is not swallowed.
+  const focusResumedTextEdit = useCallback((canvas: FabricCanvas) => {
+    const id = resumeTextEditIdRef.current;
+    if (!id || consumedResumeEditRef.current === id) return;
+    const target = canvas
+      .getObjects()
+      .find((o) => (o as FabricObjectWithData).data?.elementId === id) as
+      | (FabricObjectWithData & {
+          text?: string;
+          isEditing?: boolean;
+          enterEditing?: () => void;
+          selectionStart?: number;
+          selectionEnd?: number;
+        })
+      | undefined;
+    if (!target || typeof target.enterEditing !== "function") return;
+    consumedResumeEditRef.current = id;
+    canvas.setActiveObject(target as FabricObject);
+    target.enterEditing();
+    const len = target.text?.length ?? 0;
+    target.selectionStart = len;
+    target.selectionEnd = len;
+    canvas.requestRenderAll();
+  }, []);
 
   // Mettre à jour la page quand elle change
   useEffect(() => {
@@ -3813,6 +3909,23 @@ export function EditorCanvas({
     if (!fabricRef.current || !page) return;
     void reRenderOverlayForFonts();
   }, [fontsLoading, page, reRenderOverlayForFonts]);
+
+  // The continuation page often finishes loading before the parent passes the
+  // element id, and a later id must still place the caret.
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas || !resumeTextEditId) return;
+    focusResumedTextEdit(canvas);
+  }, [resumeTextEditId, focusResumedTextEdit, page]);
+
+  // Switching tools while a caret is down used to leave the edit uncommitted
+  // until something else happened to exit it.
+  const prevToolRef = useRef(tool);
+  useEffect(() => {
+    if (prevToolRef.current === tool) return;
+    prevToolRef.current = tool;
+    commitLiveTextEdit();
+  }, [tool, commitLiveTextEdit]);
 
   // Mettre à jour le zoom (changement venant du store : toolbar, presets,
   // raccourcis, modes fit).
@@ -4010,6 +4123,11 @@ export function EditorCanvas({
     // Perte de focus fenêtre pendant un Espace maintenu (Alt+Tab, devtools) :
     // sans ce reset le keyup est raté et le curseur reste bloqué en "grab".
     const onWindowBlur = () => {
+      // Leaving the window (another app, another browser tab) does not blur
+      // Fabric's hidden textarea into an edit commit — blur() only stops the
+      // caret blink. Commit so the text is in the save queue before the user
+      // is gone.
+      try { commitLiveTextEdit(); } catch { /* commit best-effort */ }
       if (!isSpaceDownRef.current) return;
       isSpaceDownRef.current = false;
       const canvas = fabricRef.current;

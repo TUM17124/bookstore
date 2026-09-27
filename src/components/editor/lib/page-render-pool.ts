@@ -225,12 +225,14 @@ export class PageRenderPool {
         if (!renderer) {
           throw new Error("PageRenderPool: renderer unavailable");
         }
-        // Full raster WITH text: inactive pages render the complete page bitmap
-        // (read-only, cheap, pixel-perfect). The ACTIVE page is rendered by an
-        // embedded <EditorCanvas> instead (which draws its own text-free
-        // background + real editable text overlay), so only inactive pages use
-        // this pool background — they must show their text.
-        return renderer.renderPageToDataURL(index + 1, { scale });
+        // Text-free raster. The page host paints the scene-graph text on top,
+        // the same way the active editor does. A full raster here would show
+        // the last baked PDF only, so a paste that spans new pages looked
+        // blank until that page was clicked, then vanished again on scroll.
+        return renderer.renderPageToDataURL(index + 1, {
+          scale,
+          skipText: true,
+        });
       })
       .catch((err: unknown) => {
         // Drop the failed promise from the cache so a later attempt can retry,
@@ -340,7 +342,7 @@ export class PageRenderPool {
 
   private bgKey(index: number, scale: number): string {
     const bucket = Math.round(scale * SCALE_BUCKET_PRECISION) / SCALE_BUCKET_PRECISION;
-    return `${index}@${bucket}`;
+    return `${index}@${bucket}@notext`;
   }
 
   private async ensureFabric(): Promise<FabricModule> {

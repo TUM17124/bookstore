@@ -202,6 +202,8 @@ export interface ContinuousPageViewProps {
     continuations: TextElement[],
     pageIndex: number,
   ) => Promise<boolean> | void;
+  /** Element id whose caret the active page should restore after a text flow. */
+  resumeTextEditId?: string | null;
   /**
    * Freehand pencil stroke completed on the ACTIVE page (PDF user-space points).
    * Wired to the same page.tsx handler as the single-page editor (`addInk` bake
@@ -290,6 +292,7 @@ function ContinuousPageViewImpl(
     onManualZoomChange,
     onElementAdded,
     onTextOverflow,
+    resumeTextEditId,
     onInkDrawn,
     onElementModified,
     onElementReordered,
@@ -958,6 +961,9 @@ function ContinuousPageViewImpl(
                       }
                     : {})}
                   {...(isActive && onTextOverflow ? { onTextOverflow } : {})}
+                  {...(isActive && resumeTextEditId
+                    ? { resumeTextEditId }
+                    : {})}
                   {...(isActive && onInkDrawn ? { onInkDrawn } : {})}
                   {...(isActive && onElementModified
                     ? { onElementModified }

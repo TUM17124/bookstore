@@ -141,6 +141,8 @@ export interface PageSlotProps {
     continuations: TextElement[],
     pageIndex: number,
   ) => Promise<boolean> | void;
+  /** Element to place the caret in after text flows onto this page. */
+  resumeTextEditId?: string | null;
   /** Forwarded to the active page's EditorCanvas: freehand pencil stroke (PDF pts). */
   onInkDrawn?: (points: number[]) => void;
   /** Forwarded to the active page's EditorCanvas: element moved/resized/retyped. */
@@ -216,6 +218,7 @@ function PageSlotImpl({
   onRedactionMarksChanged,
   onElementAdded,
   onTextOverflow,
+  resumeTextEditId,
   onInkDrawn,
   onElementModified,
   onElementReordered,
@@ -274,6 +277,8 @@ function PageSlotImpl({
               scale={zoom}
               pool={pool}
               bgRevision={bgRevision}
+              {...(getFontFaceName ? { getFontFaceName } : {})}
+              {...(fontsLoading !== undefined ? { fontsLoading } : {})}
               {...(onReady ? { onReady } : {})}
               {...(onDispose ? { onDispose } : {})}
             />
@@ -307,6 +312,7 @@ function PageSlotImpl({
               {...(onRedactionMarksChanged ? { onRedactionMarksChanged } : {})}
               {...(onElementAdded ? { onElementAdded } : {})}
               {...(onTextOverflow ? { onTextOverflow } : {})}
+              {...(resumeTextEditId ? { resumeTextEditId } : {})}
               {...(onInkDrawn ? { onInkDrawn } : {})}
               {...(onElementModified ? { onElementModified } : {})}
               {...(onElementReordered ? { onElementReordered } : {})}

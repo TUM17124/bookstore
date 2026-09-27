@@ -66,6 +66,9 @@ export function boundsYFromBaselineTop(
   fontSize: number,
   originYBottom: boolean,
 ): number {
-  const descenderOffset = originYBottom ? fontSize * DESCENDER_OFFSET_RATIO : 0;
-  return top - descenderOffset - fontSize;
+  // originY "top" (and a box just pinned to top-left) already stores the glyph
+  // top in `top`. Subtracting fontSize here lifted every user text box by one
+  // line on save, so a flowed page reloaded above the margin it was placed on.
+  if (!originYBottom) return top;
+  return top - fontSize * DESCENDER_OFFSET_RATIO - fontSize;
 }

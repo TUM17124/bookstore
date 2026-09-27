@@ -300,6 +300,27 @@ export function fabricObjectToElement(
     // bounds.y + fontSize. Recover the original bounds.y (= glyph top in browser
     // coords) via the shared single-source geometry; for originY='top' there is
     // no baseline offset.
+    // A user text box is created (or corrected on edit) with a top-left origin
+    // so it grows downward. Anything else still on the Fabric default center
+    // origin would persist `top` as the box center and jump on reload — pin it
+    // before reading bounds. Parsed runs stay originY "bottom" and are not moved.
+    const movable = textObj as typeof textObj & {
+      getPointByOrigin?: (originX: string, originY: string) => { x: number; y: number };
+      set?: (props: Record<string, unknown>) => void;
+      setCoords?: () => void;
+      textLines?: string[];
+      height?: number;
+    };
+    if (
+      movable.originY !== "bottom" &&
+      movable.originY !== "top" &&
+      movable.getPointByOrigin &&
+      movable.set
+    ) {
+      const corner = movable.getPointByOrigin("left", "top");
+      movable.set({ originX: "left", originY: "top", left: corner.x, top: corner.y });
+      movable.setCoords?.();
+    }
     const isOriginYBottom = textObj.originY === "bottom";
     const topOfGlyphY = boundsYFromBaselineTop(
       obj.top || 0,
@@ -326,19 +347,38 @@ export function fabricObjectToElement(
     const fontFamilyForRoundTrip =
       originalFont || textObj.fontFamily || "Arial";
 
+    // A multi-line user box must persist EVERY visual line. The bake writes one
+    // run per call and ignores "\n", so a wrapped paste saved as a single string
+    // came back as its first line only. Joining Fabric's visual lines with "\n"
+    // keeps the wrap the user saw. Parsed single-line runs (originY bottom) are
+    // left untouched, and character-level runs keep their original indexes.
+    const visualLines = movable.textLines;
+    const flowBox = !isOriginYBottom;
+    const contentForSave =
+      flowBox &&
+      !styleRuns &&
+      !listStyle &&
+      visualLines &&
+      visualLines.length > 1
+        ? visualLines.join("\n")
+        : cleanContent;
+    const measuredHeight = Math.max(
+      fontSize,
+      (movable.height || fontSize) * (obj.scaleY ?? 1),
+    );
     return {
       ...baseElement,
-      // Top-left corner of the glyph bbox in browser coords. height = fontSize
-      // covers approximately ascender+descender — close enough to mask the
-      // glyph cleanly without bleeding into the line above/below.
+      // Top-left corner of the glyph bbox in browser coords. A single parsed
+      // run stays fontSize tall. A flowed box records its real stack height so
+      // the next page load anchors the top of the text, not one line of it.
       bounds: {
         x: originLeftX,
         y: topOfGlyphY,
         width: (obj.width || 100) * scaleX,
-        height: fontSize,
+        height: flowBox ? Math.max(measuredHeight, fontSize * 1.25) : fontSize,
       },
       type: "text" as const,
-      content: cleanContent,
+      content: contentForSave,
       // Character-level style runs (Word-like partial formatting). Omitted
       // (spread of {}) when the text is uniformly styled, so the serialised
       // shape is byte-identical to the legacy one for unstyled runs.

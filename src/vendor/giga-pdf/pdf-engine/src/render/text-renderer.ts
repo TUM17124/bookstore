@@ -260,21 +260,33 @@ export async function addText(
   // pdf-lib path used (drawText y = top - fontSize) — plus the vertical-align
   // shift. Underline/strikethrough are baked by the engine itself (the rule
   // follows the text rotation and is sized from the run's real glyph advances).
-  handle._doc.addText(
-    pageNumber,
-    pdfRect.x,
-    pdfRect.y + pdfRect.height - baseSize + baselineShift,
-    renderSize,
-    element.content,
-    fontObj,
-    color,
-    element.style.opacity,
-    element.transform.rotation,
-    {
-      underline: element.style.underline,
-      strikethrough: element.style.strikethrough,
-    },
-  );
+  //
+  // A flowed text box stores one visual line per `\n`. Drawing the whole string
+  // in a single addText call paints every line on the first baseline (the engine
+  // has no line-break), which is why a multi-page paste came back as one
+  // overflowing run. Each line is its own run, stacked by the box's line height.
+  const lines = element.content.split("\n");
+  const lineStep = baseSize * (element.style.lineHeight > 0 ? element.style.lineHeight : 1.2);
+  const firstBaseline = pdfRect.y + pdfRect.height - baseSize + baselineShift;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    if (line.length === 0) continue;
+    handle._doc.addText(
+      pageNumber,
+      pdfRect.x,
+      firstBaseline - i * lineStep,
+      renderSize,
+      line,
+      fontObj,
+      color,
+      element.style.opacity,
+      element.transform.rotation,
+      {
+        underline: element.style.underline,
+        strikethrough: element.style.strikethrough,
+      },
+    );
+  }
 
   markDirty(handle._doc);
 }

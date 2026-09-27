@@ -1450,6 +1450,15 @@ export async function renderElementsOverlay(
           textElement.bounds.y,
           _fontSize,
         );
+        // A flowed / multi-line user box stores its top at bounds.y and its
+        // full stack in bounds.height (and its visual lines joined by "\n").
+        // Pinning that box with the single-run originY "bottom" anchor hangs
+        // the whole paragraph above the first baseline, which is the jumble
+        // a pasted page showed after the next load. Parsed runs stay at
+        // height === fontSize and keep the baseline anchor.
+        const _flowBox =
+          (textElement.content ?? "").includes("\n") ||
+          textElement.bounds.height > _fontSize * 1.2;
         // Resolve the embedded PDF font WEIGHT/STYLE-AWARE: pick the subset that
         // matches this run's bold/italic so a regular run never lands on the
         // first-loaded BOLD subset (the "gras parasite" + wrong-metrics overlap).
@@ -1554,8 +1563,8 @@ export async function renderElementsOverlay(
         const textObj = new Textbox(_displayText, {
           ...baseOptions,
           left: baseOptions.left + _indentOffset,
-          top: _baselineTop,
-          originY: "bottom" as const,
+          top: _flowBox ? textElement.bounds.y : _baselineTop,
+          originY: (_flowBox ? "top" : "bottom") as "top" | "bottom",
           width: textElement.bounds.width,
           fontSize: _fontSize,
           fontFamily: _resolvedFontFamily,
