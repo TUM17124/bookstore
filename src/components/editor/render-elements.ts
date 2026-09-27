@@ -55,6 +55,7 @@ import { runsToFabricStyles } from "./lib/text-runs";
 // Single source of truth for the text-baseline anchoring geometry, shared with
 // the save-time inverse in fabric-element-io.ts (was a bare `0.22` copied here).
 import { baselineTopFromBoundsY } from "./lib/text-baseline";
+import { shapeLineEndpoints } from "./lib/shape-line-geometry";
 // Tactile (mobile lot 2): larger touch handles on coarse pointers + a minimum
 // on-screen hit floor for tiny form-field widgets. No-ops on fine pointers.
 import {
@@ -1756,6 +1757,7 @@ export async function renderElementsOverlay(
 
       case "shape": {
         const shapeElement = element;
+        const isNewShape = shapeElement.index === undefined;
         const hasStroke =
           shapeElement.style.strokeColor && shapeElement.style.strokeWidth > 0;
         const hasFill = !!shapeElement.style.fillColor;
@@ -1785,12 +1787,12 @@ export async function renderElementsOverlay(
           : "transparent";
         const shapeOptions = {
           ...baseOptions,
-          // Transparent in view (the raster shows the real shape); data.* keeps
-          // the real values so selection-reveal / the properties panel restore
-          // them, and the strokeDashArray is carried for the reveal too.
-          fill: "transparent",
-          stroke: "transparent",
-          strokeWidth: 0,
+          // Parsed shapes are already in the PDF bitmap; newly-created shapes
+          // are not, so keep their actual style visible until they are baked.
+          fill: isNewShape ? fillCss : "transparent",
+          stroke: isNewShape ? strokeCss : "transparent",
+          strokeWidth:
+            isNewShape && hasStroke ? shapeElement.style.strokeWidth : 0,
           ...(shapeElement.style.strokeDashArray &&
           shapeElement.style.strokeDashArray.length > 0
             ? { strokeDashArray: [...shapeElement.style.strokeDashArray] }
@@ -1827,7 +1829,10 @@ export async function renderElementsOverlay(
             fabricObj = new Ellipse({ ...shapeOptions, rx: w / 2, ry: h / 2 });
             break;
           case "line":
-            fabricObj = new Line([0, 0, w, 0], shapeOptions);
+            fabricObj = new Line(
+              shapeLineEndpoints(shapeElement),
+              shapeOptions,
+            );
             break;
           case "arrow": {
             // Shaft + filled triangular head, same construction as the
@@ -1899,6 +1904,7 @@ export async function renderElementsOverlay(
               shapeElement.style.strokeDashArray.length > 0
                 ? [...shapeElement.style.strokeDashArray]
                 : null,
+            ...(isNewShape ? { keepVisible: true } : {}),
           };
         }
         break;
@@ -3125,7 +3131,13 @@ function attachShapeStyleReveal(canvas: FabricCanvas): void {
 
   const restore = (obj: FabricObjectWithData) => {
     // A parsed image overlay re-hides to opacity 0 (the raster shows it); a
-    // shape overlay re-masks to a transparent fill/stroke.
+    // shape overlay re-masks to a transparent fill/stroke. EXCEPT a shape the
+    // Insert menu just created (data.keepVisible, set by revealNewShape):
+    // there is no raster backing it yet (nothing baked), so re-masking it on
+    // deselect would make it invisible again the moment the user clicks away
+    // — it stays visible until an actual bake/reload makes the transparent
+    // convention correct again (renderElementsOverlay never sets this flag).
+    if (obj.data?.keepVisible === true) return;
     if (obj.data?.type === "image") {
       obj.set({ opacity: 0 });
       return;

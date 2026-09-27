@@ -11,6 +11,7 @@ import type {
   FieldType,
   FieldCreationKind,
   FormFieldElement,
+  TextElement,
   Bounds,
   TextStyle,
 } from "@giga-pdf/types";
@@ -127,7 +128,7 @@ type EditableTextObject = FabricObject & {
     complete?: boolean,
   ) => FabricCharStyle[];
   exitEditing?: () => void;
-};
+}
 
 /**
  * Aggregate the style of an editing IText's current character sub-selection
@@ -237,6 +238,8 @@ export interface EditorCanvasHandle {
    * à la page actuellement affichée.
    */
   applyRemoteElementCreate: (element: Element) => void;
+  /** Render locally-created elements on the active canvas without re-emitting callbacks. */
+  renderAddedElements: (elements: Element[]) => Promise<void>;
   /**
    * Appliquer la mise à jour distante d'un élément (retire/re-crée l'objet
    * Fabric via le même convertisseur que le render initial). Ignorée si
@@ -446,8 +449,24 @@ export interface EditorCanvasProps {
   fillColor?: string;
   /** Épaisseur du contour */
   strokeWidth?: number;
-  /** Callback quand un élément est ajouté */
-  onElementAdded?: (element: Element) => void;
+  /** Row/column count for a table currently being placed by click-drag. */
+  tablePlacement?: { rows: number; cols: number } | null;
+  /** Called when a table placement drag completes, with page-space bounds. */
+  onTablePlaced?: (
+    rows: number,
+    cols: number,
+    area: Bounds,
+    pageIndex: number,
+  ) => void;
+  /** Callback when an element is added; embedded pages also provide their index. */
+  onElementAdded?: (element: Element, pageIndex?: number) => void;
+  /** Split inserted text overflow into continuation elements on following pages. */
+  onTextOverflow?: (
+    continuations: TextElement[],
+    pageIndex: number,
+  ) => Promise<boolean> | void;
+  /** 0-based document index for this canvas when embedded in a page flow. */
+  pageIndex?: number;
   /** Callback quand un élément est modifié. oldBounds = bounds AVANT
    *  cette modification (utilisé par apply-elements pour clear la zone
    *  d'origine avant de redessiner — sinon le glyphe original reste). */
@@ -485,6 +504,8 @@ export interface EditorCanvasProps {
   onZoomChanged?: (zoom: number) => void;
   /** Callback appelé lorsque le canvas est prêt avec les méthodes exposées */
   onCanvasReady?: (handle: EditorCanvasHandle) => void;
+  /** Reports page hydration so continuous view can retain its bitmap underneath. */
+  onPageLoadingChange?: (loading: boolean) => void;
   /** Callback pour les clics sur les liens hypertexte */
   onHyperlinkClick?: (linkUrl?: string | null, linkPage?: number | null) => void;
   /**
@@ -686,6 +707,47 @@ function removeFieldHitTwin(canvas: FabricCanvas, elementId: string): void {
   if (twin) canvas.remove(twin);
 }
 
+function textLineOffsets(content: string, lines: string[]): number[] {
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const line of lines) {
+    if (line.length > 0) {
+      const start = content.indexOf(line, cursor);
+      if (start < 0) return [];
+      cursor = start + line.length;
+    }
+    if (content[cursor] === "\n") cursor += 1;
+    offsets.push(cursor);
+  }
+  return offsets;
+}
+
+function sliceTextElement(
+  element: TextElement,
+  start: number,
+  end: number,
+  y: number,
+  height: number,
+): TextElement {
+  const base = { ...element };
+  delete base.index;
+  delete base.segments;
+  const runs = element.runs
+    ?.map((run) => ({
+      ...run,
+      start: Math.max(run.start, start) - start,
+      end: Math.min(run.end, end) - start,
+    }))
+    .filter((run) => run.end > run.start);
+  return {
+    ...base,
+    elementId: generateId(),
+    content: element.content.slice(start, end),
+    bounds: { ...element.bounds, y, height },
+    ...(runs && runs.length > 0 ? { runs } : { runs: undefined }),
+  };
+}
+
 /**
  * Canvas de l'éditeur PDF avec support Fabric.js.
  * Chaque élément est indépendant et éditable.
@@ -715,7 +777,11 @@ export function EditorCanvas({
   strokeColor = "#000000",
   fillColor = "transparent",
   strokeWidth = 2,
+  tablePlacement = null,
+  onTablePlaced,
   onElementAdded,
+  onTextOverflow,
+  pageIndex,
   onElementModified,
   onElementReordered,
   onElementRemoved,
@@ -724,6 +790,7 @@ export function EditorCanvas({
   onTextSelectionStyleChanged,
   onZoomChanged,
   onCanvasReady,
+  onPageLoadingChange,
   onHyperlinkClick,
   onRedactionMarksChanged,
   fillSignActive = false,
@@ -762,7 +829,14 @@ export function EditorCanvas({
   // removeChild fantôme (NotFoundError) au démontage en mode continu.
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
+  const pageRef = useRef(page);
+  useEffect(() => {
+    pageRef.current = page;
+  }, [page]);
   const previousPageRef = useRef<string | null>(null);
+  const pageLoadVersionRef = useRef(0);
+  const [readyPageId, setReadyPageId] = useState<string | null>(null);
+  const pageReady = !page || readyPageId === page.pageId;
   // Conteneur scrollable (viewport) — référence directe, JAMAIS de
   // traversée DOM upperCanvasEl.parentElement (fragile aux changements de
   // structure JSX, et le wrapper a maintenant un niveau intermédiaire m-auto).
@@ -782,6 +856,8 @@ export function EditorCanvas({
   const onHyperlinkClickRef = useRef(onHyperlinkClick);
   const onRedactionMarksChangedRef = useRef(onRedactionMarksChanged);
   const onInkDrawnRef = useRef(onInkDrawn);
+  const onTablePlacedRef = useRef(onTablePlaced);
+  const onPageLoadingChangeRef = useRef(onPageLoadingChange);
 
   // Paragraph edit-intent session plumbing: the loaded Fabric module (the
   // session Textbox is constructed outside loadPage) + the LIVE embedded-font
@@ -798,6 +874,7 @@ export function EditorCanvas({
   const isInkingRef = useRef(false);
   const inkScenePointsRef = useRef<number[]>([]); // flat scene coords [x0,y0,…]
   const inkPreviewRef = useRef<FabricObject | null>(null);
+  const tablePlacementRef = useRef(tablePlacement);
 
   // Refs for tool options to avoid stale closures
   const toolRef = useRef(tool);
@@ -995,6 +1072,9 @@ export function EditorCanvas({
     onHyperlinkClickRef.current = onHyperlinkClick;
     onRedactionMarksChangedRef.current = onRedactionMarksChanged;
     onInkDrawnRef.current = onInkDrawn;
+    onTablePlacedRef.current = onTablePlaced;
+    onPageLoadingChangeRef.current = onPageLoadingChange;
+    tablePlacementRef.current = tablePlacement;
     toolRef.current = tool;
     shapeTypeRef.current = shapeType;
     annotationTypeRef.current = annotationType;
@@ -1842,6 +1922,7 @@ export function EditorCanvas({
   const handleTextEditingExited = useCallback((e: { target?: FabricObject }) => {
     if (!e.target) return;
     const obj = e.target as FabricObjectWithData;
+    const typeName = (obj as FabricObject & { type?: string }).type ?? "";
     // No longer the live edit target — clear the toolbar's live selection style
     // so it reverts to the whole-element state.
     if (editingTextRef.current === obj) editingTextRef.current = null;
@@ -1916,8 +1997,90 @@ export function EditorCanvas({
     }
 
     const elementId = obj.data?.elementId;
-    const currentText = (obj as FabricObjectWithData & { text?: string }).text || "";
-    const originalText = elementId ? originalContentRef.current.get(elementId) : undefined;
+    const textObject = obj as FabricObjectWithData & {
+      text?: string;
+      textLines?: string[];
+      fontSize?: number;
+      lineHeight?: number;
+      top?: number;
+      set?: (options: Record<string, unknown>) => void;
+      setCoords?: () => void;
+    };
+    let currentText = textObject.text || "";
+    let overflowToPaginate: {
+      continuations: TextElement[];
+      fullText: string;
+      pageText: string;
+    } | null = null;
+    const originalText = elementId
+      ? originalContentRef.current.get(elementId)
+      : undefined;
+    if (
+      obj.data?.isUserTextBox === true &&
+      pageIndex !== undefined &&
+      onTextOverflow &&
+      textObject.textLines &&
+      textObject.textLines.length > 0
+    ) {
+      const safeRect = getSafeRect();
+      const fontSize = textObject.fontSize || 16;
+      const lineHeight = fontSize * (textObject.lineHeight || 1.2);
+      const firstPageLines = Math.max(
+        1,
+        Math.floor(
+          (safeRect.bottom - (textObject.top ?? safeRect.top)) / lineHeight,
+        ),
+      );
+      if (textObject.textLines.length > firstPageLines) {
+        const offsets = textLineOffsets(currentText, textObject.textLines);
+        const serialized = fabricObjectToElement(obj);
+        if (
+          offsets.length === textObject.textLines.length &&
+          serialized?.type === "text"
+        ) {
+          const firstEnd = offsets[firstPageLines - 1] ?? 0;
+          const linesPerPage = Math.max(
+            1,
+            Math.floor((safeRect.bottom - safeRect.top) / lineHeight),
+          );
+          const continuations: TextElement[] = [];
+          for (
+            let lineStart = firstPageLines;
+            lineStart < offsets.length;
+            lineStart += linesPerPage
+          ) {
+            const lineEnd = Math.min(
+              lineStart + linesPerPage,
+              offsets.length,
+            );
+            const start = offsets[lineStart - 1] ?? firstEnd;
+            const end = offsets[lineEnd - 1] ?? currentText.length;
+            if (end > start) {
+              continuations.push(
+                sliceTextElement(
+                  serialized,
+                  start,
+                  end,
+                  safeRect.top,
+                  Math.max(1, lineEnd - lineStart) * lineHeight,
+                ),
+              );
+            }
+          }
+          if (firstEnd > 0 && continuations.length > 0 && textObject.set) {
+            const fullText = currentText;
+            textObject.set({ text: currentText.slice(0, firstEnd) });
+            textObject.setCoords?.();
+            currentText = currentText.slice(0, firstEnd);
+            overflowToPaginate = {
+              continuations,
+              fullText,
+              pageText: currentText,
+            };
+          }
+        }
+      }
+    }
     const contentChanged = originalText !== undefined && originalText !== currentText;
     // A pure character-level style change (bold/colour on a sub-selection)
     // leaves `content` untouched but mutates Fabric's per-character `styles`
@@ -1934,6 +2097,14 @@ export function EditorCanvas({
     // text). Only reset the edit border.
     const set = (obj as FabricObject & { set: (...args: unknown[]) => void }).set;
     set.call(obj, { borderColor: "rgba(0, 100, 200, 0.75)" });
+    if (
+      obj.data?.type === "text" &&
+      typeName === "textbox" &&
+      obj.data.locked !== true
+    ) {
+      applyTextBoxControls(obj);
+      set.call(obj, { selectable: true, hasControls: true });
+    }
     // Editable text form field left empty → restore the grey placeholder. The
     // serialised value stays "" (readFormFieldValue treats text===placeholder as
     // empty), so the placeholder is never persisted as a real value.
@@ -1970,7 +2141,50 @@ export function EditorCanvas({
         recentlyForwardedTextEditRef.current.set(elementId, Date.now());
       }
     }
-  }, [forwardElementModified, beginProgrammaticApply, endProgrammaticApply, saveHistory]);
+    if (overflowToPaginate && onTextOverflow && pageIndex !== undefined) {
+      const { continuations, fullText, pageText } = overflowToPaginate;
+      const canvas = fabricRef.current;
+      const restoreOverflow = () => {
+        if (
+          fabricRef.current !== canvas ||
+          textObject.text !== pageText
+        ) {
+          return;
+        }
+        textObject.set?.({ text: fullText });
+        textObject.setCoords?.();
+        canvas?.requestRenderAll();
+        if (elementId) forwardElementModified(obj);
+      };
+      try {
+        const result = onTextOverflow(continuations, pageIndex);
+        if (result instanceof Promise) {
+          void result
+            .then((created) => {
+              if (!created) restoreOverflow();
+            })
+            .catch((error: unknown) => {
+              clientLogger.error(
+                "[editor] Failed to paginate inserted text:",
+                error,
+              );
+              restoreOverflow();
+            });
+        }
+      } catch (error) {
+        clientLogger.error("[editor] Failed to start text pagination:", error);
+        restoreOverflow();
+      }
+    }
+  }, [
+    forwardElementModified,
+    beginProgrammaticApply,
+    endProgrammaticApply,
+    saveHistory,
+    getSafeRect,
+    onTextOverflow,
+    pageIndex,
+  ]);
 
   const handleObjectModified = useCallback(
     (e: { target?: FabricObject }) => {
@@ -2281,10 +2495,37 @@ export function EditorCanvas({
         if (!fabricRef.current || !e.scenePoint) return;
         const currentCanvas = fabricRef.current;
 
-        // Si on clique sur un objet existant, ne rien créer
-        if (e.target) return;
-
+        const pendingTable = tablePlacementRef.current;
+        // Normal tools don't create objects atop existing content. Table
+        // placement is an explicit mode and must also work over occupied areas.
+        if (e.target && !pendingTable) return;
         const pointer = e.scenePoint;
+        if (pendingTable) {
+          const safeRect = getSafeRect();
+          if (safeRect) {
+            const width = Math.min(240, safeRect.right - safeRect.left);
+            const height = Math.min(144, safeRect.bottom - safeRect.top);
+            const area: Bounds = {
+              x: Math.min(
+                Math.max(pointer.x, safeRect.left),
+                safeRect.right - width,
+              ),
+              y: Math.min(
+                Math.max(pointer.y, safeRect.top),
+                safeRect.bottom - height,
+              ),
+              width,
+              height,
+            };
+            onTablePlacedRef.current?.(
+              pendingTable.rows,
+              pendingTable.cols,
+              area,
+              pageIndex ?? 0,
+            );
+          };
+          return;
+        }
         const currentTool = toolRef.current;
         const currentShapeType = shapeTypeRef.current;
         const currentAnnotationType = annotationTypeRef.current;
@@ -2331,20 +2572,24 @@ export function EditorCanvas({
               // by the safe area so text never crosses the right margin. Falls
               // back to a plain default width when margins aren't known yet
               // (e.g. document still loading) rather than blocking creation.
-              // Redesign #3 (touch only): a much wider default (~65% of the
-              // page) so the box is comfortably tappable/typeable on a phone,
-              // instead of the small desktop default sized for a mouse click.
+              // Start the text box at the left content margin and span the
+              // available line width; the click still chooses its vertical
+              // starting point.
               const safeRectAtCreate = getSafeRect();
-              const isTouch = isCoarsePointer();
-              const DEFAULT_TEXT_WIDTH = isTouch
-                ? pageDimsRef.current.width * 0.65
-                : 220;
-              const textWidth = safeRectAtCreate
-                ? Math.max(60, Math.min(DEFAULT_TEXT_WIDTH, safeRectAtCreate.right - safeRectAtCreate.left))
-                : DEFAULT_TEXT_WIDTH;
+              const textTop = Math.min(
+                Math.max(pointer.y, safeRectAtCreate.top),
+                Math.max(
+                  safeRectAtCreate.top,
+                  safeRectAtCreate.bottom - 16 * 1.2,
+                ),
+              );
+              const textWidth = Math.max(
+                60,
+                safeRectAtCreate.right - safeRectAtCreate.left,
+              );
               newObj = new Textbox(t("defaultText") || "Text", {
-                left: pointer.x,
-                top: pointer.y,
+                left: safeRectAtCreate.left,
+                top: textTop,
                 width: textWidth,
                 fontSize: 16,
                 // Famille dominante du document (memoïsée) — un nouveau texte
@@ -2357,12 +2602,18 @@ export function EditorCanvas({
                 // that's wider than the box — grapheme-level wrap guarantees
                 // the box never crosses the right margin either way.
                 splitByGrapheme: true,
+                selectable: true,
+                hasControls: true,
                 // Side-handles-only sizing (first-paint value — applyTextBoxControls
                 // right below sets which handles are visible).
                 ...TEXTBOX_CONTROL_SIZE_OPTIONS,
               });
               applyTextBoxControls(newObj);
-              (newObj as FabricObjectWithData).data = { elementId: generateId() };
+              (newObj as FabricObjectWithData).data = {
+                elementId: generateId(),
+                type: "text",
+                isUserTextBox: true,
+              };
               clientLogger.debug("[EditorCanvas] Textbox created successfully:", newObj);
               break;
             }
@@ -2899,8 +3150,17 @@ export function EditorCanvas({
               }
             }
           }
-          currentCanvas.renderAll();
-          saveHistory(currentCanvas);
+          currentCanvas.requestRenderAll();
+          // Serialize the complete canvas history only after the new object
+          // has had a chance to paint; a large PDF otherwise delays the box
+          // appearing while toObject() walks every page object.
+          window.requestAnimationFrame(() => {
+            window.setTimeout(() => {
+              if (fabricRef.current === currentCanvas) {
+                saveHistory(currentCanvas);
+              }
+            }, 0);
+          });
           // Redaction markers are not scene-graph elements; report their live
           // count so the toolbar can enable Apply/Clear.
           if ((newObj as FabricObjectWithData).data?.redactionMark) {
@@ -3159,13 +3419,21 @@ export function EditorCanvas({
         setOverflowBox(null);
       });
 
-      // Redesign #4: bottom-margin overflow badge while typing. Pure React
-      // state (see `overflowBox` above) — never touches the Fabric object, so
-      // it can't be exported. Recomputed on every keystroke; a Textbox grows
-      // its own height live as it wraps, so `getBoundingRect()` already
-      // reflects the post-keystroke size.
+      // Page-break inserted text as soon as it exceeds the current page. Exiting
+      // edit mode runs handleTextEditingExited, which keeps the fitting lines
+      // here and moves every remaining line into as many continuation pages as
+      // needed. This also handles a large paste in one text:changed event.
       canvas.on("text:changed", (opt) => {
-        const target = opt.target as FabricObjectWithData | undefined;
+        const target = opt.target as
+          | (FabricObjectWithData & {
+              exitEditing?: () => void;
+              fontSize?: number;
+              isEditing?: boolean;
+              lineHeight?: number;
+              textLines?: string[];
+              top?: number;
+            })
+          | undefined;
         if (!target || isMarginExempt(target.data)) {
           setOverflowBox(null);
           return;
@@ -3180,6 +3448,27 @@ export function EditorCanvas({
         if (!rect) {
           setOverflowBox(null);
           return;
+        }
+        if (
+          target.data?.isUserTextBox === true &&
+          target.isEditing === true &&
+          typeof target.exitEditing === "function" &&
+          pageIndex !== undefined &&
+          onTextOverflow &&
+          target.textLines &&
+          target.textLines.length > 0
+        ) {
+          const fontSize = target.fontSize || 16;
+          const lineHeight = fontSize * (target.lineHeight || 1.2);
+          const firstPageLines = Math.max(
+            1,
+            Math.floor((rect.bottom - (target.top ?? rect.top)) / lineHeight),
+          );
+          if (target.textLines.length > firstPageLines) {
+            setOverflowBox(null);
+            target.exitEditing();
+            return;
+          }
         }
         const bbox = target.getBoundingRect();
         setOverflowBox(overflowsBottomMargin(bbox, rect) ? bbox : null);
@@ -3273,11 +3562,13 @@ export function EditorCanvas({
       // On doit le faire ici car le useEffect [page, loadPage] vérifie
       // fabricRef.current synchroniquement AVANT que l'import("fabric") se
       // résout → il est déjà sorti sans rien faire.
-      if (page) {
-        previousPageRef.current = page.pageId;
-        loadPage(page, fabricModule).then(() => {
-          saveHistory(canvas);
-        }).catch(() => {
+      const initialPage = pageRef.current;
+      if (initialPage) {
+        previousPageRef.current = initialPage.pageId;
+        loadPage(initialPage, fabricModule).then((loaded) => {
+          if (loaded) saveHistory(canvas);
+        }).catch((error: unknown) => {
+          clientLogger.error("[EditorCanvas] Initial page load failed:", error);
           saveHistory(canvas);
         });
       } else {
@@ -3349,13 +3640,19 @@ export function EditorCanvas({
   // Charger une page dans le canvas
   const loadPage = useCallback(
     async (pageData: PageObject, fabricModule: typeof import("fabric")) => {
-      if (!fabricRef.current) return;
+      if (!fabricRef.current) return false;
       const canvas = fabricRef.current;
+      const loadVersion = ++pageLoadVersionRef.current;
+      const isCurrentLoad = () =>
+        fabricRef.current === canvas &&
+        pageLoadVersionRef.current === loadVersion;
+      onPageLoadingChangeRef.current?.(true);
 
       // Bloquer les événements object:added/removed pendant le chargement pour
       // éviter d'envoyer des appels API pour des éléments déjà existants
       beginProgrammaticApply();
 
+      try {
       canvas.clear();
       canvas.backgroundColor = "#ffffff";
 
@@ -3375,47 +3672,35 @@ export function EditorCanvas({
           });
           if (response.ok) {
             const arrayBuffer = await response.arrayBuffer();
+            if (!isCurrentLoad()) return false;
             // Import dynamique pour éviter les problèmes SSR
             const { PDFRenderer } = await import("@giga-pdf/canvas");
             const renderer = new PDFRenderer();
-            await renderer.loadDocument(arrayBuffer);
-            // Rendre à une résolution plus élevée (HiDPI) pour un rendu net,
-            // puis réduire l'image via scaleX/scaleY pour garder les dimensions PDF correctes.
-            const renderScale = backgroundRenderScale(window.devicePixelRatio);
-            const dataUrl = await renderer.renderPageToDataURL(pageData.pageNumber, {
-              scale: renderScale,
-              // Text-free raster: the engine renders everything EXCEPT text
-              // (vector art, gradients/shadings, IMAGES and SHAPES stay 1:1).
-              // The REAL editable text is painted as a visible Fabric overlay on
-              // top, so editing is direct and works on any background — no colour
-              // mask. SHAPES stay in this raster (= visual ground truth) and the
-              // overlay paints them as transparent, editable hit-targets revealed
-              // on selection (render-elements.ts). We deliberately do NOT pass
-              // `excludeIndices` for shapes: `renderPageExcluding` is fed by the
-              // unified element index, but the engine honours it only for SOME
-              // vector paths (e.g. it drops index 34 yet keeps 101 on real docs),
-              // and mixing in the text-run ordinals (a different index space)
-              // over-excludes unrelated content — both left whole colored
-              // section backgrounds blank. Keeping shapes in the raster makes
-              // their fidelity exact and independent of that engine quirk.
-              skipText: true,
-              // In Word-like H/F edit mode, drop the baked `/GPHF` band so the
-              // editable HeaderFooterZone overlaid on top never doubles it.
-              ...(headerFooterActiveRef.current
-                ? { excludeMarkedContent: true }
-                : {}),
-            });
-            renderer.dispose();
-
-            // Build the index-0 PDF-background image via the shared helper
-            // (same construction as the continuous-view PageCanvasHost).
-            await addPdfBackground(canvas, fabricModule, dataUrl, renderScale);
+            try {
+              await renderer.loadDocument(arrayBuffer);
+              const renderScale = backgroundRenderScale(window.devicePixelRatio);
+              const dataUrl = await renderer.renderPageToDataURL(
+                pageData.pageNumber,
+                {
+                  scale: renderScale,
+                  skipText: true,
+                  ...(headerFooterActiveRef.current
+                    ? { excludeMarkedContent: true }
+                    : {}),
+                },
+              );
+              if (!isCurrentLoad()) return false;
+              await addPdfBackground(canvas, fabricModule, dataUrl, renderScale);
+            } finally {
+              renderer.dispose();
+            }
           }
         } catch (e) {
           clientLogger.warn("[EditorCanvas] Could not render PDF background:", e);
         }
       }
 
+      if (!isCurrentLoad()) return false;
       // --- Charger les éléments éditables par-dessus le fond PDF ---
       // renderElementsOverlay handles all element types (text/image/shape/annotation/form_field),
       // attaches rich metadata to each Fabric object's .data property, and awaits async image loads
@@ -3439,6 +3724,7 @@ export function EditorCanvas({
       } else {
         canvas.renderAll();
       }
+      if (!isCurrentLoad()) return false;
 
       // Re-apply collaborative soft-locks onto the freshly-built objects: the
       // badges/overlays were wiped by canvas.clear() above, but the store still
@@ -3446,7 +3732,15 @@ export function EditorCanvas({
       // programmatic-apply window so the badge adds never emit element events.
       applyCollabLocksRef.current?.();
 
-      endProgrammaticApply();
+      canvas.requestRenderAll();
+      return true;
+      } finally {
+        endProgrammaticApply();
+        if (isCurrentLoad()) {
+          setReadyPageId(pageData.pageId);
+          onPageLoadingChangeRef.current?.(false);
+        }
+      }
     },
     // beginProgrammaticApply/endProgrammaticApply/renderElementsOverlay sont
     // référencés via la closure du premier render (deps [] volontaires,
@@ -3463,7 +3757,10 @@ export function EditorCanvas({
     previousPageRef.current = page.pageId;
 
     import("fabric").then((fabricModule) => {
-      loadPage(page, fabricModule);
+      if (pageRef.current?.pageId !== page.pageId) return;
+      void loadPage(page, fabricModule).catch((error: unknown) => {
+        clientLogger.error("[EditorCanvas] Page navigation load failed:", error);
+      });
     });
   }, [page, loadPage]);
 
@@ -3543,25 +3840,32 @@ export function EditorCanvas({
   // Mettre à jour les options de l'outil
   useEffect(() => {
     if (!fabricRef.current) return;
-    fabricRef.current.selection = tool === "select";
-    fabricRef.current.defaultCursor =
-      tool === "hand" ? "grab" : tool === "select" ? "default" : "crosshair";
+    const placingTable = tablePlacement !== null;
+    fabricRef.current.selection = tool === "select" && !placingTable;
+    fabricRef.current.defaultCursor = placingTable
+      ? "crosshair"
+      : tool === "hand"
+        ? "grab"
+        : tool === "select"
+          ? "default"
+          : "crosshair";
     // Freehand pencil: skip hit-testing so a stroke can be drawn ANYWHERE
     // (including over existing text/images) without selecting/dragging the
     // object underneath — the Fabric-native equivalent of isDrawingMode for our
     // manual polyline capture.
-    fabricRef.current.skipTargetFind = tool === "draw";
+    fabricRef.current.skipTargetFind = tool === "draw" || placingTable;
     // Tactile : outils de tracé → Fabric preventDefault + streame les
     // touchmove (crayon libre) ; outils de navigation → scroll natif au doigt.
     // Le gating CSS équivalent vit sur le wrapper (touchActionForTool en JSX).
-    fabricRef.current.allowTouchScrolling = allowTouchScrollingForTool(tool);
+    fabricRef.current.allowTouchScrolling =
+      !placingTable && allowTouchScrollingForTool(tool);
     // Stamp live lu par les handlers souris de render-elements (sélection de
     // bloc de paragraphe / affordance de survol : outil "select" uniquement).
     (
       fabricRef.current as FabricCanvas & { _gigaCurrentTool?: string }
     )._gigaCurrentTool = tool;
     fabricRef.current.renderAll();
-  }, [tool]);
+  }, [tool, tablePlacement]);
 
   // Pinch-to-zoom applicatif (mode standalone uniquement — en mode intégré le
   // défileur continu possède le zoom et attache son propre pinch sur son
@@ -4125,6 +4429,62 @@ export function EditorCanvas({
       // queueAdd/queueUpdate/queueDelete, pas de save, pas de réémission
       // socket (anti-boucle d'écho). Le scene graph React est mis à jour par
       // l'appelant (page.tsx) AVANT l'appel.
+      renderAddedElements: async (elements: Element[]) => {
+        const canvas = fabricRef.current;
+        if (elements.length === 0) return;
+        if (!canvas) throw new Error("The active editor canvas is unavailable");
+        beginProgrammaticApply();
+        try {
+          const fabricModule = await import("fabric");
+          if (fabricRef.current !== canvas) {
+            throw new Error("The active editor canvas changed during insertion");
+          }
+          await renderElementsOverlay(canvas, elements, fabricModule);
+          const ids = elements.map((element) => element.elementId);
+          const targets = ids
+            .map((id) =>
+              canvas
+                .getObjects()
+                .find(
+                  (object) =>
+                    (object as FabricObjectWithData).data?.elementId === id,
+                ),
+            )
+            .filter((object): object is FabricObject => Boolean(object));
+          for (const element of elements) {
+            lastKnownBoundsRef.current.set(element.elementId, element.bounds);
+            if (element.type === "text") {
+              originalContentRef.current.set(
+                element.elementId,
+                element.content || "",
+              );
+            }
+          }
+          if (targets.length === 1) {
+            canvas.setActiveObject(targets[0]!);
+          } else if (targets.length > 1) {
+            canvas.setActiveObject(
+              new fabricModule.ActiveSelection(targets, { canvas }),
+            );
+          }
+          canvas.requestRenderAll();
+          onSelectionChangedRef.current?.(
+            targets.map(
+              (target) =>
+                (target as FabricObjectWithData).data?.elementId as string,
+            ),
+          );
+          saveHistory(canvas);
+        } catch (error) {
+          clientLogger.error(
+            "[EditorCanvas] Failed to render newly added elements:",
+            error,
+          );
+          throw error;
+        } finally {
+          endProgrammaticApply();
+        }
+      },
       applyRemoteElementCreate: (element: Element) => {
         const canvas = fabricRef.current;
         if (!canvas) return;
@@ -4661,7 +5021,10 @@ export function EditorCanvas({
         // sur ses canvases (allowTouchScrolling:true) ; l'intersection avec ce
         // wrapper donne : tracé → none (le doigt dessine, pas de scroll) ;
         // select/hand/… → pan-x pan-y (scroll natif, pinch capté par l'app).
-        touchAction: touchActionForTool(tool),
+        touchAction: tablePlacement
+          ? "none"
+          : touchActionForTool(tool),
+        visibility: embedded && !pageReady ? "hidden" : "visible",
       }}
     >
       {/* Le <canvas> Fabric est créé IMPÉRATIVEMENT et attaché à containerRef
@@ -4672,6 +5035,15 @@ export function EditorCanvas({
           déplacé par Fabric. En le créant nous-mêmes, React ne gère que ce div :
           au démontage il retire containerRef en entier (canvas + wrapper Fabric
           inclus) sans removeChild individuel → plus de crash. */}
+      {!embedded && !pageReady ? (
+        <div
+          className="absolute inset-0 z-30 flex items-center justify-center bg-white/80 text-sm text-muted-foreground"
+          role="status"
+          aria-live="polite"
+        >
+          Loading page…
+        </div>
+      ) : null}
 
       {/* Overlay applicatif (ex: surlignage des champs en mode Remplir).
           Positionné dans le repère page×zoom, défile avec la page. */}

@@ -25,8 +25,8 @@
  *     canvas hydration mid-fling, hydrates on settle ~120 ms later).
  *
  * Active page: clicking into a page sets it active (`onActivatePage`); the
- * active page renders a real embedded `<EditorCanvas>` (full editing), while the
- * other in-window pages render cheap read-only bitmaps.
+ * active page layers a real embedded `<EditorCanvas>` over its stable bitmap,
+ * while other in-window pages keep the cheap read-only bitmaps.
  */
 
 import React, {
@@ -50,6 +50,7 @@ import type {
   AnnotationType,
   FieldCreationKind,
   FormFieldElement,
+  TextElement,
 } from "@giga-pdf/types";
 import { useViewStore } from "@giga-pdf/editor";
 import { clientLogger } from "@/lib/pdf-editor/client-logger";
@@ -156,6 +157,15 @@ export interface ContinuousPageViewProps {
   fillColor?: string;
   /** Stroke width for new shapes/annotations — forwarded to the ACTIVE page's EditorCanvas. */
   strokeWidth?: number;
+  /** Pending table placement request forwarded to the ACTIVE EditorCanvas. */
+  tablePlacement?: { rows: number; cols: number } | null;
+  /** Completion callback for click-drag table placement. */
+  onTablePlaced?: (
+    rows: number,
+    cols: number,
+    area: Bounds,
+    pageIndex: number,
+  ) => void;
   /**
    * Hyperlink clicked on the ACTIVE page — forwarded to the ACTIVE page's
    * EditorCanvas (same contract as the single-page editor).
@@ -184,11 +194,14 @@ export interface ContinuousPageViewProps {
    */
   onManualZoomChange?: (zoom: number) => void;
   /**
-   * Element CREATED at mouse on the ACTIVE page. Wired to the same page.tsx
-   * handler as the single-page editor (scene graph + queue + apply-elements
-   * bake → save).
+   * Element CREATED at mouse on the ACTIVE page. The 0-based page index is
+   * supplied so the shared handler can route it to the correct page.
    */
-  onElementAdded?: (element: Element) => void;
+  onElementAdded?: (element: Element, pageIndex?: number) => void;
+  onTextOverflow?: (
+    continuations: TextElement[],
+    pageIndex: number,
+  ) => Promise<boolean> | void;
   /**
    * Freehand pencil stroke completed on the ACTIVE page (PDF user-space points).
    * Wired to the same page.tsx handler as the single-page editor (`addInk` bake
@@ -268,12 +281,15 @@ function ContinuousPageViewImpl(
     strokeColor,
     fillColor,
     strokeWidth,
+    tablePlacement,
+    onTablePlaced,
     onHyperlinkClick,
     onRedactionMarksChanged,
     fitMode,
     onFitZoomChange,
     onManualZoomChange,
     onElementAdded,
+    onTextOverflow,
     onInkDrawn,
     onElementModified,
     onElementReordered,
@@ -349,9 +365,9 @@ function ContinuousPageViewImpl(
   const poolRef = useRef<PageRenderPool | null>(null);
 
   // Per-page background revision. Bumping `bgRevisions[i]` forces ONLY page `i`'s
-  // inactive bitmap to re-rasterise (the value is forwarded to each PageSlot →
+  // bitmap to re-rasterise (the value is forwarded to each PageSlot →
   // PageCanvasHost render-effect dep). Untouched entries keep their bitmap. The
-  // active page renders an EditorCanvas, so it ignores this entirely.
+  // active EditorCanvas ignores it while the backing bitmap refreshes beneath.
   const [bgRevisions, setBgRevisions] = useState<number[]>([]);
 
   // Stable structural signature of the page set: `pageId:WxH@rotation` joined.
@@ -423,8 +439,8 @@ function ContinuousPageViewImpl(
                 next[i] = (next[i] ?? 0) + 1;
               }
             } else {
-              // Unknown scope on an unchanged structure → refresh every inactive
-              // page's bitmap (the active page is an EditorCanvas, untouched).
+              // Unknown scope on an unchanged structure → refresh every visible
+              // page's bitmap (the active editor remains layered above it).
               for (let i = 0; i < pageCountRef.current; i += 1) {
                 next[i] = (next[i] ?? 0) + 1;
               }
@@ -917,6 +933,13 @@ function ContinuousPageViewImpl(
                   {...(isActive ? { strokeColor } : {})}
                   {...(isActive ? { fillColor } : {})}
                   {...(isActive ? { strokeWidth } : {})}
+                  {...(isActive ? { tablePlacement } : {})}
+                  {...(isActive && onTablePlaced
+                    ? {
+                        onTablePlaced: (rows: number, cols: number, area: Bounds) =>
+                          onTablePlaced(rows, cols, area, index),
+                      }
+                    : {})}
                   {...(isActive && onHyperlinkClick ? { onHyperlinkClick } : {})}
                   {...(isActive && onRedactionMarksChanged
                     ? { onRedactionMarksChanged }
@@ -928,7 +951,13 @@ function ContinuousPageViewImpl(
                     ? { onSignatureFieldClick }
                     : {})}
                   {...(isActive && tool ? { tool } : {})}
-                  {...(isActive && onElementAdded ? { onElementAdded } : {})}
+                  {...(isActive && onElementAdded
+                    ? {
+                        onElementAdded: (element) =>
+                          onElementAdded(element, index),
+                      }
+                    : {})}
+                  {...(isActive && onTextOverflow ? { onTextOverflow } : {})}
                   {...(isActive && onInkDrawn ? { onInkDrawn } : {})}
                   {...(isActive && onElementModified
                     ? { onElementModified }

@@ -588,6 +588,8 @@ export function TableEditOverlay({
       {rects.map(({ table, rect }) => {
         if (!rect) return null;
         const isSelected = table.tableIndexOnPage === selectedTableIndex;
+        const hitWidth = Math.max(rect.width, 40);
+        const hitHeight = Math.max(rect.height, 40);
         return (
           <button
             key={table.tableIndexOnPage}
@@ -601,21 +603,34 @@ export function TableEditOverlay({
               // Claim the click so the page body doesn't deselect underneath.
               e.stopPropagation();
             }}
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={() =>
               onSelectTable(isSelected ? null : table.tableIndexOnPage)
             }
-            className={`pointer-events-auto absolute rounded-sm transition-colors ${
-              isSelected
-                ? "border-2 border-primary bg-primary/5"
-                : "border border-dashed border-primary/40 bg-transparent hover:border-primary/70 hover:bg-primary/5"
-            }`}
+            className="group pointer-events-auto absolute touch-manipulation rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             style={{
-              left: rect.left,
-              top: rect.top,
-              width: rect.width,
-              height: rect.height,
+              left: rect.left - (hitWidth - rect.width) / 2,
+              top: rect.top - (hitHeight - rect.height) / 2,
+              width: hitWidth,
+              height: hitHeight,
+              WebkitTapHighlightColor: "transparent",
             }}
-          />
+          >
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none absolute rounded-sm transition-[background-color,border-color,box-shadow] ${
+                isSelected
+                  ? "z-10 border-[3px] border-primary bg-primary/15 shadow-lg ring-2 ring-primary/40 ring-offset-1"
+                  : "border-2 border-dashed border-primary/60 bg-primary/5 group-hover:border-primary group-hover:bg-primary/10"
+              }`}
+              style={{
+                left: (hitWidth - rect.width) / 2,
+                top: (hitHeight - rect.height) / 2,
+                width: rect.width,
+                height: rect.height,
+              }}
+            />
+          </button>
         );
       })}
 

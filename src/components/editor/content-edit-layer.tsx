@@ -72,6 +72,8 @@ interface ZoneState {
   editValue: string;
   /** elementId hovered */
   hoveredZoneId: string | null;
+  /** selected box — shows resize handles */
+  selectedId: string | null;
   /** elementId with image replacement preview dataUrl */
   imagePreviewMap: Map<string, string>;
 }
@@ -174,6 +176,216 @@ function captureCanvasRegion(
     // Canvas may be tainted (cross-origin) — fall back gracefully
     return null;
   }
+}
+
+
+type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "move";
+
+const MIN_ZONE_W = 24;
+const MIN_ZONE_H = 16;
+
+function boundsFromMod(
+  element: ParsedElement,
+  mod?: ElementModification,
+): { x: number; y: number; width: number; height: number } {
+  const next = mod?.element as
+    | { bounds?: { x: number; y: number; width: number; height: number } }
+    | undefined;
+  return next?.bounds ?? element.bounds;
+}
+
+function applyResizeDelta(
+  start: { x: number; y: number; width: number; height: number },
+  handle: ResizeHandle,
+  dx: number,
+  dy: number,
+): { x: number; y: number; width: number; height: number } {
+  let { x, y, width, height } = start;
+
+  if (handle === "move") {
+    return { x: x + dx, y: y + dy, width, height };
+  }
+  if (handle.includes("e")) width = start.width + dx;
+  if (handle.includes("s")) height = start.height + dy;
+  if (handle.includes("w")) {
+    width = start.width - dx;
+    x = start.x + dx;
+  }
+  if (handle.includes("n")) {
+    height = start.height - dy;
+    y = start.y + dy;
+  }
+  if (width < MIN_ZONE_W) {
+    if (handle.includes("w")) x = start.x + start.width - MIN_ZONE_W;
+    width = MIN_ZONE_W;
+  }
+  if (height < MIN_ZONE_H) {
+    if (handle.includes("n")) y = start.y + start.height - MIN_ZONE_H;
+    height = MIN_ZONE_H;
+  }
+  return { x, y, width, height };
+}
+
+const HANDLE_CURSOR: Record<ResizeHandle, string> = {
+  nw: "nwse-resize",
+  n: "ns-resize",
+  ne: "nesw-resize",
+  e: "ew-resize",
+  se: "nwse-resize",
+  s: "ns-resize",
+  sw: "nesw-resize",
+  w: "ew-resize",
+  move: "move",
+};
+
+function ZoneResizeFrame({
+  zoom,
+  selected,
+  box,
+  onSelect,
+  onEdit,
+  onBoundsChange,
+  children,
+}: {
+  zoom: number;
+  selected: boolean;
+  box: { x: number; y: number; width: number; height: number };
+  onSelect: () => void;
+  onEdit: () => void;
+  onBoundsChange: (bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => void;
+  children?: React.ReactNode;
+}) {
+  const startRef = useRef<{
+    handle: ResizeHandle;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    pointerX: number;
+    pointerY: number;
+  } | null>(null);
+
+  const beginDrag = (
+    handle: ResizeHandle,
+    event: React.PointerEvent<HTMLElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    startRef.current = {
+      handle,
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+    };
+  };
+
+  const onPointerMove = (event: React.PointerEvent<HTMLElement>) => {
+    const start = startRef.current;
+    if (!start) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onBoundsChange(
+      applyResizeDelta(
+        {
+          x: start.x,
+          y: start.y,
+          width: start.width,
+          height: start.height,
+        },
+        start.handle,
+        (event.clientX - start.pointerX) / zoom,
+        (event.clientY - start.pointerY) / zoom,
+      ),
+    );
+  };
+
+  const endDrag = (event: React.PointerEvent<HTMLElement>) => {
+    if (!startRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    startRef.current = null;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      /* already released */
+    }
+  };
+
+  const handles: Array<{ handle: Exclude<ResizeHandle, "move">; style: React.CSSProperties }> = [
+    { handle: "nw", style: { left: -5, top: -5 } },
+    { handle: "n", style: { left: "calc(50% - 5px)", top: -5 } },
+    { handle: "ne", style: { right: -5, top: -5 } },
+    { handle: "e", style: { right: -5, top: "calc(50% - 5px)" } },
+    { handle: "se", style: { right: -5, bottom: -5 } },
+    { handle: "s", style: { left: "calc(50% - 5px)", bottom: -5 } },
+    { handle: "sw", style: { left: -5, bottom: -5 } },
+    { handle: "w", style: { left: -5, top: "calc(50% - 5px)" } },
+  ];
+
+  return (
+    <div className="absolute inset-0">
+      <div
+        className={cn(
+          "absolute inset-0 rounded-sm border-2",
+          selected
+            ? "cursor-move border-blue-500 bg-blue-500/5"
+            : "border-transparent hover:border-blue-400/80",
+        )}
+        onClick={(event) => {
+          event.stopPropagation();
+          onSelect();
+        }}
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          onEdit();
+        }}
+        onPointerDown={(event) => {
+          if (!selected) return;
+          beginDrag("move", event);
+        }}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      />
+      {children}
+      {selected
+        ? handles.map((item) => (
+            <button
+              key={item.handle}
+              type="button"
+              aria-label={`Resize ${item.handle}`}
+              className="absolute z-50 h-2.5 w-2.5 rounded-[2px] border border-blue-600 bg-white shadow-sm"
+              style={{ ...item.style, cursor: HANDLE_CURSOR[item.handle] }}
+              onPointerDown={(event) => beginDrag(item.handle, event)}
+              onPointerMove={onPointerMove}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}
+            />
+          ))
+        : null}
+      {selected ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onEdit();
+          }}
+          className="absolute -bottom-7 left-1/2 z-50 -translate-x-1/2 rounded bg-blue-600 px-2 py-0.5 text-[10px] font-medium text-white shadow"
+        >
+          Edit text
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -590,6 +802,10 @@ interface ContentEditContextValue {
   handleImageReplace: (element: ImageElement, file: File) => void | Promise<void>;
   handleDeleteZone: (element: ParsedElement, e: React.MouseEvent) => void;
   handleRestoreZone: (elementId: string, e: React.MouseEvent) => void;
+    handleUpdateBounds: (
+    element: ParsedElement,
+    bounds: { x: number; y: number; width: number; height: number },
+  ) => void;
   handleConfirmAnnotationEdit: (element: AnnotationElement) => void;
   handleConfirmFormFieldEdit: (element: FormFieldElement) => void;
   // Toolbar actions
@@ -653,11 +869,12 @@ export function ContentEditProvider({
   const [parseError, setParseError] = useState<string | null>(null);
 
   // Zone interaction state grouped for readability
-  const [zoneState, setZoneState] = useState<ZoneState>({
+    const [zoneState, setZoneState] = useState<ZoneState>({
     modifications: new Map(),
     activeEditId: null,
     editValue: "",
     hoveredZoneId: null,
+    selectedId: null,
     imagePreviewMap: new Map(),
   });
 
@@ -911,6 +1128,35 @@ export function ContentEditProvider({
     [removeModification],
   );
 
+    const handleUpdateBounds = useCallback(
+    (
+      element: ParsedElement,
+      bounds: { x: number; y: number; width: number; height: number },
+    ) => {
+      setZoneState((prev) => {
+        const existing = prev.modifications.get(element.elementId);
+        const base = (existing?.element ?? element) as Record<string, unknown>;
+        const mod: ElementModification = {
+          action: "update",
+          pageNumber: pageIndex,
+          element: { ...base, bounds },
+          oldBounds: existing?.oldBounds ?? {
+            x: element.bounds.x,
+            y: element.bounds.y,
+            width: element.bounds.width,
+            height: element.bounds.height,
+          },
+        };
+        const next = new Map(prev.modifications);
+        next.set(element.elementId, mod);
+        const all = Array.from(next.values());
+        queueMicrotask(() => onModificationsChange(all));
+        return { ...prev, modifications: next, selectedId: element.elementId };
+      });
+    },
+    [pageIndex, onModificationsChange],
+  );
+
   // ── Annotation / form-field inline confirm ─────────────────────────────────
 
   const handleConfirmAnnotationEdit = useCallback(
@@ -1043,6 +1289,7 @@ export function ContentEditProvider({
     handleImageReplace,
     handleDeleteZone,
     handleRestoreZone,
+    handleUpdateBounds,
     handleConfirmAnnotationEdit,
     handleConfirmFormFieldEdit,
     handleSelectAllText,
@@ -1142,16 +1389,13 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
     handleImageReplace,
     handleDeleteZone,
     handleRestoreZone,
+    handleUpdateBounds,
     handleConfirmAnnotationEdit,
     handleConfirmFormFieldEdit,
   } = useContentEdit();
 
-  // Only render for the page the provider parsed (the active page). Guards
-  // against a transient mismatch in the continuous view (the active page is the
-  // only one that renders an overlay, so in practice these always match).
   if (!isActive || pageIndex !== activePageIndex) return null;
 
-  // ── Loading state ─────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-auto">
@@ -1163,7 +1407,6 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
     );
   }
 
-  // ── Error state ───────────────────────────────────────────────────────────
   if (parseError !== null) {
     return (
       <div className="absolute inset-0 z-20 flex items-center justify-center p-6 pointer-events-auto">
@@ -1178,7 +1421,6 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
     );
   }
 
-  // ── No file ───────────────────────────────────────────────────────────────
   if (!currentFile) {
     return (
       <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-auto">
@@ -1189,7 +1431,6 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
     );
   }
 
-  // ── Empty page ────────────────────────────────────────────────────────────
   if (parsedElements.length === 0) {
     return (
       <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-auto">
@@ -1203,30 +1444,33 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
     );
   }
 
-  // ── Main editing surface ──────────────────────────────────────────────────
   return (
     <div className="absolute inset-0 z-20 pointer-events-auto">
-      {/* Click-away to close active editors */}
       <div
         className="absolute inset-0"
         onClick={() => {
-          setZoneState((prev) => ({ ...prev, activeEditId: null }));
+          setZoneState((prev) => ({
+            ...prev,
+            activeEditId: null,
+            selectedId: null,
+          }));
           setActiveImageId(null);
         }}
       />
 
       {parsedElements.map((element) => {
-        const { elementId, bounds } = element;
+        const { elementId } = element;
         const mod = zoneState.modifications.get(elementId);
+        const bounds = boundsFromMod(element, mod);
         const isDeleted = mod?.action === "delete";
         const isModified = mod?.action === "update";
+        const isSelected = zoneState.selectedId === elementId;
         const isTextEditing =
           isTextElement(element) && zoneState.activeEditId === elementId;
         const isImageControls =
           isImageElement(element) && activeImageId === elementId;
         const isHovered = zoneState.hoveredZoneId === elementId;
         const imagePreview = zoneState.imagePreviewMap.get(elementId) ?? null;
-
         const left = bounds.x * zoom;
         const top = bounds.y * zoom;
         const width = bounds.width * zoom;
@@ -1242,8 +1486,6 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
                 hoveredZoneId: elementId,
               }))
             }
-            // Tactile : un tap révèle les actions de la zone (le hover
-            // n'existe pas au doigt). Redondant mais inoffensif à la souris.
             onPointerDown={() =>
               setZoneState((prev) => ({
                 ...prev,
@@ -1253,27 +1495,21 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
             onMouseLeave={() =>
               setZoneState((prev) => ({
                 ...prev,
-                hoveredZoneId: prev.hoveredZoneId === elementId ? null : prev.hoveredZoneId,
+                hoveredZoneId:
+                  prev.hoveredZoneId === elementId ? null : prev.hoveredZoneId,
               }))
             }
             onContextMenu={(e) => {
               e.preventDefault();
-              if (!isDeleted) {
-                handleDeleteZone(element, e);
-              }
+              if (!isDeleted) handleDeleteZone(element, e);
             }}
           >
-            {/* ── Deleted overlay ─────────────────────────────────── */}
             {isDeleted ? (
               <div
                 className="absolute inset-0 rounded-sm border-2 border-red-500 bg-red-100/30"
                 style={{ zIndex: 30 }}
               >
-                {/* Diagonal strikethrough */}
-                <div
-                  className="absolute inset-0 overflow-hidden rounded-sm"
-                  aria-hidden="true"
-                >
+                <div className="absolute inset-0 overflow-hidden rounded-sm" aria-hidden="true">
                   <div
                     style={{
                       position: "absolute",
@@ -1291,7 +1527,6 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
                     }}
                   />
                 </div>
-                {/* Restore button */}
                 <button
                   onClick={(e) => handleRestoreZone(elementId, e)}
                   className={cn(
@@ -1306,68 +1541,36 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
                 </button>
               </div>
             ) : (
-              <>
-                {/* ── Text zone ──────────────────────────────────── */}
-                {isTextElement(element) && !isTextEditing && (
-                  <div
-                    className={cn(
-                      "absolute inset-0 cursor-text rounded-sm border-2 border-dashed transition-colors",
-                      isModified
-                        ? "border-yellow-500 bg-yellow-100/30"
-                        : isHovered
-                          ? "border-blue-400 bg-blue-50/20"
-                          : "border-transparent",
-                    )}
-                    onClick={(e) => handleTextZoneClick(element, e)}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Edit text: ${elementLabel(element)}`}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        handleTextZoneClick(
-                          element,
-                          e as unknown as React.MouseEvent,
-                        );
-                      }
-                    }}
+              <div className="absolute inset-0">
+                {isTextElement(element) && !isTextEditing ? (
+                  <ZoneResizeFrame
+                    zoom={zoom}
+                    selected={isSelected}
+                    box={bounds}
+                    onSelect={() =>
+                      setZoneState((prev) => ({
+                        ...prev,
+                        selectedId: elementId,
+                        activeEditId: null,
+                      }))
+                    }
+                    onEdit={() =>
+                      handleTextZoneClick(element, {
+                        stopPropagation() {},
+                      } as React.MouseEvent)
+                    }
+                    onBoundsChange={(next) => handleUpdateBounds(element, next)}
                   >
-                    {/* Modified badge */}
-                    {isModified && (
-                      <span
-                        className={cn(
-                          "absolute -top-4 right-0 text-[9px] font-semibold",
-                          "rounded-t px-1 py-0.5 bg-yellow-500 text-white",
-                        )}
-                      >
+                    {isModified ? (
+                      <span className="absolute -top-4 right-0 rounded-t bg-yellow-500 px-1 py-0.5 text-[9px] font-semibold text-white">
                         edited
                       </span>
-                    )}
+                    ) : null}
+                    {isHovered && !isSelected ? <ZoneTooltip element={element} /> : null}
+                  </ZoneResizeFrame>
+                ) : null}
 
-                    {/* Hover actions */}
-                    {isHovered && (
-                      <div className="absolute -top-7 pointer-coarse:-top-12 right-0 flex items-center gap-0.5">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteZone(element, e);
-                          }}
-                          className="flex items-center justify-center rounded p-0.5 pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:bg-background/90 text-red-500 hover:bg-red-50 transition-colors"
-                          aria-label="Delete element"
-                          title="Delete zone (right-click shortcut)"
-                        >
-                          <Trash2 className="h-3 w-3 pointer-coarse:h-5 pointer-coarse:w-5" />
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Tooltip */}
-                    {isHovered && <ZoneTooltip element={element} />}
-                  </div>
-                )}
-
-                {/* ── Inline text editor ─────────────────────────── */}
-                {isTextElement(element) && isTextEditing && (
+                {isTextElement(element) && isTextEditing ? (
                   <InlineTextEditor
                     element={element}
                     zoom={zoom}
@@ -1380,14 +1583,13 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
                     backgroundImage={(() => {
                       const canvas = getPdfCanvas?.() ?? null;
                       return canvas
-                        ? captureCanvasRegion(canvas, element.bounds, zoom)
+                        ? captureCanvasRegion(canvas, bounds, zoom)
                         : null;
                     })()}
                   />
-                )}
+                ) : null}
 
-                {/* ── Image zone ─────────────────────────────────── */}
-                {isImageElement(element) && !isImageControls && (
+                {isImageElement(element) && !isImageControls ? (
                   <div
                     className={cn(
                       "absolute inset-0 cursor-pointer rounded-sm border-2 border-dashed transition-colors",
@@ -1398,74 +1600,20 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
                           : "border-transparent",
                     )}
                     onClick={(e) => handleImageZoneClick(element, e)}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Replace image (${Math.round(bounds.width)}×${Math.round(bounds.height)} pt)`}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        handleImageZoneClick(
-                          element,
-                          e as unknown as React.MouseEvent,
-                        );
-                      }
-                    }}
                   >
-                    {/* Image preview overlay when replaced */}
-                    {imagePreview !== null && (
+                    {imagePreview !== null ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={imagePreview}
                         alt="Replaced image preview"
                         className="absolute inset-0 h-full w-full rounded-sm object-contain"
                       />
-                    )}
-
-                    {/* Modified badge */}
-                    {isModified && (
-                      <span
-                        className={cn(
-                          "absolute -top-4 right-0 text-[9px] font-semibold",
-                          "rounded-t px-1 py-0.5 bg-yellow-500 text-white",
-                        )}
-                      >
-                        replaced
-                      </span>
-                    )}
-
-                    {/* Hover icon */}
-                    {isHovered && !imagePreview && (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="flex items-center gap-1 rounded bg-black/50 px-2 py-1 text-[10px] text-white shadow">
-                          <ImageIcon className="h-3 w-3" />
-                          Click to replace
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Hover actions */}
-                    {isHovered && (
-                      <div className="absolute -top-7 pointer-coarse:-top-12 right-0 flex items-center gap-0.5">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteZone(element, e);
-                          }}
-                          className="flex items-center justify-center rounded p-0.5 pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:bg-background/90 text-red-500 hover:bg-red-50 transition-colors"
-                          aria-label="Delete image element"
-                        >
-                          <Trash2 className="h-3 w-3 pointer-coarse:h-5 pointer-coarse:w-5" />
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Tooltip */}
-                    {isHovered && <ZoneTooltip element={element} />}
+                    ) : null}
+                    {isHovered ? <ZoneTooltip element={element} /> : null}
                   </div>
-                )}
+                ) : null}
 
-                {/* ── Image replacement controls ─────────────────── */}
-                {isImageElement(element) && isImageControls && (
+                {isImageElement(element) && isImageControls ? (
                   <ImageZoneControls
                     element={element}
                     zoom={zoom}
@@ -1473,75 +1621,25 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
                     onReplace={(file) => handleImageReplace(element, file)}
                     onClose={() => setActiveImageId(null)}
                   />
-                )}
+                ) : null}
 
-                {/* ── Shape zone ──────────────────────────────────── */}
-                {isShapeElement(element) && (
+                {isShapeElement(element) ? (
                   <div
                     className={cn(
                       "absolute inset-0 cursor-pointer rounded-sm border-2 border-dashed transition-colors",
-                      isModified
-                        ? "border-yellow-500 bg-yellow-100/20"
-                        : isHovered
-                          ? "border-purple-400 bg-purple-50/20"
-                          : "border-transparent",
+                      isHovered ? "border-purple-400 bg-purple-50/20" : "border-transparent",
                     )}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Edit shape: ${element.shapeType}`}
                   >
-                    {/* Modified badge */}
-                    {isModified && (
-                      <span
-                        className={cn(
-                          "absolute -top-4 right-0 text-[9px] font-semibold",
-                          "rounded-t px-1 py-0.5 bg-yellow-500 text-white",
-                        )}
-                      >
-                        edited
-                      </span>
-                    )}
-
-                    {/* Hover overlay with shape info */}
-                    {isHovered && (
-                      <>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="flex items-center gap-1 rounded bg-black/50 px-2 py-1 text-[10px] text-white shadow">
-                            <Move className="h-3 w-3" />
-                            Click to edit style
-                          </div>
-                        </div>
-                        <div className="absolute -top-7 pointer-coarse:-top-12 right-0 flex items-center gap-0.5">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteZone(element, e);
-                            }}
-                            className="flex items-center justify-center rounded p-0.5 pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:bg-background/90 text-red-500 hover:bg-red-50 transition-colors"
-                            aria-label="Delete shape"
-                          >
-                            <Trash2 className="h-3 w-3 pointer-coarse:h-5 pointer-coarse:w-5" />
-                          </button>
-                        </div>
-                        <ZoneTooltip element={element} />
-                      </>
-                    )}
+                    {isHovered ? <ZoneTooltip element={element} /> : null}
                   </div>
-                )}
+                ) : null}
 
-                {/* ── Annotation zone ─────────────────────────────── */}
-                {isAnnotationElement(element) && (
+                {isAnnotationElement(element) &&
+                zoneState.activeEditId !== elementId ? (
                   <div
                     className={cn(
                       "absolute inset-0 cursor-pointer rounded-sm border-2 border-dashed transition-colors",
-                      isModified
-                        ? "border-yellow-500 bg-yellow-100/20"
-                        : isHovered
-                          ? "border-orange-400 bg-orange-50/20"
-                          : "border-transparent",
+                      isHovered ? "border-orange-400 bg-orange-50/20" : "border-transparent",
                     )}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1553,49 +1651,14 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
                         }));
                       }
                     }}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Edit annotation: ${element.annotationType}`}
                   >
-                    {isModified && (
-                      <span
-                        className={cn(
-                          "absolute -top-4 right-0 text-[9px] font-semibold",
-                          "rounded-t px-1 py-0.5 bg-yellow-500 text-white",
-                        )}
-                      >
-                        edited
-                      </span>
-                    )}
-
-                    {isHovered && (
-                      <>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="flex items-center gap-1 rounded bg-black/50 px-2 py-1 text-[10px] text-white shadow">
-                            <MessageSquare className="h-3 w-3" />
-                            {element.content ? "Click to edit" : element.annotationType}
-                          </div>
-                        </div>
-                        <div className="absolute -top-7 pointer-coarse:-top-12 right-0 flex items-center gap-0.5">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteZone(element, e);
-                            }}
-                            className="flex items-center justify-center rounded p-0.5 pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:bg-background/90 text-red-500 hover:bg-red-50 transition-colors"
-                            aria-label="Delete annotation"
-                          >
-                            <Trash2 className="h-3 w-3 pointer-coarse:h-5 pointer-coarse:w-5" />
-                          </button>
-                        </div>
-                        <ZoneTooltip element={element} />
-                      </>
-                    )}
+                    {isHovered ? <ZoneTooltip element={element} /> : null}
                   </div>
-                )}
+                ) : null}
 
-                {/* ── Annotation inline text editor (for notes/comments) ── */}
-                {isAnnotationElement(element) && zoneState.activeEditId === element.elementId && element.content && (
+                {isAnnotationElement(element) &&
+                zoneState.activeEditId === element.elementId &&
+                element.content ? (
                   <InlineTextEditor
                     element={{
                       ...element,
@@ -1624,72 +1687,45 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
                     onCancel={handleCancelEdit}
                     backgroundImage={null}
                   />
-                )}
+                ) : null}
 
-                {/* ── Form field zone ─────────────────────────────── */}
-                {isFormFieldElement(element) && (
-                  <div
-                    className={cn(
-                      "absolute inset-0 cursor-pointer rounded-sm border-2 border-dashed transition-colors",
-                      isModified
-                        ? "border-yellow-500 bg-yellow-100/20"
-                        : isHovered
-                          ? "border-teal-400 bg-teal-50/20"
-                          : "border-transparent",
-                    )}
-                    onClick={(e) => {
-                      e.stopPropagation();
+                {isFormFieldElement(element) &&
+                zoneState.activeEditId !== elementId ? (
+                  <ZoneResizeFrame
+                    zoom={zoom}
+                    selected={isSelected}
+                    box={bounds}
+                    onSelect={() =>
+                      setZoneState((prev) => ({
+                        ...prev,
+                        selectedId: elementId,
+                        activeEditId: null,
+                      }))
+                    }
+                    onEdit={() => {
                       if (element.fieldType === "text") {
                         setZoneState((prev) => ({
                           ...prev,
+                          selectedId: elementId,
                           activeEditId: element.elementId,
                           editValue: (element.value as string) || "",
                         }));
                       }
                     }}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Edit form field: ${element.fieldName}`}
+                    onBoundsChange={(next) => handleUpdateBounds(element, next)}
                   >
-                    {isModified && (
-                      <span
-                        className={cn(
-                          "absolute -top-4 right-0 text-[9px] font-semibold",
-                          "rounded-t px-1 py-0.5 bg-yellow-500 text-white",
-                        )}
-                      >
+                    {isModified ? (
+                      <span className="absolute -top-4 right-0 rounded-t bg-yellow-500 px-1 py-0.5 text-[9px] font-semibold text-white">
                         edited
                       </span>
-                    )}
+                    ) : null}
+                    {isHovered && !isSelected ? <ZoneTooltip element={element} /> : null}
+                  </ZoneResizeFrame>
+                ) : null}
 
-                    {isHovered && (
-                      <>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="flex items-center gap-1 rounded bg-black/50 px-2 py-1 text-[10px] text-white shadow">
-                            <FormInput className="h-3 w-3" />
-                            {element.fieldType}: {element.fieldName}
-                          </div>
-                        </div>
-                        <div className="absolute -top-7 pointer-coarse:-top-12 right-0 flex items-center gap-0.5">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteZone(element, e);
-                            }}
-                            className="flex items-center justify-center rounded p-0.5 pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:bg-background/90 text-red-500 hover:bg-red-50 transition-colors"
-                            aria-label="Delete form field"
-                          >
-                            <Trash2 className="h-3 w-3 pointer-coarse:h-5 pointer-coarse:w-5" />
-                          </button>
-                        </div>
-                        <ZoneTooltip element={element} />
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* ── Form field inline text editor (for text/textarea fields) ── */}
-                {isFormFieldElement(element) && zoneState.activeEditId === element.elementId && (element.fieldType === "text") && (
+                {isFormFieldElement(element) &&
+                zoneState.activeEditId === element.elementId &&
+                element.fieldType === "text" ? (
                   <InlineTextEditor
                     element={{
                       ...element,
@@ -1718,8 +1754,8 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
                     onCancel={handleCancelEdit}
                     backgroundImage={null}
                   />
-                )}
-              </>
+                ) : null}
+              </div>
             )}
           </div>
         );
@@ -1727,7 +1763,6 @@ export function ContentEditZones({ pageIndex, getPdfCanvas }: ContentEditZonesPr
     </div>
   );
 }
-
 // ─── Composed backward-compatible layer (embed editor) ────────────────────────
 
 /**

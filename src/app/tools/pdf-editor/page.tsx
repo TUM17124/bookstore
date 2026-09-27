@@ -7,6 +7,7 @@ import { PDF_SERVICE_URL } from "@/lib/pdf-editor/pdf-service";
 import { useShallow } from "zustand/react/shallow";
 import Link from "next/link";
 import type {
+  Bounds,
   Element,
   FormFieldElement,
   TextElement,
@@ -1521,6 +1522,15 @@ function EditorPageInner() {
     [router, t],
   );
 
+  const handlePublish = useCallback(() => {
+    if (!storedDocumentId) return;
+    handleLeaveEditor(
+      publishedBookId
+        ? `/dashboard?edit_book_id=${publishedBookId}&editor_document_id=${storedDocumentId}`
+        : `/publish?editor_document_id=${storedDocumentId}`,
+    );
+  }, [handleLeaveEditor, publishedBookId, storedDocumentId]);
+
   const performRemoteReload = useCallback(() => {
     if (remoteReloadTimerRef.current) {
       clearTimeout(remoteReloadTimerRef.current);
@@ -1831,17 +1841,23 @@ function EditorPageInner() {
   // Sticky toolbar height — the Pages/Properties/Document Info sidebars stick
   // just below the (variable-height) toolbar rows rather than under a
   // hardcoded offset, so they never overlap it as content wraps/changes.
-  const toolbarWrapRef = useRef<HTMLDivElement>(null);
+  const toolbarResizeObserverRef = useRef<ResizeObserver | null>(null);
   const [toolbarHeight, setToolbarHeight] = useState(0);
-  useEffect(() => {
-    const el = toolbarWrapRef.current;
-    if (!el) return;
-    const update = () => setToolbarHeight(el.offsetHeight);
+  const setToolbarElement = useCallback((el: HTMLDivElement | null) => {
+    toolbarResizeObserverRef.current?.disconnect();
+    toolbarResizeObserverRef.current = null;
+    if (!el) {
+      setToolbarHeight(0);
+      return;
+    }
+
+    const update = () => setToolbarHeight(el.getBoundingClientRect().height);
     update();
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(update);
+      observer.observe(el);
+      toolbarResizeObserverRef.current = observer;
+    }
   }, []);
 
   // Pages/Properties sidebars collapse independently and remember their state
@@ -2050,21 +2066,26 @@ function EditorPageInner() {
   );
 
   const handleElementAdded = useCallback(
-    async (element: Element) => {
+    async (
+      element: Element,
+      pageIndex = effectivePageIndex,
+      selectNewElement = true,
+    ) => {
       clientLogger.debug("[editor] Element added:", element);
       setDirty(true);
-      const pageNumber = currentPageIndex + 1;
+      const pageNumber = pageIndex + 1;
 
       // Mirror the new element into the local scene graph so properties
       // panel and selection lookups find it. Without this, Fabric objects
       // are selectable but the panel stays empty because selectedElements
       // is computed via currentPage.elements.filter().
-      addElementToPage(currentPageIndex, element);
+      addElementToPage(pageIndex, element);
 
       // Auto-select the new element so its properties are immediately
       // visible — matches the UX of every real PDF editor.
-      if (currentPage) {
-        selectElements([element.elementId], currentPage.pageId);
+      const targetPage = pages[pageIndex];
+      if (selectNewElement && targetPage) {
+        selectElements([element.elementId], targetPage.pageId);
       }
 
       // Record the op so the save flow can bake it into the PDF.
@@ -2117,7 +2138,7 @@ function EditorPageInner() {
       // Sauvegarder le PDF vers S3 (debounced: batch ajouts rapprochés)
       saveWithPriority("debounced");
     },
-    [setDirty, saveWithPriority, documentId, storedDocumentId, currentPageIndex, queueAdd, addElementToPage, currentPage, selectElements]
+    [setDirty, saveWithPriority, documentId, storedDocumentId, effectivePageIndex, queueAdd, addElementToPage, pages, selectElements]
   );
 
   const handleElementModified = useCallback(
@@ -2919,7 +2940,7 @@ function EditorPageInner() {
   // /api/pdf/parse with the fresh binary returns new bounds that match
   // the new geometry, fixing the 'text piled up' symptom.
   const reparseFromFile = useCallback(
-    async (file: File): Promise<void> => {
+    async (file: File): Promise<PageObject[] | null> => {
       try {
         const { getAuthToken } = await import('@/lib/pdf-editor/api');
         const token = await getAuthToken();
@@ -2939,15 +2960,19 @@ function EditorPageInner() {
         });
         if (!res.ok) {
           clientLogger.warn('[editor] re-parse failed:', res.status);
-          return;
+          return null;
         }
         const json = (await res.json()) as { success: boolean; data?: { pages?: unknown[] } };
         const pages = json?.data?.pages;
         if (Array.isArray(pages)) {
-          replacePages(pages as PageObject[]);
+          const parsedPages = pages as PageObject[];
+          replacePages(parsedPages);
+          return parsedPages;
         }
+        return null;
       } catch (err) {
         clientLogger.error('[editor] re-parse threw:', err);
+        return null;
       }
     },
     [replacePages],
@@ -4190,6 +4215,155 @@ function EditorPageInner() {
     [runPageOperation],
   );
 
+  const handleTextOverflow = useCallback(
+    async (
+      continuations: TextElement[],
+      sourcePageIndex: number,
+    ): Promise<boolean> => {
+      const sourcePage = pages[sourcePageIndex];
+      if (!sourcePage || continuations.length === 0) return false;
+
+      // The page operation starts from currentPdfFileRef, not the in-memory
+      // operation queue. Bake the clipped source textbox first so adding pages
+      // cannot replace the PDF with a version that still contains stale text.
+      const pendingBeforePrepare =
+        peekOperations().length + contentModificationsRef.current.length;
+      const fileBeforePrepare = currentPdfFileRef.current;
+      const prepared = await getPreparedBlob();
+      if (
+        !prepared ||
+        (pendingBeforePrepare > 0 &&
+          currentPdfFileRef.current === fileBeforePrepare)
+      ) {
+        toast({
+          title: "Text pagination failed",
+          description:
+            "The edited text could not be saved before adding continuation pages. The original text remains in the text box.",
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      const rollbackInsertedPages = async (count: number): Promise<boolean> => {
+        let rolledBack = true;
+        for (let offset = count - 1; offset >= 0; offset -= 1) {
+          const removed = await runPageOperation(
+            "delete",
+            { pageNumber: sourcePageIndex + offset + 2 },
+            { reparse: false },
+          );
+          if (!removed) {
+            rolledBack = false;
+            clientLogger.error(
+              "[editor] Failed to roll back a partially inserted text page",
+              { sourcePageIndex, offset },
+            );
+          }
+        }
+        const file = currentPdfFileRef.current;
+        if (file) {
+          const parsed = await reparseFromFile(file);
+          if (parsed) replacePages(parsed);
+          else rolledBack = false;
+        } else {
+          rolledBack = false;
+        }
+        return rolledBack;
+      };
+
+      let insertedPages = 0;
+      const pageWidth = sourcePage.dimensions.width;
+      const pageHeight = sourcePage.dimensions.height;
+      for (let offset = 0; offset < continuations.length; offset += 1) {
+        const added = await runPageOperation(
+          "add",
+          {
+            afterPage: sourcePageIndex + offset,
+            width: pageWidth,
+            height: pageHeight,
+          },
+          { reparse: false },
+        );
+        if (!added) break;
+        insertedPages += 1;
+      }
+
+      if (insertedPages !== continuations.length) {
+        const rolledBack = await rollbackInsertedPages(insertedPages);
+        toast({
+          title: "Text pagination failed",
+          description: rolledBack
+            ? "The full text remains in the original text box."
+            : "The full text remains in the original text box, but an empty page may remain.",
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      const file = currentPdfFileRef.current;
+      const parsedPages = file ? await reparseFromFile(file) : null;
+      const currentPages = pagesRef.current;
+      if (
+        !parsedPages ||
+        parsedPages.length < currentPages.length + insertedPages
+      ) {
+        clientLogger.error(
+          "[editor] Could not re-parse pages after text pagination",
+          {
+            sourcePageIndex,
+            insertedPages,
+            parsedPageCount: parsedPages?.length ?? 0,
+            currentPageCount: currentPages.length,
+          },
+        );
+        const rolledBack = await rollbackInsertedPages(insertedPages);
+        toast({
+          title: "Text pagination failed",
+          description: rolledBack
+            ? "The full text remains in the original text box."
+            : "The full text remains in the original text box, but an empty page may remain.",
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      // Page insertion only changes page structure. Keep all current elements
+      // on existing pages (including the just-edited source textbox) instead
+      // of replacing them with a parse of the pre-bake PDF and losing unsaved
+      // scene-graph changes.
+      const nextPages = [
+        ...currentPages.slice(0, sourcePageIndex + 1),
+        ...parsedPages.slice(
+          sourcePageIndex + 1,
+          sourcePageIndex + insertedPages + 1,
+        ),
+        ...currentPages.slice(sourcePageIndex + 1),
+      ];
+      replacePages(nextPages);
+      pagesRef.current = nextPages;
+      await Promise.all(
+        continuations.map((continuation, offset) =>
+          handleElementAdded(
+            continuation,
+            sourcePageIndex + offset + 1,
+            false,
+          ),
+        ),
+      );
+      return true;
+    },
+    [
+      pages,
+      runPageOperation,
+      peekOperations,
+      getPreparedBlob,
+      reparseFromFile,
+      replacePages,
+      handleElementAdded,
+      toast,
+    ],
+  );
+
   const handleAddPage = useCallback(async () => {
     // afterPage=pages.length inserts at the end. pdf-engine treats it as
     // 1-indexed insertion point, so we pass the current page count as-is.
@@ -4234,42 +4408,71 @@ function EditorPageInner() {
 
   // --- Insert menu (Word-like) ------------------------------------------------
 
+  const [tablePlacement, setTablePlacement] = useState<{
+    rows: number;
+    cols: number;
+  } | null>(null);
+  const [tableInsertionBusy, setTableInsertionBusy] = useState(false);
+
   /**
-   * Insert an `rows`×`cols` table at the current page. The model has no grouped
-   * table primitive, so the table is laid out as individual editable text cells
-   * + `line` border shapes within the page content area (page size minus a
-   * margin). Each element flows through the SAME element-add pipeline used by
-   * the canvas tools (`handleElementAdded`): scene-graph mirror + queue + bake.
+   * Select the dimensions and place the table on the next page tap.
    */
   const handleInsertTable = useCallback(
-    async (rows: number, cols: number) => {
-      const page = currentPage;
-      if (!page) return;
-      const { width, height } = page.dimensions;
-      // 10% margin (clamped) keeps the grid clear of page edges.
-      const marginX = Math.min(width * 0.1, 72);
-      const marginY = Math.min(height * 0.1, 72);
-      const elements = buildTableElements({
-        rows,
-        cols,
-        area: {
-          x: marginX,
-          y: marginY,
-          width: Math.max(width - marginX * 2, 1),
-          height: Math.max(height - marginY * 2, 1),
-        },
-      });
-      // Add cells + borders sequentially through the normal add path. Each call
-      // assigns a fresh elementId, mirrors to the scene graph, queues the op and
-      // schedules a debounced save (batched across the rapid sequence).
-      for (const el of elements) {
-        await handleElementAdded({
-          ...el,
-          elementId: `element-${Date.now()}-${Math.random()}`,
-        } as Element);
+    (rows: number, cols: number) => {
+      setActiveTool("select");
+      setTablePlacement({ rows, cols });
+    },
+    [setActiveTool],
+  );
+
+  const handleTablePlaced = useCallback(
+    async (rows: number, cols: number, area: Bounds, pageIndex: number) => {
+      setTableInsertionBusy(true);
+      try {
+        const elements = buildTableElements({ rows, cols, area });
+        const inserted = elements.map(
+          (element) =>
+            ({
+              ...element,
+              elementId: `element-${Date.now()}-${Math.random()}`,
+            }) as Element,
+        );
+        setTablePlacement(null);
+        const persisted = Promise.all(
+          inserted.map((element) =>
+            handleElementAdded(element, pageIndex, false),
+          ),
+        );
+        let rendered = false;
+        try {
+          if (!canvasHandle) {
+            throw new Error("Active canvas is not ready");
+          }
+          await canvasHandle.renderAddedElements(inserted);
+          rendered = true;
+        } catch (error) {
+          clientLogger.error("[editor] Failed to render inserted table:", error);
+        }
+        await persisted;
+        if (!rendered) {
+          toast({
+            title: "Table could not be displayed",
+            description: "The table elements could not be rendered on the page.",
+            variant: "destructive",
+          });
+        }
+      } catch (error) {
+        clientLogger.error("[editor] Failed to insert table:", error);
+        toast({
+          title: "Table insertion failed",
+          description: "The table could not be saved. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setTableInsertionBusy(false);
       }
     },
-    [currentPage, handleElementAdded],
+    [canvasHandle, handleElementAdded, toast],
   );
 
   /**
@@ -5671,7 +5874,15 @@ function EditorPageInner() {
           (toolbarHeight) instead of a hardcoded offset. top-0: the site nav
           is hidden entirely on this route (see NotchNavbar), so there's
           nothing above this to clear. */}
-      <div ref={toolbarWrapRef} className="sticky top-0 z-30 flex shrink-0 flex-col bg-background">
+      <div
+        ref={setToolbarElement}
+        className="sticky top-0 z-30 flex shrink-0 flex-col bg-background max-md:z-40"
+        style={
+          isMobile
+            ? { position: "fixed", top: 0, left: 0, right: 0 }
+            : undefined
+        }
+      >
       {/* Header */}
       <header className="flex items-center justify-between gap-2 border-b px-2 py-2 md:px-4">
         <div className="flex min-w-0 items-center gap-3">
@@ -5734,27 +5945,51 @@ function EditorPageInner() {
         </div>
 
         <div className="flex shrink-0 items-center gap-2 md:gap-3">
-          {/* Below md these actions collapse into the "Actions document"
-              menu (mirror items marked md:hidden inside it) to keep the header
-              compact; the canvas stays the priority on mobile.
+          {/* The actions are mirrored in the "Actions document" menu; on
+              phones their labels are hidden to keep the header compact.
               Share is hidden, not just broken-on-click: the invite endpoint
               was never built (real-time collaboration was explicitly cut
               from this migration's scope), so surfacing "Failed to send
-              invitation" as a live error is worse than not offering it. */}
+              invitation" as a live error is worse than not offering it.
+              Publish, export, and save stay directly available in the sticky
+              header on phones as compact icon buttons. */}
+          {storedDocumentId && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-2"
+              onClick={handlePublish}
+              aria-label={publishedBookId ? "Edit published book" : "Publish"}
+              title={publishedBookId ? "Edit published book" : "Publish"}
+            >
+              {publishedBookId ? (
+                <BookOpen className="h-4 w-4" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">
+                {publishedBookId ? "Edit published book" : "Publish"}
+              </span>
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
-            className="hidden gap-2 md:inline-flex"
+            className="shrink-0 gap-2"
             onClick={handleExport}
+            aria-label={t("export")}
+            title={t("export")}
           >
             <Download className="h-4 w-4" />
             <span className="hidden sm:inline">{t("export")}</span>
           </Button>
           <Button
             size="sm"
-            className="hidden gap-2 md:inline-flex"
+            className="shrink-0 gap-2"
             onClick={save}
             disabled={saving || !isDirty}
+            aria-label={t("save")}
+            title={t("save")}
           >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -5782,7 +6017,10 @@ function EditorPageInner() {
                 )}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuContent
+              align="end"
+              className="max-h-[var(--radix-dropdown-menu-content-available-height)] w-64 overflow-y-auto overscroll-contain"
+            >
               {/* Account menu — the site nav (and its own account dropdown)
                   is hidden on this route, so this is the only way to reach
                   Home/Dashboard/Settings/Log out while in the editor. Home
@@ -5793,15 +6031,7 @@ function EditorPageInner() {
                 <span>{t("home")}</span>
               </DropdownMenuItem>
               {storedDocumentId && (
-                <DropdownMenuItem
-                  onClick={() =>
-                    handleLeaveEditor(
-                      publishedBookId
-                        ? `/dashboard?edit_book_id=${publishedBookId}&editor_document_id=${storedDocumentId}`
-                        : `/publish?editor_document_id=${storedDocumentId}`,
-                    )
-                  }
-                >
+                <DropdownMenuItem onClick={handlePublish}>
                   {publishedBookId ? (
                     <BookOpen className="mr-2 h-4 w-4" />
                   ) : (
@@ -6138,6 +6368,11 @@ function EditorPageInner() {
         tableCount={documentTables.length}
       />
       </div>
+      <div
+        aria-hidden="true"
+        className="block md:hidden"
+        style={{ height: toolbarHeight }}
+      />
 
       {/* Main content — `relative` so the floating mobile zoom cluster can
           anchor bottom-right of the canvas row (above the footer) in BOTH view
@@ -6256,6 +6491,8 @@ function EditorPageInner() {
               strokeColor={strokeColor}
               fillColor={fillColor}
               strokeWidth={strokeWidth}
+              tablePlacement={tablePlacement}
+              onTablePlaced={handleTablePlaced}
               onHyperlinkClick={handleHyperlinkClick}
               onRedactionMarksChanged={setRedactionMarkCount}
               fitMode={fitMode}
@@ -6264,6 +6501,7 @@ function EditorPageInner() {
               // (même contrat que la molette / les presets de la toolbar).
               onManualZoomChange={handleManualZoomChange}
               onElementAdded={handleElementAdded}
+              onTextOverflow={handleTextOverflow}
               onInkDrawn={handleAddInk}
               onElementModified={handleElementModified}
               onElementReordered={handleElementReordered}
@@ -6320,6 +6558,7 @@ function EditorPageInner() {
               <EditorCanvas
                 page={currentPage}
                 documentId={documentId}
+                pageIndex={currentPageIndex}
                 getFontFaceName={getFontFaceName}
                 fontsLoading={fontsLoading}
                 tool={activeTool}
@@ -6339,7 +6578,10 @@ function EditorPageInner() {
                 strokeColor={strokeColor}
                 fillColor={fillColor}
                 strokeWidth={strokeWidth}
+                tablePlacement={tablePlacement}
+                onTablePlaced={handleTablePlaced}
                 onElementAdded={handleElementAdded}
+                onTextOverflow={handleTextOverflow}
                 onInkDrawn={handleAddInk}
                 onElementModified={handleElementModified}
                 onElementReordered={handleElementReordered}
@@ -6720,6 +6962,17 @@ function EditorPageInner() {
         }}
         onInsert={handleSignatureInsert}
       />
+
+      {pageOperation.isPending || tableInsertionBusy ? (
+        <div
+          className="fixed bottom-16 right-4 z-50 flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm shadow-lg"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2 className="h-4 w-4 animate-spin" />
+          {tableInsertionBusy ? "Inserting table…" : "Updating pages…"}
+        </div>
+      ) : null}
 
       {/* Status bar — flex-wrap so it never forces horizontal page scroll. */}
       <footer className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t px-2 py-1.5 text-xs text-muted-foreground md:px-4">

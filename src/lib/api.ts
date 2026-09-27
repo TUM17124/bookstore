@@ -311,6 +311,9 @@ export type TtsUsageSnapshot = {
   warn_percent: number
   credit_chars: number
   credits_enabled: boolean
+  credit_percent?: number
+  credit_chars_used?: number
+  credit_chars_total?: number
   credit_min_kes: string
   chars_per_kes: number
   volume_bonus_percent: number
@@ -997,5 +1000,4 @@ export async function unsubscribePush(endpoint?: string) {
 }
 
 export default searchTrack
-
 

@@ -12,10 +12,9 @@
  *      `addPdfBackground`;
  *   4. releases its pool slot on unmount.
  *
- * This host is used ONLY for INACTIVE pages in the continuous scroller — the
- * cheap, pixel-perfect bitmap. The ACTIVE/focused page renders a real embedded
- * `<EditorCanvas>` instead (full tooling: create/move/resize/retype/delete,
- * undo/redo, toolbar handle), so the editable overlay lives there, never here.
+ * This host supplies the cheap, pixel-perfect bitmap for visible pages. The
+ * active page keeps it underneath its EditorCanvas until editable hydration
+ * finishes, preventing a blank flash when focus changes.
  */
 
 import React, { useEffect, useRef } from "react";
@@ -49,7 +48,7 @@ export interface PageCanvasHostProps {
 }
 
 /**
- * One inactive page → one pooled Fabric canvas painted with the full page
+ * One visible page → one pooled Fabric canvas painted with the full page
  * bitmap. Re-renders whenever `page` or `scale` changes; releases the pool slot
  * on unmount.
  */

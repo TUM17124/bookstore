@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { getToken } from '@/lib/api'
@@ -51,6 +51,69 @@ function usagePercent(value: unknown): number | null {
   const n = Number(value)
   if (!Number.isFinite(n)) return null
   return Math.min(100, Math.max(0, Math.round(n)))
+}
+
+function buildUsageNotices(usage: TtsUsageSnapshot | null): string[] {
+  if (!usage) return []
+
+  const notices: string[] = []
+  const warnAt = usagePercent(usage.warn_percent) ?? 85
+  const percentFromLimit = (
+    percent: unknown,
+    used: unknown,
+    limit: unknown,
+  ) => {
+    const reported = usagePercent(percent)
+    if (reported != null) return reported
+    const count = Number(used)
+    const maximum = Number(limit)
+    if (!Number.isFinite(count) || !Number.isFinite(maximum) || maximum <= 0) {
+      return null
+    }
+    return usagePercent((count / maximum) * 100)
+  }
+  const dailyPct = percentFromLimit(
+    usage.daily_percent,
+    usage.chars_used_today,
+    usage.daily_limit,
+  )
+  const weeklyPct = percentFromLimit(
+    usage.weekly_percent,
+    usage.chars_used_week,
+    usage.weekly_limit,
+  )
+  const creditPct =
+    usagePercent(usage.credit_percent) ??
+    (() => {
+      const used = Number(usage.credit_chars_used)
+      const total = Number(usage.credit_chars_total)
+      if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0) {
+        return null
+      }
+      return usagePercent((used / total) * 100)
+    })()
+
+  if (usage.credits_enabled && creditPct != null && creditPct >= warnAt) {
+    notices.push(`Purchased robot-reader credits: ${creditPct}% used.`)
+  }
+
+  if (dailyPct != null && dailyPct >= warnAt) {
+    notices.push(
+      dailyPct >= 100
+        ? "You have used up today's included robot-reader characters."
+        : `You have used ${dailyPct}% of your daily robot-reader character limit.`,
+    )
+  }
+
+  if (weeklyPct != null && weeklyPct >= warnAt) {
+    notices.push(
+      weeklyPct >= 100
+        ? "You have used up this week's included robot-reader characters."
+        : `You have used ${weeklyPct}% of your weekly robot-reader character limit.`,
+    )
+  }
+
+  return notices
 }
 
 function charsForCreditAmount(
@@ -225,8 +288,12 @@ export function PdfReader({
   const [ttsPlaying, setTtsPlaying] = useState(false)
   const [ttsRate, setTtsRate] = useState(1)
   const [ttsSentences, setTtsSentences] = useState<string[]>([])
-  const [ttsTimepoints, setTtsTimepoints] = useState<TtsTimepoint[]>([])
   const [ttsActiveSentence, setTtsActiveSentence] = useState(-1)
+  const ttsActiveWordRef = useRef<{
+    pageNum: number
+    sentenceIndex: number
+    wordIndex: number
+  } | null>(null)
   const [ttsPageLoaded, setTtsPageLoaded] = useState<number | null>(null)
 
   const lastScrolledSentence = useRef(-1)
@@ -259,16 +326,16 @@ export function PdfReader({
   const [creditBusy, setCreditBusy] = useState(false)
   const [creditError, setCreditError] = useState('')
 
+  const creditQuoteTimerRef = useRef<number | null>(null)
   const [usageNotice, setUsageNotice] = useState('')
   const usageNoticeIndexRef = useRef(0)
-  const lowCreditTimerRef = useRef<number | null>(null)
-  const lowCreditCycleRef = useRef<number | null>(null)
-  const creditQuoteTimerRef = useRef<number | null>(null)
 
   const canUseTts = isPro || (ttsUsage?.credit_chars || 0) > 0
   const pipOpen = !!pipWindow || inAppPip
   const estimatedCreditChars = charsForCreditAmount(creditQuote, creditAmount)
-  const readerMessage = ttsError || pipError || usageNotice
+  const readerMessage = ttsError || pipError
+  const visibleUsageNotice =
+    loggedIn && ttsPlaying ? usageNotice : ''
 
   const readerReturnPath = (() => {
     if (typeof window === 'undefined') {
@@ -372,43 +439,67 @@ export function PdfReader({
     return false
   }
 
-  function buildUsageNotices(): string[] {
-    const usage = ttsUsageRef.current
-    if (!usage) return []
-
-    const notices: string[] = []
-    const warnAt = usagePercent(usage.warn_percent) ?? 85
-    const dailyPct = usagePercent(usage.daily_percent)
-    const weeklyPct = usagePercent(usage.weekly_percent)
-    const creditPct =
-      usagePercent((usage as TtsUsageSnapshot & { credit_percent?: number }).credit_percent) ??
-      (() => {
-        const used = Number((usage as TtsUsageSnapshot & { credit_chars_used?: number }).credit_chars_used)
-        const total = Number((usage as TtsUsageSnapshot & { credit_chars_total?: number }).credit_chars_total)
-        if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0) return null
-        return usagePercent((used / total) * 100)
-      })()
-
-    if (usage.credits_enabled && creditPct != null && creditPct >= warnAt) {
-      notices.push(
-        `You have used ${creditPct}% of your purchased robot-reader credits. Buy credits to keep listening.`,
-      )
-    }
-
-    if (dailyPct != null && dailyPct >= warnAt) {
-      notices.push(
-        `You have used ${dailyPct}% of your daily robot-reader characters. Buy credits to keep listening.`,
-      )
-    }
-
-    if (weeklyPct != null && weeklyPct >= warnAt) {
-      notices.push(
-        `You have used ${weeklyPct}% of your weekly robot-reader characters. Buy credits to keep listening.`,
-      )
-    }
-
-    return notices
+  function renderReaderNotices() {
+    if (!readerMessage && !visibleUsageNotice) return null
+    return (
+      <div
+        className="shrink-0 space-y-1 border-b border-amber-200 bg-amber-50 px-3 py-2"
+        role="status"
+        aria-live="polite"
+      >
+        {readerMessage ? (
+          <p className="text-[11px] font-semibold leading-snug text-red-700">
+            {readerMessage}
+          </p>
+        ) : null}
+        {visibleUsageNotice ? (
+          <p
+            className="text-[11px] font-semibold leading-snug text-amber-900"
+          >
+            {visibleUsageNotice}
+          </p>
+        ) : null}
+      </div>
+    )
   }
+
+  useEffect(() => {
+    if (!loggedIn || !ttsPlaying) {
+      return
+    }
+
+    let cancelled = false
+    let showTimer: number | null = null
+    let hideTimer: number | null = null
+
+    const scheduleNext = (delay: number) => {
+      showTimer = window.setTimeout(() => {
+        if (cancelled || !ttsPlayingRef.current) return
+
+        const notices = buildUsageNotices(ttsUsageRef.current)
+        if (notices.length === 0) {
+          scheduleNext(10000)
+          return
+        }
+
+        const index = usageNoticeIndexRef.current % notices.length
+        usageNoticeIndexRef.current = (index + 1) % notices.length
+        setUsageNotice(notices[index])
+        hideTimer = window.setTimeout(() => {
+          if (cancelled) return
+          setUsageNotice('')
+          scheduleNext(24000)
+        }, 6000)
+      }, delay)
+    }
+
+    scheduleNext(6000)
+    return () => {
+      cancelled = true
+      if (showTimer !== null) window.clearTimeout(showTimer)
+      if (hideTimer !== null) window.clearTimeout(hideTimer)
+    }
+  }, [loggedIn, ttsPlaying])
 
   useEffect(() => {
     pageRef.current = page
@@ -443,10 +534,6 @@ export function PdfReader({
   }, [ttsSentences])
 
   useEffect(() => {
-    ttsTimepointsRef.current = ttsTimepoints
-  }, [ttsTimepoints])
-
-  useEffect(() => {
     ttsActiveSentenceRef.current = ttsActiveSentence
   }, [ttsActiveSentence])
 
@@ -471,69 +558,6 @@ export function PdfReader({
 
     return () => window.removeEventListener('resize', apply)
   }, [])
-
-  useEffect(() => {
-    if (!loggedIn || !ttsPlaying) {
-      setUsageNotice('')
-
-      if (lowCreditTimerRef.current) {
-        window.clearTimeout(lowCreditTimerRef.current)
-        lowCreditTimerRef.current = null
-      }
-
-      if (lowCreditCycleRef.current) {
-        window.clearTimeout(lowCreditCycleRef.current)
-        lowCreditCycleRef.current = null
-      }
-
-      return
-    }
-
-    let cancelled = false
-
-    const clearNoticeTimers = () => {
-      if (lowCreditTimerRef.current) {
-        window.clearTimeout(lowCreditTimerRef.current)
-        lowCreditTimerRef.current = null
-      }
-
-      if (lowCreditCycleRef.current) {
-        window.clearTimeout(lowCreditCycleRef.current)
-        lowCreditCycleRef.current = null
-      }
-    }
-
-    const scheduleNotice = () => {
-      if (cancelled || !ttsPlayingRef.current) return
-
-      const delay = 8000 + Math.floor(Math.random() * 22000)
-
-      lowCreditCycleRef.current = window.setTimeout(() => {
-        if (cancelled || !ttsPlayingRef.current) {
-          setUsageNotice('')
-          return
-        }
-
-        const notices = buildUsageNotices()
-        if (!notices.length) return
-
-        const next = notices[usageNoticeIndexRef.current % notices.length]
-        usageNoticeIndexRef.current += 1
-        setUsageNotice(next)
-
-        lowCreditTimerRef.current = window.setTimeout(() => {
-          if (!cancelled) setUsageNotice('')
-        }, 6000)
-      }, delay)
-    }
-
-    scheduleNotice()
-
-    return () => {
-      cancelled = true
-      clearNoticeTimers()
-    }
-  }, [loggedIn, ttsPlaying])
 
   useEffect(() => {
     if (!loggedIn) return
@@ -693,14 +717,6 @@ export function PdfReader({
 
       if (followRafRef.current) {
         cancelAnimationFrame(followRafRef.current)
-      }
-
-      if (lowCreditTimerRef.current) {
-        window.clearTimeout(lowCreditTimerRef.current)
-      }
-
-      if (lowCreditCycleRef.current) {
-        window.clearTimeout(lowCreditCycleRef.current)
       }
 
       if (creditQuoteTimerRef.current) {
@@ -1144,6 +1160,54 @@ export function PdfReader({
     )
   }
 
+  function applyActiveWordHighlight(
+    pageNum: number,
+    sentenceIndex: number,
+    wordIndex: number,
+    force = false,
+  ) {
+    const previous = ttsActiveWordRef.current
+    if (
+      !force &&
+      previous?.pageNum === pageNum &&
+      previous.sentenceIndex === sentenceIndex &&
+      previous.wordIndex === wordIndex
+    ) {
+      return
+    }
+
+    if (previous) {
+      for (const prefix of ['tts-sentence', 'pip-tts-sentence'] as const) {
+        const sentence = findSentenceEl(
+          prefix,
+          previous.pageNum,
+          previous.sentenceIndex,
+        )
+        const word = sentence?.querySelector<HTMLElement>(
+          `[data-tts-word="${previous.wordIndex}"]`,
+        )
+        if (word) {
+          word.style.backgroundColor = ''
+          word.style.color = ''
+          word.style.boxShadow = ''
+        }
+      }
+    }
+
+    ttsActiveWordRef.current = { pageNum, sentenceIndex, wordIndex }
+    for (const prefix of ['tts-sentence', 'pip-tts-sentence'] as const) {
+      const sentence = findSentenceEl(prefix, pageNum, sentenceIndex)
+      const word = sentence?.querySelector<HTMLElement>(
+        `[data-tts-word="${wordIndex}"]`,
+      )
+      if (word) {
+        word.style.backgroundColor = '#e34b78'
+        word.style.color = '#ffffff'
+        word.style.boxShadow = '0 1px 3px rgb(0 0 0 / 20%)'
+      }
+    }
+  }
+
   function scrollPipSentenceIntoView(
     pageNum: number,
     idx: number,
@@ -1217,6 +1281,23 @@ export function PdfReader({
     lastScrolledSentence.current = idx
   }
 
+  useLayoutEffect(() => {
+    if (ttsActiveSentence < 0) return
+    const pageNum = ttsPageLoadedRef.current ?? pageRef.current
+    scrollToActiveSentence(pageNum, ttsActiveSentence, true)
+    const activeWord = ttsActiveWordRef.current
+    if (activeWord) {
+      applyActiveWordHighlight(
+        activeWord.pageNum,
+        activeWord.sentenceIndex,
+        activeWord.wordIndex,
+        true,
+      )
+    }
+    // Helpers intentionally access the current DOM refs and run after render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ttsSentences, ttsActiveSentence, ttsPageLoaded])
+
   function sentenceIndexFromAudio() {
     const a = ttsAudioRef.current
     const sentences = ttsSentencesRef.current
@@ -1230,13 +1311,17 @@ export function PdfReader({
     let idx = -1
 
     if (points.length) {
+      let low = 0
+      let high = points.length - 1
       let local = -1
 
-      for (let i = 0; i < points.length; i++) {
-        if (points[i].time_seconds <= t) {
-          local = i
+      while (low <= high) {
+        const middle = (low + high) >>> 1
+        if (points[middle].time_seconds <= t) {
+          local = middle
+          low = middle + 1
         } else {
-          break
+          high = middle - 1
         }
       }
 
@@ -1248,9 +1333,10 @@ export function PdfReader({
       Number.isFinite(duration) &&
       duration > 0
     ) {
-      const weights = sentences.map(
-        (s: string) => Math.max(s.length, 1),
-      )
+      const offset = ttsSentenceOffsetRef.current
+      const weights = sentences
+        .slice(offset)
+        .map((s: string) => Math.max(s.length, 1))
 
       const totalWeight =
         weights.reduce(
@@ -1268,7 +1354,7 @@ export function PdfReader({
         walked -= weights[i]
 
         if (walked <= 0) {
-          idx = i
+          idx = offset + i
           break
         }
       }
@@ -1285,6 +1371,62 @@ export function PdfReader({
     )
   }
 
+  function wordIndexFromAudio(sentenceIndex: number) {
+    const a = ttsAudioRef.current
+    const sentences = ttsSentencesRef.current
+    const sentence = sentences[sentenceIndex]
+    if (!a || !sentence) return -1
+
+    const words = Array.from(sentence.matchAll(/\S+/g))
+    if (words.length < 2) return 0
+
+    const points = ttsTimepointsRef.current
+    const offset = ttsSentenceOffsetRef.current
+    const localSentenceIndex = sentenceIndex - offset
+    let progress = 0
+
+    if (
+      localSentenceIndex >= 0 &&
+      localSentenceIndex < points.length
+    ) {
+      const start = points[localSentenceIndex].time_seconds
+      const end =
+        points[localSentenceIndex + 1]?.time_seconds ??
+        a.duration
+      if (Number.isFinite(end) && end > start) {
+        progress = (a.currentTime - start) / (end - start)
+      } else {
+        progress = 0
+      }
+    } else if (Number.isFinite(a.duration) && a.duration > 0) {
+      const chunkSentences = sentences.slice(offset)
+      const chunkWeight = chunkSentences.reduce(
+        (sum, item) => sum + Math.max(item.length, 1),
+        0,
+      )
+      const beforeSentenceWeight = chunkSentences
+        .slice(0, Math.max(0, localSentenceIndex))
+        .reduce((sum, item) => sum + Math.max(item.length, 1), 0)
+      const sentenceWeight = Math.max(sentence.length, 1)
+      const elapsedWeight =
+        (Math.max(a.currentTime, 0) / a.duration) * chunkWeight
+      progress = (elapsedWeight - beforeSentenceWeight) / sentenceWeight
+    }
+
+    const totalWordLength = words.reduce(
+      (sum, word) => sum + word[0].length,
+      0,
+    )
+    let wordProgress = Math.min(1, Math.max(0, progress)) * totalWordLength
+
+    for (let i = 0; i < words.length; i += 1) {
+      wordProgress -= words[i][0].length
+      if (wordProgress < 0) return i
+    }
+
+    return words.length - 1
+  }
+
   function syncHighlight(forceScroll = false) {
     const idx = sentenceIndexFromAudio()
 
@@ -1293,6 +1435,11 @@ export function PdfReader({
     const pageNum =
       ttsPageLoadedRef.current ??
       pageRef.current
+
+    const wordIndex = wordIndexFromAudio(idx)
+    if (wordIndex >= 0) {
+      applyActiveWordHighlight(pageNum, idx, wordIndex)
+    }
 
     if (
       idx !==
@@ -1422,11 +1569,11 @@ export function PdfReader({
     setTtsSentences([])
     ttsSentencesRef.current = []
 
-    setTtsTimepoints([])
     ttsTimepointsRef.current = []
 
     setTtsActiveSentence(-1)
     ttsActiveSentenceRef.current = -1
+    ttsActiveWordRef.current = null
 
     setTtsPageLoaded(null)
     ttsPageLoadedRef.current = null
@@ -1449,8 +1596,6 @@ export function PdfReader({
 
     ttsPlayingRef.current = false
     setTtsPlaying(false)
-    setUsageNotice('')
-
     stopFollowLoop()
   }
 
@@ -1538,12 +1683,7 @@ export function PdfReader({
       setTtsSentences(next)
     }
 
-    ttsTimepointsRef.current =
-      result.timepoints || []
-
-    setTtsTimepoints(
-      result.timepoints || [],
-    )
+    ttsTimepointsRef.current = result.timepoints || []
 
     setTtsPageLoaded(p)
     ttsPageLoadedRef.current = p
@@ -1558,6 +1698,10 @@ export function PdfReader({
       startIdx
 
     setTtsActiveSentence(startIdx)
+    const initialWord = startIdx >= 0
+      ? { pageNum: p, sentenceIndex: startIdx, wordIndex: 0 }
+      : null
+    ttsActiveWordRef.current = initialWord
 
     lastScrolledSentence.current = -1
 
@@ -2087,8 +2231,6 @@ export function PdfReader({
     } else {
       setTtsPlaying(false)
       ttsPlayingRef.current = false
-      setUsageNotice('')
-
       stopFollowLoop()
 
       setTtsActiveSentence(-1)
@@ -2113,8 +2255,6 @@ export function PdfReader({
 
       setTtsPlaying(false)
       ttsPlayingRef.current = false
-      setUsageNotice('')
-
       stopFollowLoop()
 
       return
@@ -2379,44 +2519,61 @@ export function PdfReader({
         }}
       >
         {ttsSentences.map(
-          (s: string, i: number) => (
-            <span
-              key={i}
-              id={`${idPrefix}-${pageNum}-${i}`}
-              role="button"
-              tabIndex={0}
-              title="Start robot reader from here"
-              onClick={() =>
-                void startFromSentence(
-                  pageNum,
-                  i,
-                )
-              }
-              onKeyDown={(
-                e: KeyboardEvent<HTMLSpanElement>,
-              ) => {
-                if (
-                  e.key === 'Enter' ||
-                  e.key === ' '
-                ) {
-                  e.preventDefault()
+          (s: string, i: number) => {
+            let wordIndex = 0
+            const isActiveSentence = i === ttsActiveSentence
 
+            return (
+              <span
+                key={i}
+                id={`${idPrefix}-${pageNum}-${i}`}
+                role="button"
+                tabIndex={0}
+                title="Start robot reader from here"
+                onClick={() =>
                   void startFromSentence(
                     pageNum,
                     i,
                   )
                 }
-              }}
-              className={
-                i ===
-                ttsActiveSentence
-                  ? 'cursor-pointer rounded bg-[#f591ac]/50 px-0.5 transition-colors'
-                  : 'cursor-pointer rounded px-0.5 transition-colors hover:bg-[#f591ac]/20'
-              }
-            >
-              {s}{' '}
-            </span>
-          ),
+                onKeyDown={(
+                  e: KeyboardEvent<HTMLSpanElement>,
+                ) => {
+                  if (
+                    e.key === 'Enter' ||
+                    e.key === ' '
+                  ) {
+                    e.preventDefault()
+
+                    void startFromSentence(
+                      pageNum,
+                      i,
+                    )
+                  }
+                }}
+                className={
+                  isActiveSentence
+                    ? 'cursor-pointer rounded bg-[#f591ac]/50 px-0.5 transition-colors'
+                    : 'cursor-pointer rounded px-0.5 transition-colors hover:bg-[#f591ac]/20'
+                }
+              >
+                {s.split(/(\s+)/).map((part, partIndex) => {
+                  if (!/\S/.test(part)) return part
+                  const currentWord = wordIndex
+                  wordIndex += 1
+                  return (
+                    <span
+                      key={partIndex}
+                      data-tts-word={currentWord}
+                      className="rounded-sm transition-colors"
+                    >
+                      {part}
+                    </span>
+                  )
+                })}{' '}
+              </span>
+            )
+          },
         )}
       </p>
     )
@@ -2508,13 +2665,7 @@ export function PdfReader({
           ) : null}
         </div>
 
-        {readerMessage ? (
-          <div className="shrink-0 border-b border-red-200 bg-red-50 px-3 py-2">
-            <p className="text-[11px] font-semibold leading-snug text-red-700">
-              {readerMessage}
-            </p>
-          </div>
-        ) : null}
+        {renderReaderNotices()}
 
         <div
           ref={(
@@ -2851,12 +3002,13 @@ export function PdfReader({
         onPlay={() => {
           setTtsPlaying(true)
           ttsPlayingRef.current = true
+          setUsageNotice('')
+          syncHighlight(true)
           startFollowLoop()
         }}
         onPause={() => {
           setTtsPlaying(false)
           ttsPlayingRef.current = false
-          setUsageNotice('')
           stopFollowLoop()
         }}
         onEnded={() =>
@@ -2941,11 +3093,7 @@ export function PdfReader({
         </div>
       )}
 
-      {readerMessage ? (
-        <p className="px-4 pt-2 text-center text-[12px] font-semibold text-red-600">
-          {readerMessage}
-        </p>
-      ) : null}
+      {renderReaderNotices()}
 
       {canUseTts ? (
         <p className="px-4 pt-2 text-center text-[12px] text-black/55">

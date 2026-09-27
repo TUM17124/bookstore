@@ -247,39 +247,42 @@ export default function EditorDocumentsPage() {
         ) : (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
             {documents.map((doc) => (
-              <button
+              <div
                 key={doc.stored_document_id}
-                type="button"
-                onClick={() => router.push(`/tools/pdf-editor?id=${doc.stored_document_id}`)}
-                className="group relative flex flex-col items-stretch overflow-hidden rounded-lg border border-input bg-background text-left transition-colors hover:border-primary/50 hover:bg-muted/40"
+                className="group flex flex-col overflow-hidden rounded-lg border border-input bg-background transition-colors hover:border-primary/50 hover:bg-muted/40"
               >
-                <div className="flex aspect-[3/4] items-center justify-center bg-muted/30">
-                  {doc.thumbnail_url ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={doc.thumbnail_url}
-                      alt=""
-                      className="h-full w-full object-contain"
-                    />
-                  ) : (
-                    <FileText className="h-10 w-10 text-muted-foreground" />
-                  )}
-                </div>
-                <div className="flex items-start justify-between gap-2 p-3">
-                  <div className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => router.push(`/tools/pdf-editor?id=${doc.stored_document_id}`)}
+                  className="flex w-full flex-col items-stretch text-left"
+                >
+                  <div className="flex aspect-[3/4] items-center justify-center bg-muted/30">
+                    {doc.thumbnail_url ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={doc.thumbnail_url}
+                        alt=""
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <FileText className="h-10 w-10 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="p-3">
                     <p className="truncate text-sm font-medium">{doc.name || "Untitled"}</p>
                     <p className="text-xs text-muted-foreground">
                       {doc.page_count} page{doc.page_count === 1 ? "" : "s"} ·{" "}
                       {new Date(doc.modified_at).toLocaleDateString()}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-start gap-1">
+                </button>
+                <div className="flex justify-end gap-2 border-t px-3 py-2">
                     <button
                       type="button"
                       aria-label={doc.published_book_id ? "Edit published book" : "Publish"}
                       title={doc.published_book_id ? "Edit published book" : "Publish"}
                       onClick={(e) => handlePublishClick(doc, e)}
-                      className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-primary/10 hover:text-primary group-hover:opacity-100"
+                      className="flex min-h-10 min-w-10 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
                     >
                       {doc.published_book_id ? (
                         <BookOpen className="h-4 w-4" />
@@ -292,7 +295,7 @@ export default function EditorDocumentsPage() {
                       aria-label="Delete document"
                       onClick={(e) => void handleDelete(doc, e)}
                       disabled={deletingId === doc.stored_document_id}
-                      className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                      className="flex min-h-10 min-w-10 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {deletingId === doc.stored_document_id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -300,9 +303,8 @@ export default function EditorDocumentsPage() {
                         <Trash2 className="h-4 w-4" />
                       )}
                     </button>
-                  </div>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}

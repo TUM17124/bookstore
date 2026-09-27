@@ -9,20 +9,18 @@
  * or unmount). Inside it sits a {@link PageChrome} sheet.
  *
  * Mounting strategy (the heart of the windowing):
- *   - active page → mount a real {@link EditorCanvas} in `embedded` mode: FULL
- *     editing (create text/shape at mouse via `tool`, move/resize/retype,
- *     delete key, undo/redo, toolbar handle). Reuses the exact single-page
- *     editor component — no duplication.
- *   - other visible pages → mount a {@link PageCanvasHost}: the cheap, read-only
- *     full page bitmap (with text).
+ *   - visible pages → keep a {@link PageCanvasHost} bitmap mounted;
+ *   - active page → layer the full embedded {@link EditorCanvas} over its
+ *     bitmap, revealing it only after its editable background and elements load.
  *   - off-window → render a lightweight placeholder (the server thumbnail if we
  *     have one, otherwise a sized skeleton). Zero canvas, zero Fabric — pure DOM.
  *
- * Because the box is pre-sized to the exact rendered page dimensions, swapping
- * between placeholder, bitmap canvas and editor causes no layout shift.
+ * Because the box is pre-sized and the active bitmap stays in place during
+ * hydration, page focus changes cause neither layout shifts nor white flashes.
  */
 
-import React from "react";
+import React, { useCallback, useState } from "react";
+import { Loader2 } from "lucide-react";
 import type {
   PageObject,
   Element,
@@ -33,6 +31,7 @@ import type {
   AnnotationType,
   FieldCreationKind,
   FormFieldElement,
+  TextElement,
 } from "@giga-pdf/types";
 import { PageChrome } from "./page-chrome";
 import { PageCanvasHost } from "./page-canvas-host";
@@ -123,12 +122,25 @@ export interface PageSlotProps {
   fillColor?: string;
   /** Forwarded to the active page's EditorCanvas: stroke width for new shapes/annotations. */
   strokeWidth?: number;
+  /** Pending table placement request forwarded to the ACTIVE EditorCanvas. */
+  tablePlacement?: { rows: number; cols: number } | null;
+  /** Completion callback for click-drag table placement. */
+  onTablePlaced?: (
+    rows: number,
+    cols: number,
+    area: Bounds,
+    pageIndex: number,
+  ) => void;
   /** Forwarded to the active page's EditorCanvas: hyperlink click. */
   onHyperlinkClick?: (linkUrl?: string | null, linkPage?: number | null) => void;
   /** Forwarded to the active page's EditorCanvas: live redaction-marker count. */
   onRedactionMarksChanged?: (count: number) => void;
-  /** Forwarded to the active page's EditorCanvas: element created at mouse. */
-  onElementAdded?: (element: Element) => void;
+  /** Element created on this active page, with its 0-based page index. */
+  onElementAdded?: (element: Element, pageIndex?: number) => void;
+  onTextOverflow?: (
+    continuations: TextElement[],
+    pageIndex: number,
+  ) => Promise<boolean> | void;
   /** Forwarded to the active page's EditorCanvas: freehand pencil stroke (PDF pts). */
   onInkDrawn?: (points: number[]) => void;
   /** Forwarded to the active page's EditorCanvas: element moved/resized/retyped. */
@@ -150,6 +162,8 @@ export interface PageSlotProps {
    * duplicate/format/addImage) drive the ACTIVE page automatically.
    */
   onCanvasReady?: (handle: EditorCanvasHandle) => void;
+  /** Forwarded to EditorCanvas for a visible page-hydration indicator. */
+  onPageLoadingChange?: (loading: boolean) => void;
   /** Forwarded to the (inactive) canvas host once the page finishes rendering. */
   onReady?: (index: number) => void;
   /** Forwarded to the (inactive) canvas host when it releases its pool slot. */
@@ -196,9 +210,12 @@ function PageSlotImpl({
   strokeColor,
   fillColor,
   strokeWidth,
+  tablePlacement,
+  onTablePlaced,
   onHyperlinkClick,
   onRedactionMarksChanged,
   onElementAdded,
+  onTextOverflow,
   onInkDrawn,
   onElementModified,
   onElementReordered,
@@ -206,6 +223,7 @@ function PageSlotImpl({
   onSelectionChanged,
   onTextSelectionStyleChanged,
   onCanvasReady,
+  onPageLoadingChange,
   onReady,
   onDispose,
   renderActiveOverlay,
@@ -219,6 +237,14 @@ function PageSlotImpl({
   // margins to/from screen space using the page rotation, so it works at any
   // /Rotate.
   const showPageRulers = isActive && showRulers;
+  const [editorLoading, setEditorLoading] = useState(isActive);
+  const handleEditorLoadingChange = useCallback(
+    (loading: boolean) => {
+      setEditorLoading(loading);
+      onPageLoadingChange?.(loading);
+    },
+    [onPageLoadingChange],
+  );
   // Rulers anchor to the active page; convert its rotated box to displayed points.
   const pts = effectivePagePoints(page);
 
@@ -235,61 +261,82 @@ function PageSlotImpl({
         pageNumber={page.pageNumber}
         active={isActive}
       >
+        {isVisible ? (
+          // Keep the read-only bitmap mounted beneath the active editor. It is
+          // the stable visual while Fabric fetches/rasterizes the editable page.
+          <div
+            className="absolute inset-0 z-0"
+            style={{ pointerEvents: isActive ? "none" : undefined }}
+          >
+            <PageCanvasHost
+              page={page}
+              index={index}
+              scale={zoom}
+              pool={pool}
+              bgRevision={bgRevision}
+              {...(onReady ? { onReady } : {})}
+              {...(onDispose ? { onDispose } : {})}
+            />
+          </div>
+        ) : null}
         {isActive ? (
-          // ACTIVE page → the real single-page editor, embedded (no own scroll
-          // viewport/zoom: the continuous scroller owns those). Full tooling +
-          // the imperative handle routed to the toolbar via onCanvasReady.
-          <EditorCanvas
-            embedded
-            page={page}
-            documentId={documentId}
-            zoom={zoom}
-            width={slot.width}
-            height={slot.height}
-            tool={tool ?? "select"}
-            headerFooterActive={headerFooterActive}
-            fillSignActive={fillSignActive}
-            {...(onSignatureFieldClick ? { onSignatureFieldClick } : {})}
-            {...(getFontFaceName ? { getFontFaceName } : {})}
-            {...(fontsLoading !== undefined ? { fontsLoading } : {})}
-            {...(shapeType !== undefined ? { shapeType } : {})}
-            {...(annotationType !== undefined ? { annotationType } : {})}
-            {...(fieldKind !== undefined ? { fieldKind } : {})}
-            {...(strokeColor !== undefined ? { strokeColor } : {})}
-            {...(fillColor !== undefined ? { fillColor } : {})}
-            {...(strokeWidth !== undefined ? { strokeWidth } : {})}
-            {...(onHyperlinkClick ? { onHyperlinkClick } : {})}
-            {...(onRedactionMarksChanged ? { onRedactionMarksChanged } : {})}
-            {...(onElementAdded ? { onElementAdded } : {})}
-            {...(onInkDrawn ? { onInkDrawn } : {})}
-            {...(onElementModified ? { onElementModified } : {})}
-            {...(onElementReordered ? { onElementReordered } : {})}
-            {...(onElementRemoved ? { onElementRemoved } : {})}
-            {...(onSelectionChanged ? { onSelectionChanged } : {})}
-            {...(onTextSelectionStyleChanged
-              ? { onTextSelectionStyleChanged }
-              : {})}
-            {...(onCanvasReady ? { onCanvasReady } : {})}
-          />
-        ) : isVisible ? (
-          // Inactive but in-window → cheap read-only full bitmap (with text).
-          <PageCanvasHost
-            page={page}
-            index={index}
-            scale={zoom}
-            pool={pool}
-            bgRevision={bgRevision}
-            {...(onReady ? { onReady } : {})}
-            {...(onDispose ? { onDispose } : {})}
-          />
-        ) : (
+          <div className="absolute inset-0 z-10">
+            <EditorCanvas
+              embedded
+              page={page}
+              documentId={documentId}
+              zoom={zoom}
+              width={slot.width}
+              height={slot.height}
+              tool={tool ?? "select"}
+              pageIndex={index}
+              headerFooterActive={headerFooterActive}
+              fillSignActive={fillSignActive}
+              {...(onSignatureFieldClick ? { onSignatureFieldClick } : {})}
+              {...(getFontFaceName ? { getFontFaceName } : {})}
+              {...(fontsLoading !== undefined ? { fontsLoading } : {})}
+              {...(shapeType !== undefined ? { shapeType } : {})}
+              {...(annotationType !== undefined ? { annotationType } : {})}
+              {...(fieldKind !== undefined ? { fieldKind } : {})}
+              {...(strokeColor !== undefined ? { strokeColor } : {})}
+              {...(fillColor !== undefined ? { fillColor } : {})}
+              {...(strokeWidth !== undefined ? { strokeWidth } : {})}
+              {...(tablePlacement !== undefined ? { tablePlacement } : {})}
+              {...(onTablePlaced ? { onTablePlaced } : {})}
+              {...(onHyperlinkClick ? { onHyperlinkClick } : {})}
+              {...(onRedactionMarksChanged ? { onRedactionMarksChanged } : {})}
+              {...(onElementAdded ? { onElementAdded } : {})}
+              {...(onTextOverflow ? { onTextOverflow } : {})}
+              {...(onInkDrawn ? { onInkDrawn } : {})}
+              {...(onElementModified ? { onElementModified } : {})}
+              {...(onElementReordered ? { onElementReordered } : {})}
+              {...(onElementRemoved ? { onElementRemoved } : {})}
+              {...(onSelectionChanged ? { onSelectionChanged } : {})}
+              {...(onTextSelectionStyleChanged
+                ? { onTextSelectionStyleChanged }
+                : {})}
+              {...(onCanvasReady ? { onCanvasReady } : {})}
+              onPageLoadingChange={handleEditorLoadingChange}
+            />
+          </div>
+        ) : !isVisible ? (
           <PageSlotPlaceholder
             thumbnailUrl={page.preview?.thumbnailUrl ?? null}
             width={slot.width}
             height={slot.height}
             pageNumber={page.pageNumber}
           />
-        )}
+        ) : null}
+        {isActive && editorLoading ? (
+          <div
+            className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center gap-2 bg-white/35 text-sm text-muted-foreground"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading page…
+          </div>
+        ) : null}
         {showPageRulers && margins != null && onMarginsCommit ? (
           <PageMarginOverlay
             width={slot.width}

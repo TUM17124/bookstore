@@ -49,6 +49,11 @@ export default function PdfEditorLayout({ children }: { children?: ReactNode }) 
             Log in
           </Link>
         </p>
+          <p className="mt-6 text-sm">
+            <Link href="/signup?next=/tools/pdf-editor" className="underline">
+            Sing Up
+            </Link>
+          </p>
       </main>
     )
   }
