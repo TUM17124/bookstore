@@ -292,7 +292,18 @@ export function PdfReader({
   const [marked, setMarked] = useState(0)
   const [resumeAt, setResumeAt] = useState(0)
   const [obscured, setObscured] = useState(false)
+  // Two INDEPENDENT modes. They used to share one `notesOpen` flag, which made
+  // them mutually exclusive: opening Notes disabled the robot reader's
+  // sentence highlighting, and closing it disabled text selection.
+  //   highlightMode - text selection is armed (robot reader unaffected)
+  //   notesOpen     - the saved-notes list is shown
+  // The robot reader is never gated on either.
+  const [highlightMode, setHighlightMode] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
+  // Whether the slim bar's note field is expanded. A fresh selection opens
+  // this automatically; after a save it collapses so the bar stays slim and
+  // the reading text is not pushed down.
+  const [editingNote, setEditingNote] = useState(false)
   const [thoughts, setThoughts] = useState<PdfThought[]>([])
   const visibleThoughts = loggedIn ? thoughts : []
     const [draft, setDraft] = useState<{
@@ -498,6 +509,93 @@ export function PdfReader({
     setProGate('tts')
     setCreditsOpen(true)
     return false
+  }
+
+  /**
+   * Body of the saved-highlights list. Shared by the phone overlay (below) and
+   * the desktop right-hand rail, so the two can never drift apart. `hint`
+   * differs per surface because the two use different input (touch-and-hold on
+   * a phone vs. click-drag on desktop).
+   */
+  function renderThoughtsList(hint: string) {
+    return (
+      <>
+        {!loggedIn ? (
+          <p className="mt-3 text-[13px] text-black/55">
+            <Link href={loginHref} className="font-semibold text-[#c45b78] underline">
+              Log in
+            </Link>
+            {' · '}
+            <Link href={signupHref} className="font-semibold text-[#c45b78] underline">
+              Sign up
+            </Link>
+          </p>
+        ) : null}
+        {loggedIn && !visibleThoughts.length ? (
+          <p className="mt-2 text-[13px] text-black/45">
+            No highlights yet. {hint}
+          </p>
+        ) : null}
+        {loggedIn ? (
+          <ul
+            aria-label="Saved PDF highlights"
+            className="mt-2 space-y-3 pr-1"
+          >
+            {visibleThoughts.map((row) => (
+              <li
+                key={row.id}
+                className="flex items-start gap-2 rounded-lg bg-white/60 p-2 text-sm"
+              >
+                <button
+                  type="button"
+                  onClick={() => void gotoPage(row.page)}
+                  className="shrink-0 font-bold text-[#c45b78]"
+                >
+                  p.{row.page}
+                </button>
+                {/*
+                  NOTE: no `truncate` here (deliberately). It clipped every
+                  note to a single ellipsised line, so a user could never read
+                  back what they had actually written - the quote AND the
+                  thought were both reduced. `break-words` keeps long words
+                  from overflowing the narrow phone overlay without hiding any
+                  of the text, and the list is inside an overflow-y-auto
+                  container so long notes just scroll like the phone view.
+                */}
+                <span className="min-w-0 flex-1">
+                  <span className="block break-words font-semibold text-black">
+                    {row.quote}
+                  </span>
+                  {row.thought ? (
+                    <span className="mt-1 block whitespace-pre-wrap break-words text-black/60">
+                      {row.thought}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="flex shrink-0 flex-col items-end gap-1">
+                  <button
+                    type="button"
+                    onClick={() => startEditThought(row)}
+                    className="font-semibold text-[#c45b78]"
+                    aria-label="Edit note"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeThought(row)}
+                    className="text-black/40"
+                    aria-label="Delete note"
+                  >
+                    ×
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </>
+    )
   }
 
   function renderReaderNotices() {
@@ -869,21 +967,88 @@ export function PdfReader({
   }
 
   function captureHighlight() {
-    if (!loggedIn || !notesOpen) return
-    window.setTimeout(() => {
-    const selection = window.getSelection()
-    if (!selection || selection.isCollapsed) return
-    const quote = normalizeNoteText(selection.toString()).slice(0, 500)
-    if (quote.length < 2) return
-    const anchor = selection.anchorNode
-    const element =
-      anchor instanceof Element ? anchor : anchor?.parentElement
-    const section = element?.closest('section[id^="read-page-"]')
-    const pageNum =
-      Number(section?.id.replace('read-page-', '')) || pageRef.current
-        setDraft({ page: pageNum, quote, thought: '' })
+    if (!loggedIn || !highlightMode) return
+
+    // Phones select by long-press then dragging the two blue handles. That
+    // gesture can span MANY sentences, so:
+    //  1. Prefer the Selection API's own range when the browser exposes one -
+    //     it is the authoritative selection for touch handles.
+    //  2. Poll, because the DOM selection is not finalised the instant
+    //     touchend fires; a slide across several sentences is still settling.
+    let waited = 0
+
+    const pick = (): Selection | null => {
+      const dom = window.getSelection()
+      if (dom && !dom.isCollapsed && dom.rangeCount > 0) return dom
+
+      // iOS Safari exposes the touch handles here (Android Chrome does not).
+      const touchSel = (window as unknown as {
+        getSelection?: () => Selection | null
+      }).getSelection?.()
+      if (touchSel && !touchSel.isCollapsed && touchSel.rangeCount > 0) {
+        return touchSel
+      }
+      return null
+    }
+
+    const read = () => {
+      const selection = pick()
+
+      if (!selection) {
+        if (waited < 25) {
+          waited += 1
+          window.setTimeout(read, 40)
+        }
+        return
+      }
+
+      // selection.toString() on a multi-sentence drag returns the visible
+      // text with the newlines/indentation the markup introduces.
+      // normalizeNoteText collapses that back to the page's own
+      // whitespace-collapsed string, which is what quoteRanges() searches -
+      // so a highlight spanning several sentences still paints correctly.
+      const quote = normalizeNoteText(selection.toString())
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 500)
+
+      if (quote.length < 2) return
+
+      const anchor = selection.anchorNode
+      const element =
+        anchor instanceof Element ? anchor : anchor?.parentElement
+      const section = element?.closest('section[id^="read-page-"]')
+      const pageNum =
+        Number(section?.id.replace('read-page-', '')) || pageRef.current
+
+      // Keep an existing thought when the user re-selects over the same
+      // highlight instead of silently discarding what they already typed.
+      setDraft((prev) => {
+        if (
+          prev &&
+          prev.page === pageNum &&
+          prev.quote === quote
+        ) {
+          return prev
+        }
+        return { page: pageNum, quote, thought: '' }
+      })
+      setEditingNote(true)
+      setNoteMsg('')
+    }
+
+    window.setTimeout(read, 0)
+  }
+
+  function toggleHighlightMode() {
+    const next = !highlightMode
+    setHighlightMode(next)
+    if (!next) {
+      setDraft(null)
+      setEditingNote(false)
+      window.getSelection()?.removeAllRanges()
+    }
     setNoteMsg('')
-    }, 0)
   }
 
     async function saveThought() {
@@ -916,6 +1081,7 @@ export function PdfReader({
     setThoughts(next)
     writeStoredThoughts(bookId, url, next)
     setDraft(null)
+    setEditingNote(false)
     window.getSelection()?.removeAllRanges()
     if (!bookId) {
       setNoteMsg('Could not save this note because the book is unavailable.')
@@ -949,7 +1115,11 @@ export function PdfReader({
 
   function startEditThought(row: PdfThought) {
     if (!loggedIn) return
-    setNotesOpen(true)
+    setNotesOpen(false)
+    // Arm highlight mode too, otherwise the inline draft bar (where the
+    // thought is typed) would be hidden and the edit unreachable.
+    setHighlightMode(true)
+    setEditingNote(true)
     setDraft({
       id: row.id,
       page: row.page,
@@ -961,6 +1131,7 @@ export function PdfReader({
 
   function cancelEditThought() {
     setDraft(null)
+    setEditingNote(false)
     window.getSelection()?.removeAllRanges()
   }
 
@@ -2714,7 +2885,7 @@ export function PdfReader({
           ({ sentence, start }, i: number) => (
             <span
               key={i}
-              {...(!notesOpen
+              {...(!highlightMode
                 ? {
                     role: 'button',
                     tabIndex: 0,
@@ -2722,7 +2893,7 @@ export function PdfReader({
                   }
                 : {})}
               onClick={() => {
-                if (notesOpen) return
+                if (highlightMode) return
                 const selection = window.getSelection()
                 if (
                   selection &&
@@ -2739,7 +2910,7 @@ export function PdfReader({
               onKeyDown={(
                 e: KeyboardEvent<HTMLSpanElement>,
               ) => {
-                if (notesOpen) return
+                if (highlightMode) return
                 if (
                   e.key === 'Enter' ||
                   e.key === ' '
@@ -2753,7 +2924,7 @@ export function PdfReader({
                 }
               }}
               className={
-                notesOpen
+                highlightMode
                   ? 'rounded px-0.5'
                   : 'cursor-pointer rounded px-0.5 hover:bg-[#f591ac]/25'
               }
@@ -2785,13 +2956,13 @@ export function PdfReader({
         {ttsSentences.map(
           (s: string, i: number) => {
             let wordIndex = 0
-            const isActiveSentence = !notesOpen && i === ttsActiveSentence
+            const isActiveSentence = !highlightMode && i === ttsActiveSentence
 
             return (
               <span
                 key={i}
                 id={`${idPrefix}-${pageNum}-${i}`}
-                {...(!notesOpen
+                {...(!highlightMode
                   ? {
                       role: 'button',
                       tabIndex: 0,
@@ -2799,13 +2970,13 @@ export function PdfReader({
                     }
                   : {})}
                 onClick={() =>
-                  !notesOpen &&
+                  !highlightMode &&
                   void startFromSentence(pageNum, i)
                 }
                 onKeyDown={(
                   e: KeyboardEvent<HTMLSpanElement>,
                 ) => {
-                  if (notesOpen) return
+                  if (highlightMode) return
                   if (
                     e.key === 'Enter' ||
                     e.key === ' '
@@ -2819,7 +2990,7 @@ export function PdfReader({
                   }
                 }}
                 className={
-                  notesOpen
+                  highlightMode
                     ? 'rounded px-0.5 transition-colors'
                     : isActiveSentence
                       ? 'cursor-pointer rounded bg-[#f591ac]/50 px-0.5 transition-colors'
@@ -3136,16 +3307,16 @@ export function PdfReader({
     ttsUsage?.credit_chars ?? 0
 
   return (
-    <div
-      className="relative flex min-h-0 flex-1 flex-col bg-[#f4efe4]"
-      onContextMenu={(
-        e: MouseEvent,
-      ) => e.preventDefault()}
-      onCopy={(
-        e: ClipboardEvent,
-      ) => e.preventDefault()}
-    >
-      <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-black/10 bg-[#efe8d8] px-2 py-2">
+    <div className="relative flex min-h-0 flex-1 flex-col bg-[#f4efe4]">
+      <div
+        className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-black/10 bg-[#efe8d8] px-2 py-2"
+        onContextMenu={(
+          e: MouseEvent,
+        ) => e.preventDefault()}
+        onCopy={(
+          e: ClipboardEvent,
+        ) => e.preventDefault()}
+      >
         <button
           type="button"
           onClick={() => {
@@ -3196,6 +3367,19 @@ export function PdfReader({
 
         <button
           type="button"
+          onClick={toggleHighlightMode}
+          aria-pressed={highlightMode}
+          className={`rounded-full px-3 py-1 text-sm font-bold ${
+            highlightMode
+              ? 'bg-[#f6e27a] text-[#141a32]'
+              : 'bg-black/10 text-black'
+          }`}
+        >
+          ✏️ Highlight
+        </button>
+
+        <button
+          type="button"
           onClick={() => {
             const opening = !notesOpen
             if (opening) {
@@ -3208,13 +3392,17 @@ export function PdfReader({
             setNotesOpen(opening)
             setNoteMsg('')
           }}
+          aria-pressed={notesOpen}
+          // Visible on every device now that the panel is a full-page overlay
+          // everywhere. It used to be md:hidden because PC had a permanent side
+          // rail; with that rail gone the button is the only way in.
           className={`rounded-full px-3 py-1 text-sm font-bold ${
             notesOpen
               ? 'bg-[#f591ac] text-[#141a32]'
               : 'bg-black/10 text-black'
           }`}
         >
-          Notes{visibleThoughts.length ? ` (${visibleThoughts.length})` : ''}
+          📋 Notes{visibleThoughts.length ? ` (${visibleThoughts.length})` : ''}
         </button>
 
         {marked > 0 && (
@@ -3381,126 +3569,136 @@ export function PdfReader({
         </div>
       )}
 
-      {notesOpen ? (
-        <div className="flex max-h-[40vh] shrink-0 flex-col overflow-hidden border-b border-black/10 bg-[#efe8d8] px-4 py-3">
-          <p className="text-[12px] font-bold uppercase tracking-wider text-black/45">
-            Highlight and thoughts
-          </p>
-          <p className="mt-1 text-[13px] text-black/60">
-            {loggedIn
-              ? 'Select a passage on the page, then type what it made you think.'
-              : 'Log in or create an account to highlight passages and keep PDF notes.'}
-          </p>
-          {loggedIn && draft ? (
-            <div className="mt-3">
-              <p className="rounded-xl bg-[#f6e27a] px-3 py-2 text-sm font-semibold leading-relaxed text-black">
-                {draft.quote}
-              </p>
-              <p className="mt-1 text-[11px] font-bold uppercase tracking-wider text-black/40">
-                Page {draft.page}
-              </p>
-              <div className="mt-2 flex gap-2">
-                <input
-                  value={draft.thought}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                    setDraft({ ...draft, thought: e.target.value })
-                  }
-                  placeholder="Type a thought"
-                  maxLength={280}
-                  disabled={savingNote}
-                  className="min-w-0 flex-1 rounded-full border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none disabled:opacity-50"
-                />
-                                <button
-                  type="button"
-                  disabled={savingNote}
-                  onClick={() => void saveThought()}
-                  className="rounded-full bg-[#f591ac] px-3 py-2 text-sm font-bold text-[#141a32] disabled:opacity-60"
-                >
-                  {savingNote
-                    ? draft.id
-                      ? 'Updating…'
-                      : 'Saving…'
-                    : draft.id
-                      ? 'Update'
-                      : 'Save'}
-                </button>
-                {draft.id ? (
-                  <button
-                    type="button"
-                    disabled={savingNote}
-                    onClick={cancelEditThought}
-                    className="rounded-full bg-black/10 px-3 py-2 text-sm font-bold text-black disabled:opacity-60"
-                  >
-                    Cancel
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          ) : loggedIn ? (
-            <p className="mt-2 text-[13px] text-black/45">
-              No passage selected yet.
+      {/*
+        Highlight draft bar. Deliberately slim and docked BELOW the toolbar
+        (not an overlay): the reader text must stay visible and selectable on a
+        phone, which is the whole point of highlight mode. It only appears once
+        a passage has actually been selected.
+      */}
+      {highlightMode && loggedIn && draft ? (
+        <div className="shrink-0 border-b border-black/10 bg-[#f6e27a] px-3 py-2">
+          {/* Row 1 - what is selected, plus Save/Edit. */}
+          <div className="mx-auto flex max-w-2xl items-center gap-2">
+            <p className="min-w-0 flex-1 truncate text-[12px] font-semibold text-black">
+              <span className="opacity-60">p.{draft.page} · </span>
+              {draft.quote}
             </p>
-          ) : null}
-          {!loggedIn ? (
-            <p className="mt-3 text-[13px] text-black/55">
-              <Link href={loginHref} className="font-semibold text-[#c45b78] underline">
-                Log in
-              </Link>
-              {' · '}
-              <Link href={signupHref} className="font-semibold text-[#c45b78] underline">
-                Sign up
-              </Link>
-            </p>
-          ) : null}
-          {loggedIn && noteMsg ? (
-            <p className="mt-2 text-[12px] font-semibold text-[#c45b78]">
-              {noteMsg}
-            </p>
-          ) : null}
-          {loggedIn ? (
-            <ul
-              aria-label="Saved PDF notes"
-              className="mt-3 min-h-0 space-y-2 overflow-y-auto overscroll-contain pr-1"
+
+            {editingNote ? (
+              <button
+                type="button"
+                disabled={savingNote}
+                onClick={() => void saveThought()}
+                className="shrink-0 rounded-full bg-[#141a32] px-3 py-1.5 text-[13px] font-bold text-white disabled:opacity-50"
+              >
+                {savingNote
+                  ? draft.id
+                    ? 'Updating…'
+                    : 'Saving…'
+                  : draft.id
+                    ? 'Update'
+                    : 'Save'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditingNote(true)}
+                className="shrink-0 rounded-full bg-black/10 px-3 py-1.5 text-[13px] font-bold text-black"
+              >
+                Edit
+              </button>
+            )}
+
+            <button
+              type="button"
+              disabled={savingNote}
+              onClick={cancelEditThought}
+              aria-label={draft.id ? 'Cancel edit' : 'Discard highlight'}
+              className="shrink-0 rounded-full bg-black/10 px-2 py-1.5 text-[13px] font-bold text-black disabled:opacity-50"
             >
-                        {visibleThoughts.map((row) => (
-                <li key={row.id} className="flex items-start gap-2 text-sm">
-                  <button
-                    type="button"
-                    onClick={() => void gotoPage(row.page)}
-                    className="shrink-0 font-bold text-[#c45b78]"
-                  >
-                    p.{row.page}
-                  </button>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-semibold text-black">
-                      {row.quote}
-                    </span>
-                    {row.thought ? (
-                      <span className="block truncate text-black/60">
-                        {row.thought}
-                      </span>
-                    ) : null}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => startEditThought(row)}
-                    className="shrink-0 font-semibold text-[#c45b78]"
-                    aria-label="Edit note"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => removeThought(row)}
-                    className="text-black/40"
-                    aria-label="Delete note"
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+              ×
+            </button>
+          </div>
+
+          {/* Row 2 - the note itself. Tap the quote above to reopen the editor. */}
+          {editingNote ? (
+            <div className="mx-auto mt-1.5 flex max-w-2xl gap-2">
+              <input
+                value={draft.thought}
+                onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                  setDraft({ ...draft, thought: e.target.value })
+                }
+                placeholder="Type a thought"
+                maxLength={280}
+                disabled={savingNote}
+                autoFocus={editingNote}
+                className="min-w-0 flex-1 rounded-full border border-black/10 bg-white px-3 py-1.5 text-sm text-black outline-none disabled:opacity-50"
+              />
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditingNote(true)}
+              className="mx-auto mt-1.5 block max-w-2xl truncate text-left text-[12px] text-black/70"
+            >
+              {draft.thought
+                ? draft.thought
+                : 'Add a thought…'}
+            </button>
+          )}
+        </div>
+      ) : null}
+
+      {/* One-tap hint while highlight mode is armed and nothing is selected yet. */}
+      {highlightMode && loggedIn && !draft ? (
+        <div className="shrink-0 border-b border-black/10 bg-[#f6e27a]/60 px-3 py-1.5 text-center text-[12px] font-semibold text-black/70">
+          Tap and hold a passage to highlight it
+        </div>
+      ) : null}
+
+      {highlightMode && noteMsg ? (
+        <p className="shrink-0 px-3 py-1.5 text-center text-[12px] font-semibold text-[#c45b78]">
+          {noteMsg}
+        </p>
+      ) : null}
+
+      {notesOpen ? (
+        <div
+          className={
+            phonePip
+              ? // Phones: full-screen overlay. The 📋 Notes button opens it.
+                'fixed inset-0 z-[60] flex flex-col overflow-hidden bg-[#efe8d8]'
+              : // PC: the SAME full-page overlay, on purpose. The notes used to
+                // be a 40vh inline block on desktop, which halved the reading
+                // area, and a narrow side rail, which squeezed a long note into
+                // an ellipsis. Neither is what the user asked for: notes should
+                // read exactly like they do on a phone - a full page you can
+                // scroll through without losing a single word.
+                'fixed inset-0 z-[60] flex flex-col overflow-hidden bg-[#efe8d8]'
+          }
+          style={phonePip ? { paddingBottom: 'env(safe-area-inset-bottom)' } : undefined}
+        >
+          <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-3">
+            <p className="text-[12px] font-bold uppercase tracking-wider text-black/45">
+              Saved highlights
+              {visibleThoughts.length ? ` (${visibleThoughts.length})` : ''}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setNotesOpen(false)
+                window.getSelection()?.removeAllRanges()
+              }}
+              className="rounded-full bg-black/10 px-3 py-1 text-sm font-bold text-black"
+            >
+              Close
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
+            {renderThoughtsList(
+              'Tap Highlight, then tap and hold a passage.',
+            )}
+          </div>
         </div>
       ) : null}
 
@@ -3549,7 +3747,12 @@ export function PdfReader({
         ref={scrollRef}
         onScroll={onScroll}
         className={`min-h-0 flex-1 overflow-auto ${
-          notesOpen ? 'select-text' : 'select-none'
+          highlightMode
+            ? // iOS Safari ignores the `select-text` utility alone for
+              // programmatic text selection unless -webkit-user-select is
+              // also set, which is why highlighting never worked on phones.
+              'select-text [-webkit-user-select:text] [-webkit-touch-callout:text]'
+            : 'select-none'
         }`}
       >
         {status ? (

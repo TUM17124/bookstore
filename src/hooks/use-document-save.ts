@@ -18,12 +18,29 @@ import { useLogger } from "@giga-pdf/logger";
  * - Other non-OK status → throws with the HTTP status code
  */
 async function fetchPdfBlobForSave(documentId: string): Promise<Blob> {
-  const { getAuthToken } = await import("@/lib/pdf-editor/api");
-  const token = await getAuthToken();
-  const response = await fetch(api.getDocumentDownloadUrl(documentId), {
-    credentials: "include",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
+  const { invalidateAuthToken, ensureFreshAuthToken } = await import(
+    "@/lib/pdf-editor/api"
+  );
+  // Retry once on 401 with a refreshed token. The editor's own `api.request`
+  // helper does this for JSON calls, but this download is a bare fetch, and it
+  // is the read that runs on every save — so a stale access token (the 1h
+  // expiry) failed every save until the page was reloaded.
+  const send = (token: string | null) =>
+    fetch(api.getDocumentDownloadUrl(documentId), {
+      credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+  let token = await ensureFreshAuthToken();
+  let response = await send(token);
+  if (response.status === 401 && token) {
+    invalidateAuthToken();
+    const freshToken = await ensureFreshAuthToken();
+    if (freshToken && freshToken !== token) {
+      token = freshToken;
+      response = await send(token);
+    }
+  }
 
   if (!response.ok) {
     if (response.status === 401) {

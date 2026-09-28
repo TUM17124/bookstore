@@ -99,7 +99,7 @@ import {
   useCollaboration,
   useCollaborationStore,
 } from "@/lib/pdf-editor/collab-shim";
-import { getAuthToken } from "@/lib/pdf-editor/api";
+import { getAuthToken, ensureFreshAuthToken } from "@/lib/pdf-editor/api";
 import { api, type ElementCreateRequest } from "@/lib/pdf-editor/api";
 import {
   EditorCanvas,
@@ -399,7 +399,7 @@ function UploadToStartPrompt({
     setBusy(true);
     setError(null);
     try {
-      const token = await getAuthToken();
+      const token = await ensureFreshAuthToken();
       const blankResp = await fetch(`${PDF_SERVICE_URL}/pdf/blank`, {
         method: "POST",
         headers: {
@@ -1053,13 +1053,36 @@ function EditorPageInner() {
     async function loadPdfBinary() {
       try {
         const downloadUrl = api.getDocumentDownloadUrl(documentId!);
-        const { getAuthToken } = await import('@/lib/pdf-editor/api');
-        const token = await getAuthToken();
-        const response = await fetch(downloadUrl, {
-          credentials: 'include',
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        });
-        if (!response.ok || cancelled) return;
+        const { invalidateAuthToken, ensureFreshAuthToken } = await import(
+          '@/lib/pdf-editor/api'
+        );
+        // This is the read that actually opens the document. It is a bare
+        // fetch (not api.request), so it needs its own 401 -> refresh -> retry,
+        // otherwise a stale 1h access token left the editor stuck on the
+        // loading screen with no visible error.
+        const send = (token: string | null) =>
+          fetch(downloadUrl, {
+            credentials: 'include',
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          });
+        let token = await ensureFreshAuthToken();
+        let response = await send(token);
+        if (response.status === 401 && token) {
+          invalidateAuthToken();
+          const freshToken = await ensureFreshAuthToken();
+          if (freshToken && freshToken !== token) {
+            token = freshToken;
+            response = await send(token);
+          }
+        }
+        if (!response.ok) {
+          if (cancelled) return;
+          throw new Error(
+            response.status === 404
+              ? 'This document could not be found.'
+              : `Could not load the document (HTTP ${response.status}).`,
+          );
+        }
         const blob = await response.blob();
         if (cancelled) return;
         const file = new File([blob], `${name}.pdf`, { type: 'application/pdf' });
@@ -1235,10 +1258,40 @@ function EditorPageInner() {
     ];
 
     try {
-      const modified = await applyElements.mutateAsync({
-        file: pdfFile,
-        operations: allOps,
-      });
+      /*
+        Apply in page batches for a large document.
+
+        A single 60-page paste queues thousands of operations, and posting them
+        all in one multipart request produced a multi-hundred-megabyte body.
+        That is what made a large save fail or come back partially applied,
+        which is how the reopened document ended up with an empty page 1 and
+        text that had shifted onto neighbouring pages. Batching keeps each
+        request small and bounded, and - crucially - a failure in a later batch
+        throws before the queue is drained, so the pending edits are retried
+        on the next save rather than being silently lost.
+      */
+      const BATCH_PAGES = 25;
+      let working: Blob = pdfFile;
+      const byPage = new Map<number, typeof allOps>();
+      for (const op of allOps) {
+        const pn = typeof op.pageNumber === "number" ? op.pageNumber : -1;
+        const list = byPage.get(pn);
+        if (list) list.push(op);
+        else byPage.set(pn, [op]);
+      }
+      // Ascending page order so a partial failure is always a clean prefix.
+      const orderedPages = [...byPage.keys()].sort((a, b) => a - b);
+      for (let i = 0; i < orderedPages.length; i += BATCH_PAGES) {
+        const slice = orderedPages
+          .slice(i, i + BATCH_PAGES)
+          .flatMap((pn) => byPage.get(pn)!);
+        const res = await applyElements.mutateAsync({
+          file: working,
+          operations: slice,
+        });
+        working = res instanceof Blob ? res : new Blob([res as BlobPart]);
+      }
+      const modified = working;
       // apply-elements succeeded — now it's safe to drain the queue. Anything
       // queued AFTER our peek stays for the next save tick.
       const bakedOps = drainOperations(ops);
@@ -1400,6 +1453,20 @@ function EditorPageInner() {
       // PARTIE 4 — best-effort GED refresh (miniature + texte de recherche),
       // fire-and-forget : ne bloque ni le flush Redis ni le flux de save.
       void refreshGedMetadata();
+      /*
+        Drop the local content-modification cache NOW that S3 has the bytes.
+
+        This cache exists only to survive the 2s debounce window (a reload in
+        that window would otherwise drop the edits). Once the upload is
+        confirmed, re-applying it is pure harm: every entry is a text
+        modification keyed by a 0-based page index, and it is re-baked on the
+        NEXT save AND re-applied on reload. For a large paste that meant each
+        page kept a second copy of its own text, plus page 1's text reappearing
+        on the last page - exactly the "duplicated / stacked text" report. The
+        old comment here claimed onSaved cleared it; it never did, so the cache
+        grew for the whole editing session.
+      */
+      setContentModifications([]);
       // Flush Redis backend for elements that were baked into the PDF in the
       // last apply-elements pass. We only run this AFTER S3 confirms the
       // upload, otherwise a transient upload failure would lose the data
@@ -1457,15 +1524,59 @@ function EditorPageInner() {
     setIsEditingName(false);
   }, [name]);
 
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  // The header input commits on BOTH onBlur and the confirm button's onClick,
+  // so a click fires two handleConfirmRename() calls in the same tick. A ref
+  // guard (not state) is required because the second call happens before React
+  // re-renders with renaming=true.
+  const renameSubmittingRef = useRef(false);
+
   const handleConfirmRename = useCallback(() => {
     const trimmedName = editedName.trim();
-    if (trimmedName && trimmedName !== name) {
-      setName(trimmedName);
+    if (renameSubmittingRef.current) return;
+    if (!trimmedName || trimmedName === name) {
+      setIsEditingName(false);
+      return;
+    }
+
+    setName(trimmedName);
+    setIsEditingName(false);
+    setRenameError(null);
+
+    // The title is document METADATA, not PDF content: the S3 version-save
+    // path (saveWithPriority) only uploads the PDF bytes and never sends the
+    // name, so a rename was purely local and reverted on the next load.
+    // Persist it through the dedicated rename endpoint. A failed rename is
+    // rolled back so the header never shows a name the server did not accept.
+    if (!storedDocumentId) {
       setDirty(true);
       saveWithPriority("immediate");
+      return;
     }
-    setIsEditingName(false);
-  }, [editedName, name, setName, setDirty, saveWithPriority]);
+
+    renameSubmittingRef.current = true;
+    setRenaming(true);
+    void api
+      .renameDocument(storedDocumentId, trimmedName)
+      .then(() => {
+        setRenameError(null);
+        // Content save is still needed so any unsaved edits ride along.
+        setDirty(true);
+        saveWithPriority("immediate");
+      })
+      .catch((err: unknown) => {
+        setName(name);
+        setEditedName(name);
+        setRenameError(
+          err instanceof Error ? err.message : "Could not rename this document.",
+        );
+      })
+      .finally(() => {
+        renameSubmittingRef.current = false;
+        setRenaming(false);
+      });
+  }, [editedName, name, setName, setDirty, saveWithPriority, storedDocumentId]);
 
   const handleNameKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -4410,25 +4521,61 @@ function EditorPageInner() {
           elementId: lastContinuation.elementId,
         };
       }
+      const insertedFrom = sourcePageIndex + 1;
+      const insertedTo = sourcePageIndex + insertedPages + 1;
+      const insertedFromParse = parsedPages.slice(insertedFrom, insertedTo);
+      if (insertedFromParse.length !== insertedPages) {
+        // The re-parse does not line up with the pages we just inserted, so we
+        // cannot say which parsed pages are the new blank ones. Guessing here is
+        // what previously spliced real content from the WRONG pages into the
+        // document (text shifting onto neighbouring pages) and produced a
+        // phantom trailing page that had no text to show. Fail cleanly and
+        // roll the insertion back instead.
+        clientLogger.error(
+          "[editor] Inserted pages do not match the re-parsed page range",
+          {
+            sourcePageIndex,
+            insertedPages,
+            parsedPageCount: parsedPages.length,
+            got: insertedFromParse.length,
+          },
+        );
+        const rolledBack = await rollbackInsertedPages(insertedPages);
+        toast({
+          title: "Text pagination failed",
+          description: rolledBack
+            ? "The full text remains in the original text box."
+            : "The full text remains in the original text box, but an empty page may remain.",
+          variant: "destructive",
+        });
+        return false;
+      }
       const nextPages = [
         ...currentPages.slice(0, sourcePageIndex + 1),
-        ...parsedPages.slice(
-          sourcePageIndex + 1,
-          sourcePageIndex + insertedPages + 1,
-        ),
+        ...insertedFromParse,
         ...currentPages.slice(sourcePageIndex + 1),
       ];
       replacePages(nextPages);
       pagesRef.current = nextPages;
-      await Promise.all(
-        continuations.map((continuation, offset) =>
-          handleElementAdded(
-            continuation,
-            sourcePageIndex + offset + 1,
-            false,
-          ),
-        ),
-      );
+      /*
+        Sequentially, never Promise.all.
+
+        A 115-page paste produces 114 continuations. Each handleElementAdded
+        call mutates the shared scene graph, appends to the operation queue and
+        fires a createElement request, so running them concurrently let those
+        updates interleave: pages were added in a racy order and a single
+        merge could land several continuations on the same page, which is the
+        "several texts stacked on top of each other" the user reported. One at
+        a time is slower but each continuation is guaranteed its own page, in
+        reading order.
+      */
+      for (let offset = 0; offset < continuations.length; offset += 1) {
+        await handleElementAdded(
+          continuations[offset]!,
+          sourcePageIndex + offset + 1,
+          false,
+        );
+      }
       return true;
     },
     [
@@ -6047,6 +6194,11 @@ function EditorPageInner() {
                 <Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
             )}
+            {renameError ? (
+              <p role="alert" className="mt-0.5 text-xs font-medium text-destructive">
+                {renameError}
+              </p>
+            ) : null}
             <p className="text-xs text-muted-foreground">
               {t("pageIndicator", {
                 current: currentPageIndex + 1,

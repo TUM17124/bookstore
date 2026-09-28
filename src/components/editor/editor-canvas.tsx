@@ -778,6 +778,7 @@ function continuationFromText(
   content: string,
   y: number,
   height: number,
+  maxWidth?: number,
 ): TextElement {
   const next: TextElement = {
     ...template,
@@ -785,7 +786,26 @@ function continuationFromText(
     content,
     bounds: {
       ...template.bounds,
+      x: maxWidth != null
+        ? Math.min(template.bounds.x, maxWidth)
+        : template.bounds.x,
       y,
+      /*
+        Clamp the continuation to the printable column width.
+
+        The template is the source text box, whose Fabric `width` is whatever
+        the user last dragged it to. A paste sets that box to the full safe
+        width, but if the box was ever resized narrower (or was created on a
+        differently-sized page) the continuation inherited that narrower
+        width - so the continuation text re-wrapped to a different number of
+        lines than the slice was measured for, overflowed the right margin, and
+        rendered collapsed on top of the page's own text. Passing the safe-area
+        width in here keeps every continuation on the same column as the text
+        it continues.
+      */
+      width: maxWidth != null
+        ? Math.max(1, Math.min(template.bounds.width, maxWidth))
+        : template.bounds.width,
       height: Math.max(height, template.style.fontSize || 16),
     },
     runs: undefined,
@@ -2173,6 +2193,9 @@ export function EditorCanvas({
             flowSliceContent(fullText, lines, slice),
             safeRect.top,
             slice.height,
+            // Printable column width, so a continuation wraps exactly like the
+            // slice was measured and can never run past the right margin.
+            Math.max(1, safeRect.right - safeRect.left),
           ),
         );
         if (continuations.length > 0) {
@@ -2698,7 +2721,22 @@ export function EditorCanvas({
                 60,
                 safeRectAtCreate.right - safeRectAtCreate.left,
               );
-              newObj = new Textbox(t("defaultText") || "Text", {
+              /*
+                Start EMPTY, not with the literal placeholder "Text".
+
+                A new text box is seeded with t("defaultText") ("Text"), which
+                is literal CONTENT, not a hint. The user then pastes their
+                document: Fabric appends the paste to whatever is already in the
+                box, so the first line of the paste ends up stacked under the
+                word "Text" - and when that single box is later paginated across
+                the new pages, the stray "Text" rides along and reappears at the
+                top of the continuation. That is why page 1 showed the pasted
+                text with a collapsed "Text" above it, and why the last page
+                carried page 1's "Text" too. An empty box makes the paste the
+                only content; a real placeholder is provided by the editing UI
+                (properties panel), not by baking text into the document.
+              */
+              newObj = new Textbox("", {
                 left: safeRectAtCreate.left,
                 top: textTop,
                 width: textWidth,
@@ -2836,7 +2874,10 @@ export function EditorCanvas({
               case "freetext":
                 // Editable free-text annotation box; the typed content is
                 // baked via addFreeText (see annotation-renderer).
-                newObj = new IText(t("defaultText") || "Text", {
+                // Empty for the same reason as the text tool above: seeding
+                // the literal string "Text" makes it real document content that
+                // the user's own typing/paste then stacks underneath.
+                newObj = new IText("", {
                   left: pointer.x,
                   top: pointer.y,
                   fontSize: 14,
@@ -3732,13 +3773,29 @@ export function EditorCanvas({
       const docId = documentIdRef.current;
       if (docId) {
         try {
-          const { api, getAuthToken } = await import("@/lib/pdf-editor/api");
+          const { api, invalidateAuthToken, ensureFreshAuthToken } = await import(
+            "@/lib/pdf-editor/api"
+          );
           const pdfUrl = api.getDocumentDownloadUrl(docId);
-          const token = await getAuthToken();
-          const response = await fetch(pdfUrl, {
-            credentials: "include",
-            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          });
+          const sendPdf = (token: string | null) =>
+            fetch(pdfUrl, {
+              credentials: "include",
+              headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            });
+          let token = await ensureFreshAuthToken();
+          let response = await sendPdf(token);
+          // A stale token used to leave every page background blank (the
+          // `if (response.ok)` guard silently skipped the render) while the
+          // text/element layers still appeared - a very confusing "the page is
+          // empty" bug. Refresh once and retry instead of giving up.
+          if (response.status === 401 && token) {
+            invalidateAuthToken();
+            const freshToken = await ensureFreshAuthToken();
+            if (freshToken && freshToken !== token) {
+              token = freshToken;
+              response = await sendPdf(token);
+            }
+          }
           if (response.ok) {
             const arrayBuffer = await response.arrayBuffer();
             if (!isCurrentLoad()) return false;

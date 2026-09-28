@@ -7,7 +7,7 @@
  */
 
 import type { DocumentObject } from "@giga-pdf/types";
-import { getAuthToken, invalidateAuthToken } from "./auth-token";
+import { getAuthToken, invalidateAuthToken, ensureFreshAuthToken } from "./auth-token";
 import {
   uploadWithProgress,
   type UploadProgressEvent,
@@ -18,16 +18,20 @@ import type {
 } from "@/components/editor/lib/user-signatures";
 
 export type { DocumentObject };
-export { getAuthToken, invalidateAuthToken };
+export { getAuthToken, invalidateAuthToken, ensureFreshAuthToken };
 
-// API base URL for PlugYard's Django backend. The load-bearing methods below
-// (save/load/restore-original/create-version/get-elements/create-element/
-// update-element/delete-element/batch-elements/upload-thumbnail/
-// index-ocr-blocks/get-download-url/list+save+delete-user-signatures) target
-// Django's real /api/editor/* routes (see bookstore_backend/shop/urls.py +
-// views_editor.py). The ~80 other methods on this client are dead code for
-// this editor route (confirmed unused by grep) and still point at GigaPDF's
-// own /api/v1/* paths - left untouched since nothing calls them.
+// API base URL for PlugYard's Django backend.
+//
+// The methods actually used by the editor target Django's real routes under
+// /api/editor/* (see bookstore_backend/shop/urls.py + views_editor.py).
+//
+// A NOTE on the remaining /api/v1/* methods below: shop/urls.py exposes no
+// /api/v1 surface at all, so every one of them can only ever 404. They are
+// inherited from GigaPDF's standalone backend and are NOT safe to wire UI to.
+// They are kept (rather than deleted) only because src/components/sharing/
+// share-dialog.tsx still references the sharing ones - and that dialog is
+// itself non-functional against this backend. Removing them requires either
+// dropping the share dialog or building real sharing endpoints first.
 const API_BASE_URL = process.env.NEXT_PUBLIC_EDITOR_API_URL ?? "http://localhost:8000";
 
 
@@ -199,9 +203,12 @@ class APIClient {
       (headers as Record<string, string>)["Content-Type"] = "application/json";
     }
 
-    // Fetch JWT from Better Auth (in-memory cache, no sessionStorage)
-    // Python FastAPI backend requires Authorization: Bearer <jwt>
-    const token = await getAuthToken();
+    // Fetch JWT from the app's auth store (in-memory cache, no sessionStorage).
+    // The Python/Django backends require Authorization: Bearer <jwt>.
+    // `ensureFreshAuthToken` (not the bare getToken) so an expired 1h access
+    // token is refreshed from the refresh token BEFORE the request goes out -
+    // previously a stale token just produced a 401 round-trip on every call.
+    const token = await ensureFreshAuthToken();
     if (token) {
       (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
     }
@@ -212,10 +219,11 @@ class APIClient {
       credentials: "include",
     });
 
-    // On 401, invalidate token and retry once (token may have expired)
+    // On 401, invalidate the stale access token and retry once (it may have
+    // expired mid-flight, or the refresh may have been skipped above).
     if (response.status === 401 && token) {
       invalidateAuthToken();
-      const freshToken = await getAuthToken();
+      const freshToken = await ensureFreshAuthToken();
       if (freshToken && freshToken !== token) {
         (headers as Record<string, string>)["Authorization"] = `Bearer ${freshToken}`;
         response = await fetch(url, {
@@ -272,14 +280,17 @@ class APIClient {
         signal: options.signal,
       });
 
-    const token = await getAuthToken();
+    const token = await ensureFreshAuthToken();
     let response = await send(token);
 
-    // On 401, invalidate token and retry once (token may have expired).
-    // FormData bodies are reusable, so resending the same instance is safe.
+    // On 401, invalidate the stale access token and retry once (it may have
+    // expired mid-flight). FormData bodies are reusable, so resending the same
+    // instance is safe. This is the path users hit as "cannot upload": the
+    // multipart POST is the only editor call that carries the file, so a
+    // single stale token used to lose the whole upload.
     if (response.status === 401 && token) {
       invalidateAuthToken();
-      const freshToken = await getAuthToken();
+      const freshToken = await ensureFreshAuthToken();
       if (freshToken && freshToken !== token) {
         response = await send(freshToken);
       }
@@ -441,7 +452,7 @@ class APIClient {
     if (options.includeTrashed) searchParams.set("include_trashed", "true");
     const qs = searchParams.toString();
     const response = await this.request<APIResponse<StoredDocument>>(
-      `/api/v1/storage/documents/${storedDocumentId}${qs ? `?${qs}` : ""}`
+      `/api/editor/documents/${storedDocumentId}${qs ? `?${qs}` : ""}`
     );
     return response.data;
   }
@@ -607,11 +618,15 @@ class APIClient {
     name: string;
     updated_at: string;
   }> {
+    // The Django backend exposes PATCH /api/editor/documents/<id>/ (its
+    // DocumentDetailView handles "name"). The old /api/v1/storage/... path is
+    // not routed in this deployment, so every rename 404'd and the title
+    // silently reverted on the next load.
     const response = await this.request<APIResponse<{
       stored_document_id: string;
       name: string;
       updated_at: string;
-    }>>(`/api/v1/storage/documents/${storedDocumentId}`, {
+    }>>(`/api/editor/documents/${storedDocumentId}/`, {
       method: "PATCH",
       body: JSON.stringify({ name }),
     });

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/pdf-editor/api";
 import { PDF_SERVICE_URL } from "@/lib/pdf-editor/pdf-service";
 import { clientLogger } from "@/lib/pdf-editor/client-logger";
+import { sortPagesByNumber, renumberPages } from "@/lib/pdf-editor/page-order";
 import type { DocumentObject, DocumentLanguageInfo, PageObject, BookmarkObject, LayerObject, EmbeddedFileObject, Element } from "@giga-pdf/types";
 
 // Tolerance for "same position" heuristic when matching parsed PDF elements
@@ -341,25 +342,45 @@ export function useDocument(options: UseDocumentOptions): UseDocumentReturn {
 
       // Récupérer le document complet avec pages et éléments (TS parser via S3)
       clientLogger.debug("[useDocument] Calling /api/pdf/parse-from-s3 for docId:", docId);
-      const { getAuthToken } = await import("@/lib/pdf-editor/api");
-      const authToken = await getAuthToken();
+      const { invalidateAuthToken, ensureFreshAuthToken } = await import(
+        "@/lib/pdf-editor/api"
+      );
+      // Retry once on 401 with a refreshed token. This is the very first thing
+      // that happens when a document is opened, so a stale access token here
+      // is what users experience as "the document won't open" — and the throw
+      // below is the generic `Parse failed: 401` with no way to recover.
+      const sendParse = (token: string | null) =>
+        fetch(`${PDF_SERVICE_URL}/pdf/parse-from-s3`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ documentId: docId, flatten }),
+          credentials: "include",
+        });
       // B — analyzing : démarrer l'estimateur borné AVANT le fetch du parse.
       advanceProgress({ phase: "analyzing" });
       startAnalyzingEstimator();
-      const parseResp = await fetch(`${PDF_SERVICE_URL}/pdf/parse-from-s3`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
-        body: JSON.stringify({ documentId: docId, flatten }),
-        credentials: "include",
-      });
+      let authToken = await ensureFreshAuthToken();
+      let parseResp = await sendParse(authToken);
+      if (parseResp.status === 401 && authToken) {
+        invalidateAuthToken();
+        const freshToken = await ensureFreshAuthToken();
+        if (freshToken && freshToken !== authToken) {
+          authToken = freshToken;
+          parseResp = await sendParse(authToken);
+        }
+      }
       // Parse résolu : stopper l'estimateur et SNAP à 60 (fin réelle de B).
       stopEstimator();
       advanceProgress({ value: 60 });
       if (!parseResp.ok) {
-        throw new Error(`Parse failed: ${parseResp.status}`);
+        throw new Error(
+          parseResp.status === 401 || parseResp.status === 403
+            ? "Your session expired. Please sign in again to open this document."
+            : `Parse failed: ${parseResp.status}`,
+        );
       }
       const parsePayload = await parseResp.json() as Record<string, unknown>;
       const docData = (parsePayload.data ?? parsePayload) as typeof parsePayload & {
@@ -409,9 +430,30 @@ export function useDocument(options: UseDocumentOptions): UseDocumentReturn {
       const mergedPages = await Promise.all(
         parsedPages.map(async (page) => {
           try {
-            const { elements: backendElements } = await api.getPageElements(docId!, page.pageNumber, {
-              per_page: 200,
-            });
+            // Page 1 of a large pasted document is by far the densest, and a
+            // single flat `per_page: 200` silently truncated it: the parse
+            // produced the text, the backend list was cut off, and the merge
+            // returned a page with almost no elements. That is the "page 1
+            // comes back empty after a save" symptom. Follow the pagination
+            // cursor so every element on the page is merged.
+            let backendElements: Awaited<
+              ReturnType<typeof api.getPageElements>
+            >["elements"] = [];
+            let pageNo = 1;
+            const perPage = 200;
+            // Hard stop so a server that always reports total_pages=1 (or a
+            // broken cursor) cannot spin forever.
+            for (let guard = 0; guard < 50; guard += 1) {
+              const res = await api.getPageElements(docId!, page.pageNumber, {
+                page: pageNo,
+                per_page: perPage,
+              });
+              const batch = res.elements ?? [];
+              backendElements = backendElements.concat(batch);
+              const total = res.pagination?.total_pages ?? 1;
+              if (pageNo >= total || batch.length === 0) break;
+              pageNo += 1;
+            }
             const merged = mergeBackendElements(
               page.elements,
               backendElements as unknown as Element[],
@@ -430,7 +472,21 @@ export function useDocument(options: UseDocumentOptions): UseDocumentReturn {
           }
         }),
       );
-      docData.pages = mergedPages as unknown as Array<Record<string, unknown>>;
+      /*
+        Re-sort by pageNumber after the merge.
+
+        Promise.all preserves the order of the INPUT array, not the order the
+        requests complete, and this map is keyed by the page's position in
+        `parsedPages` - so that part was fine. The real hazard is the opposite
+        one: the parser can return a `pages` array that is not strictly
+        ascending, and the editor renders `doc.pages` positionally. Any page
+        that arrives out of order makes the canvas draw page N's elements on
+        page M, which is exactly the reported "text lines moved onto the wrong
+        pages" symptom on a 60-page document.
+      */
+      docData.pages = sortPagesByNumber(
+        mergedPages,
+      ) as unknown as Array<Record<string, unknown>>;
 
       // Convertir les données en types stricts
       // Note: API returns camelCase (by_alias=True)
@@ -474,7 +530,19 @@ export function useDocument(options: UseDocumentOptions): UseDocumentReturn {
           producer: (metadata.producer as string) || null,
           creationDate: (metadata.creationDate as string) || (metadata.creation_date as string) || null,
           modificationDate: (metadata.modificationDate as string) || (metadata.modification_date as string) || null,
-          pageCount: (metadata.pageCount as number) || (metadata.page_count as number) || docData.pages.length,
+          /*
+            The page count MUST come from the pages we actually parsed, never
+            from the parser's metadata. The binary's own page_count is written
+            at save time and can be stale: pasting a large block of text into a
+            blank document grows the page count (1 -> 114+), but the metadata
+            that travelled with the saved file still said 1. Trusting it made
+            the editor render 1 page of real text plus a phantom "last page"
+            that the engine had no text for - the "Unknown text" page. Trusting
+            `docData.pages.length` also means the count can never disagree with
+            the array the canvas iterates over, so a reopen after save shows
+            exactly the pages that were saved.
+          */
+          pageCount: docData.pages.length,
           pdfVersion: (metadata.pdfVersion as string) || (metadata.pdf_version as string) || "1.4",
           isEncrypted: (metadata.isEncrypted as boolean) || (metadata.is_encrypted as boolean) || false,
           permissions: {
@@ -925,12 +993,28 @@ export function useDocument(options: UseDocumentOptions): UseDocumentReturn {
   const replacePages = useCallback((newPages: PageObject[]) => {
     setDocument((prev) => {
       if (!prev) return prev;
+      /*
+        Renumber pages 1..N before handing them back.
+
+        Every consumer addresses pages POSITIONALLY through `doc.pages`, but the
+        element pipeline addresses them by `pageNumber` (api.getPageElements,
+        and the apply-elements bake). After a large paste the incoming array can
+        carry duplicate or shifted pageNumber values - e.g. a blank document's
+        original page 1 is still numbered 1 while 114 pasted pages follow, so
+        two pages both claim to be page 1. That collision is what pushed text
+        onto the wrong pages on reopen, and it made the saved/reloaded document
+        disagree with what was on screen when it was saved.
+
+        Positional order IS the truth here, so stamp it explicitly.
+      */
+      const sorted = sortPagesByNumber(newPages);
+      const renumbered = renumberPages(sorted);
       return {
         ...prev,
-        pages: newPages,
+        pages: renumberPages(sorted),
         metadata: {
           ...prev.metadata,
-          pageCount: newPages.length,
+          pageCount: sorted.length,
         },
       };
     });

@@ -14,7 +14,8 @@ import {
   Upload,
 } from "lucide-react";
 import { Button } from "@giga-pdf/ui";
-import { api, getAuthToken, type StoredDocument, type StorageInfo } from "@/lib/pdf-editor/api";
+import { api, type StoredDocument, type StorageInfo } from "@/lib/pdf-editor/api";
+import { ensureFreshAuthToken } from "@/lib/pdf-editor/auth-token";
 import { PDF_SERVICE_URL } from "@/lib/pdf-editor/pdf-service";
 
 /** e.g. 1536000 -> "1.46 MB". Admin-configured cap, so no fixed unit assumed. */
@@ -88,7 +89,7 @@ export default function EditorDocumentsPage() {
     setBusy(true);
     setError(null);
     try {
-      const token = await getAuthToken();
+      const token = await ensureFreshAuthToken();
       const blankResp = await fetch(`${PDF_SERVICE_URL}/pdf/blank`, {
         method: "POST",
         headers: {

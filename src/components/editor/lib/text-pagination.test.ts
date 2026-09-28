@@ -100,3 +100,60 @@ describe("flowLinesFromMeasured", () => {
     ]);
   });
 });
+
+describe("large paste (the 115-page report)", () => {
+  // A paste big enough to need ~115 continuation pages. Reproduces the three
+  // reported symptoms at the pagination layer: text collapsed on top of the
+  // page's own text, text running past the right margin, and the trailing
+  // page carrying no text.
+  const bigText = Array.from(
+    { length: 20000 },
+    (_, i) => `Sentence ${i} of the pasted document.`,
+  ).join(" ");
+
+  it("produces well over a hundred pages instead of collapsing into one", () => {
+    const lines = linesOf(bigText, 70);
+    const slices = paginateFlowLines(lines, H * 30, H * 30);
+    expect(slices.length).toBeGreaterThan(100);
+  });
+
+  it("loses and duplicates nothing across all ~115 pages", () => {
+    // THE regression: a repeated or dropped slice is what rendered as two
+    // texts stacked on top of each other, or a blank trailing page.
+    const lines = linesOf(bigText, 70);
+    const slices = paginateFlowLines(lines, H * 30, H * 30);
+    const rebuilt = slices
+      .map((slice) => flowSliceContent(bigText, lines, slice))
+      .join(" ");
+    const norm = (s: string) => s.replace(/\s+/g, " ").trim();
+    expect(norm(rebuilt)).toBe(norm(bigText));
+  });
+
+  it("keeps every page within the printable height, so nothing overflows", () => {
+    const room = H * 30;
+    const lines = linesOf(bigText, 70);
+    for (const slice of paginateFlowLines(lines, room, room)) {
+      expect(slice.height).toBeLessThanOrEqual(room + 0.5);
+    }
+  });
+
+  it("emits no empty page - every page carries text", () => {
+    const lines = linesOf(bigText, 70);
+    const slices = paginateFlowLines(lines, H * 30, H * 30);
+    for (const slice of slices) {
+      expect(slice.lineIndexes.length).toBeGreaterThan(0);
+      expect(slice.end).toBeGreaterThanOrEqual(slice.start);
+      const content = flowSliceContent(bigText, lines, slice);
+      // A page must never be blank: that was the "last page has no text" report.
+      expect(content.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps page ranges strictly increasing and non-overlapping", () => {
+    const lines = linesOf(bigText, 70);
+    const slices = paginateFlowLines(lines, H * 30, H * 30);
+    for (let i = 1; i < slices.length; i += 1) {
+      expect(slices[i]!.start).toBeGreaterThanOrEqual(slices[i - 1]!.end);
+    }
+  });
+});

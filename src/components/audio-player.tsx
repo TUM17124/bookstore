@@ -966,38 +966,51 @@ export function AudioPlayer({
                       Editing note at {fmt(editingNote.position)}
                     </p>
                   ) : null}
+                  {/*
+                    No `truncate` and no `max-h` cap on the note text (it was
+                    clipped to one ellipsised line, so a user could never read
+                    back a note they had written). The LIST keeps its own
+                    overflow-y-auto so many notes still scroll, but each note
+                    shows in full: break-words stops a long word overflowing,
+                    whitespace-pre-wrap keeps the user's own line breaks.
+                  */}
                   <ul
                     aria-label="Saved audiobook notes"
-                    className="mt-3 max-h-[24vh] space-y-2 overflow-y-auto overscroll-contain pr-1"
+                    className="mt-3 max-h-[40vh] space-y-2 overflow-y-auto overscroll-contain pr-1"
                   >
                     {notes.map((n) => (
-                      <li key={n.id} className="flex items-center gap-2 text-sm">
+                      <li
+                        key={n.id}
+                        className="flex items-start gap-2 rounded-lg bg-white/5 p-2 text-sm"
+                      >
                         <button
                           type="button"
                           onClick={() => seek(n.position)}
-                          className="text-[#f591ac]"
+                          className="shrink-0 text-[#f591ac]"
                         >
                           {fmt(n.position)}
                         </button>
-                        <span className="min-w-0 flex-1 truncate text-white/70">
+                        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-white/70">
                           {n.note}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => startEditAudioNote(n)}
-                          className="text-[#f591ac]"
-                          aria-label="Edit note"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void removeAudioNote(n.id)}
-                          className="text-white/40"
-                          aria-label="Delete note"
-                        >
-                          ×
-                        </button>
+                        <span className="flex shrink-0 flex-col items-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => startEditAudioNote(n)}
+                            className="text-[#f591ac]"
+                            aria-label="Edit note"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void removeAudioNote(n.id)}
+                            className="text-white/40"
+                            aria-label="Delete note"
+                          >
+                            ×
+                          </button>
+                        </span>
                       </li>
                     ))}
                   </ul>
