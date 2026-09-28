@@ -9,6 +9,7 @@ import {
   saveAudioProgress,
   getAudioNotes,
   addAudioNote,
+  updateAudioNote,
   deleteAudioNote,
   getProStatus,
 } from '@/lib/api'
@@ -213,9 +214,13 @@ export function AudioPlayer({
   const [sleepLeft, setSleepLeft] = useState(0)
   const [sleepTick, setSleepTick] = useState(0)
   const [resumeAt, setResumeAt] = useState(0)
-  const [noteText, setNoteText] = useState('')
+   const [noteText, setNoteText] = useState('')
   const [notes, setNotes] = useState<Array<{ id: number; position: number; note: string }>>([])
   const [savingNote, setSavingNote] = useState(false)
+  const [editingNote, setEditingNote] = useState<{
+    id: number
+    position: number
+  } | null>(null)
   const [offlineBusy, setOfflineBusy] = useState(false)
   const [offlineMsg, setOfflineMsg] = useState('')
   const [shakeMsg, setShakeMsg] = useState('')
@@ -500,18 +505,70 @@ export function AudioPlayer({
     else a.pause()
   }
 
-  async function markMoment() {
+    async function markMoment() {
     const a = audioRef.current
     if (!a || !loggedIn || savingNote) return
+    const text = noteText.trim()
     setSavingNote(true)
     try {
-      const row = await addAudioNote(bookId, a.currentTime, noteText.trim())
-      setNotes((prev) => [...prev, row as { id: number; position: number; note: string }])
-      setNoteText('')
+      if (editingNote) {
+        let row: { id: number; position: number; note: string }
+        try {
+          row = await updateAudioNote(editingNote.id, text, editingNote.position)
+        } catch {
+          await deleteAudioNote(editingNote.id)
+          row = (await addAudioNote(
+            bookId,
+            editingNote.position,
+            text,
+          )) as { id: number; position: number; note: string }
+        }
+        setNotes((prev) =>
+          prev.map((n) => (n.id === editingNote.id ? row : n)),
+        )
+        setEditingNote(null)
+        setNoteText('')
+      } else {
+        const row = await addAudioNote(bookId, a.currentTime, text)
+        setNotes((prev) => [
+          ...prev,
+          row as { id: number; position: number; note: string },
+        ])
+        setNoteText('')
+      }
     } catch {
-      setShakeMsg('Could not save note. Try again.')
+      setShakeMsg(
+        editingNote
+          ? 'Could not update note. Try again.'
+          : 'Could not save note. Try again.',
+      )
     }
     setSavingNote(false)
+  }
+
+  function startEditAudioNote(n: { id: number; position: number; note: string }) {
+    setEditingNote({ id: n.id, position: n.position })
+    setNoteText(n.note || '')
+    setShakeMsg('')
+  }
+
+  function cancelEditAudioNote() {
+    setEditingNote(null)
+    setNoteText('')
+  }
+
+  async function removeAudioNote(id: number) {
+    if (!loggedIn) return
+    setNotes((prev) => prev.filter((x) => x.id !== id))
+    if (editingNote?.id === id) {
+      setEditingNote(null)
+      setNoteText('')
+    }
+    try {
+      await deleteAudioNote(id)
+    } catch {
+      setShakeMsg('Could not delete note. Try again.')
+    }
   }
 
   async function saveOffline() {
@@ -866,11 +923,15 @@ export function AudioPlayer({
               </p>
               {loggedIn ? (
                 <>
-                  <div className="flex gap-2">
+                                    <div className="flex gap-2">
                     <input
                       value={noteText}
                       onChange={(e) => setNoteText(e.target.value)}
-                      placeholder="Optional note"
+                      placeholder={
+                        editingNote
+                          ? 'Edit this note'
+                          : 'Optional note'
+                      }
                       maxLength={280}
                       disabled={savingNote}
                       className="min-w-0 flex-1 rounded-full bg-white/10 px-3 py-2 text-sm outline-none disabled:opacity-50"
@@ -881,10 +942,34 @@ export function AudioPlayer({
                       onClick={() => void markMoment()}
                       className="rounded-full bg-[#f591ac] px-3 py-2 text-sm font-bold text-[#141a32] disabled:opacity-60"
                     >
-                      {savingNote ? 'Saving…' : 'Save'}
+                      {savingNote
+                        ? editingNote
+                          ? 'Updating…'
+                          : 'Saving…'
+                        : editingNote
+                          ? 'Update'
+                          : 'Save'}
                     </button>
+                    {editingNote ? (
+                      <button
+                        type="button"
+                        disabled={savingNote}
+                        onClick={cancelEditAudioNote}
+                        className="rounded-full bg-white/10 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                      >
+                        Cancel
+                      </button>
+                    ) : null}
                   </div>
-                  <ul className="mt-3 space-y-2">
+                  {editingNote ? (
+                    <p className="mt-2 text-center text-[11px] text-[#f591ac]">
+                      Editing note at {fmt(editingNote.position)}
+                    </p>
+                  ) : null}
+                  <ul
+                    aria-label="Saved audiobook notes"
+                    className="mt-3 max-h-[24vh] space-y-2 overflow-y-auto overscroll-contain pr-1"
+                  >
                     {notes.map((n) => (
                       <li key={n.id} className="flex items-center gap-2 text-sm">
                         <button
@@ -894,14 +979,22 @@ export function AudioPlayer({
                         >
                           {fmt(n.position)}
                         </button>
-                        <span className="min-w-0 flex-1 truncate text-white/70">{n.note}</span>
+                        <span className="min-w-0 flex-1 truncate text-white/70">
+                          {n.note}
+                        </span>
                         <button
                           type="button"
-                          onClick={() => {
-                            void deleteAudioNote(n.id)
-                            setNotes((prev) => prev.filter((x) => x.id !== n.id))
-                          }}
+                          onClick={() => startEditAudioNote(n)}
+                          className="text-[#f591ac]"
+                          aria-label="Edit note"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void removeAudioNote(n.id)}
                           className="text-white/40"
+                          aria-label="Delete note"
                         >
                           ×
                         </button>

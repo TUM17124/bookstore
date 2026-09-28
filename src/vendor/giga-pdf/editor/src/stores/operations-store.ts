@@ -72,8 +72,11 @@ export interface OperationsStore {
     toFront: boolean,
   ) => void;
 
-  /** Retrieve and clear all pending operations (consumed during save). */
-  drain: () => ElementOperation[];
+  /**
+   * Remove and return pending operations (consumed during save). When a
+   * snapshot is supplied, newer or coalesced operations remain queued.
+   */
+  drain: (snapshot?: ElementOperation[]) => ElementOperation[];
   /** Peek without clearing. */
   peek: () => ElementOperation[];
   /** Clear without draining (used when save fails and we requeue). */
@@ -163,12 +166,15 @@ export const useOperationsStore: UseBoundStore<StoreApi<OperationsStore>> =
           }
         }),
 
-      drain: () => {
-        const ops = get().operations;
+      drain: (snapshot) => {
+        const current = get().operations;
+        const selected = new Set(snapshot ?? current);
+        const drained = current.filter((op) => selected.has(op));
+        const remaining = current.filter((op) => !selected.has(op));
         set((state) => {
-          state.operations = [];
+          state.operations = remaining;
         });
-        return ops;
+        return drained;
       },
 
       peek: () => get().operations,

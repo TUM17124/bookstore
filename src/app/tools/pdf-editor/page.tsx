@@ -760,23 +760,24 @@ function EditorPageInner() {
       return [];
     }
   });
+  const contentModificationsRef = useRef<ElementModification[]>(contentModifications);
   const setContentModifications = useCallback(
     (next: ElementModification[] | ((prev: ElementModification[]) => ElementModification[])) => {
-      setContentModificationsState((prev) => {
-        const value = typeof next === "function" ? (next as (p: ElementModification[]) => ElementModification[])(prev) : next;
-        if (typeof window !== "undefined" && contentModsStorageKey) {
-          try {
-            if (value.length === 0) {
-              window.localStorage.removeItem(contentModsStorageKey);
-            } else {
-              window.localStorage.setItem(contentModsStorageKey, JSON.stringify(value));
-            }
-          } catch {
-            // Quota exceeded or storage disabled — modifications stay in memory.
+      const value =
+        typeof next === "function" ? next(contentModificationsRef.current) : next;
+      contentModificationsRef.current = value;
+      setContentModificationsState(value);
+      if (typeof window !== "undefined" && contentModsStorageKey) {
+        try {
+          if (value.length === 0) {
+            window.localStorage.removeItem(contentModsStorageKey);
+          } else {
+            window.localStorage.setItem(contentModsStorageKey, JSON.stringify(value));
           }
+        } catch {
+          // Quota exceeded or storage disabled — modifications stay in memory.
         }
-        return value;
-      });
+      }
     },
     [contentModsStorageKey],
   );
@@ -1147,7 +1148,6 @@ function EditorPageInner() {
   const peekOperations = useOperationsStore((s) => s.peek);
   const drainOperations = useOperationsStore((s) => s.drain);
   const currentPdfFileRef = useRef<File | null>(null);
-  const contentModificationsRef = useRef<ElementModification[]>([]);
   // Late-bound paragraph/list-format baker. `handleTextStyleChange` (defined
   // before `adoptModifiedPdf`/`getPreparedBlob`) routes paragraph-level edits
   // (alignment, indent, line-height, list level/marker/ordered) here without a
@@ -1241,7 +1241,7 @@ function EditorPageInner() {
       });
       // apply-elements succeeded — now it's safe to drain the queue. Anything
       // queued AFTER our peek stays for the next save tick.
-      drainOperations();
+      const bakedOps = drainOperations(ops);
 
       const blob =
         modified instanceof Blob ? modified : new Blob([modified as BlobPart]);
@@ -1263,12 +1263,14 @@ function EditorPageInner() {
         bakedIdx,
       );
       // Clear content modifications now that they're baked in.
-      setContentModifications([]);
+      setContentModifications((pending) =>
+        pending.filter((mod) => !contentMods.includes(mod)),
+      );
 
       // Stash the elementIds for post-upload Redis flush. We can't delete
       // from Redis here because S3 hasn't confirmed yet — if upload fails,
       // Redis is still our recovery source on next reload (via merge).
-      const elementIdsBaked = ops
+      const elementIdsBaked = bakedOps
         .map((op) => {
           const el = op.element as { elementId?: string };
           return el?.elementId;
@@ -1281,18 +1283,17 @@ function EditorPageInner() {
       return blob;
     } catch (err) {
       clientLogger.error("[editor] apply-elements failed during save:", err);
-      // Don't drain the queue — ops stay in the store for the next save tick.
-      // Returning the last known good binary means the upload still goes
-      // through, and the user's pending ops are preserved for retry.
-      return pdfFile;
+      // Leave pending edits queued and fail the save rather than uploading
+      // the unchanged PDF as if the latest edits had been persisted.
+      throw err;
     }
-  }, [peekOperations, drainOperations, applyElements, updateCurrentPdfFile]);
-
-  // Keep the ref in sync so getPreparedBlob can read the latest mods without
-  // being reconstructed on every keystroke.
-  useEffect(() => {
-    contentModificationsRef.current = contentModifications;
-  }, [contentModifications]);
+  }, [
+    peekOperations,
+    drainOperations,
+    applyElements,
+    updateCurrentPdfFile,
+    setContentModifications,
+  ]);
 
   // PARTIE 4 — Rafraîchissement des métadonnées GED après un save éditeur.
   // Best-effort + throttlé (max 1 fois / 60s) : (a) régénère la miniature du
@@ -2146,25 +2147,20 @@ function EditorPageInner() {
     [setDirty, saveWithPriority, documentId, storedDocumentId, effectivePageIndex, queueAdd, addElementToPage, pages, selectElements]
   );
 
-  const handleElementModified = useCallback(
+    const handleElementModified = useCallback(
     async (element: Element, oldBounds?: Element["bounds"]) => {
       clientLogger.debug("[editor] Element modified:", element);
       setDirty(true);
-      const pageNumber = currentPageIndex + 1;
 
-      // Mirror the update into the local scene graph (properties panel
-      // reads from there, not from Fabric).
+      const ownerPageIndex = pages.findIndex((p) =>
+        p.elements.some((e) => e.elementId === element.elementId),
+      );
+      const pageIndex =
+        ownerPageIndex >= 0 ? ownerPageIndex : effectivePageIndex;
+      const pageNumber = pageIndex + 1;
+
       updateElementInPage(element.elementId, element);
 
-      // COHÉRENCE MULTI-WIDGETS : un champ AcroForm porte UNE valeur partagée
-      // par tous ses widgets (le même champ répété p1/p2, les paires Oui/non).
-      // Après l'édition d'un widget, propager la valeur aux éléments JUMEAUX
-      // du scene graph (même fieldName, toutes pages) pour que le widget p2
-      // reflète la saisie p1 — et re-rendre leurs objets Fabric quand ils sont
-      // montés sur la page active (les jumeaux checkables de la même page sont
-      // déjà tenus cohérents par le toggle du canvas ; ce re-render est
-      // idempotent). Pas de queueUpdate pour les jumeaux : le bake ne remplit
-      // le champ qu'UNE fois par nom.
       if (element.type === "form_field" && element.fieldName) {
         for (const page of pages) {
           for (const sibling of page.elements) {
@@ -2181,25 +2177,9 @@ function EditorPageInner() {
         }
       }
 
-      // Queue update with the TRUE oldBounds (tracked by editor-canvas
-      // before the modification). Without this, apply-elements clears
-      // the new bounds region and the original PDF glyph stays visible
-      // (texte dupliqué post-bake). Fallback to element.bounds only if
-      // tracking missed (very first modification of a freshly-loaded
-      // element with no init).
       queueUpdate(pageNumber, element, oldBounds ?? element.bounds);
-
-      // Émettre via WebSocket pour la collaboration
       emitElementUpdate(element.elementId, element);
 
-      // Mettre à jour l'élément dans le backend avec retry exponentiel.
-      //
-      // Note: parsed-only elements (read straight from the PDF, never
-      // persisted Redis-side) return 404 here. That's expected and
-      // non-fatal — the change still persists via the PDF bake on save.
-      // The retry helper short-circuits 404 thanks to the .status attached
-      // by api.request, and the catch logs at debug level for that case so
-      // the console stays readable.
       if (documentId) {
         const updates = convertToApiElement(element);
         try {
@@ -2208,7 +2188,7 @@ function EditorPageInner() {
             {
               onAttemptFailed: (attempt, err) => {
                 const status = (err as { status?: number })?.status;
-                if (status === 404) return; // expected for parsed elements
+                if (status === 404) return;
                 clientLogger.warn(
                   `[API] updateElement attempt ${attempt} failed:`,
                   err,
@@ -2233,10 +2213,20 @@ function EditorPageInner() {
         }
       }
 
-      // Sauvegarde debounced vers S3
       saveWithPriority("debounced");
     },
-    [setDirty, emitElementUpdate, saveWithPriority, documentId, currentPageIndex, queueUpdate, updateElementInPage, pages, effectivePage, canvasHandle]
+    [
+      setDirty,
+      emitElementUpdate,
+      saveWithPriority,
+      documentId,
+      pages,
+      effectivePageIndex,
+      queueUpdate,
+      updateElementInPage,
+      effectivePage,
+      canvasHandle,
+    ],
   );
 
   // Z-order change (bringToFront / sendToBack): queue a `reorder` op so the new
@@ -2244,43 +2234,57 @@ function EditorPageInner() {
   // addition to the scene-graph order reflected by handleElementModified. The
   // editor-canvas calls BOTH callbacks, so the live scene graph + the persisted
   // PDF stay consistent.
-  const handleElementReordered = useCallback(
+    const handleElementReordered = useCallback(
     (element: Element, toFront: boolean) => {
-      clientLogger.debug("[editor] Element reordered:", element.elementId, { toFront });
+      clientLogger.debug("[editor] Element reordered:", element.elementId, {
+        toFront,
+      });
       setDirty(true);
-      const pageNumber = currentPageIndex + 1;
+      const ownerPageIndex = pages.findIndex((p) =>
+        p.elements.some((e) => e.elementId === element.elementId),
+      );
+      const pageNumber =
+        (ownerPageIndex >= 0 ? ownerPageIndex : effectivePageIndex) + 1;
       queueReorder(pageNumber, element, toFront);
       saveWithPriority("debounced");
     },
-    [setDirty, currentPageIndex, queueReorder, saveWithPriority]
+    [
+      setDirty,
+      pages,
+      effectivePageIndex,
+      queueReorder,
+      saveWithPriority,
+    ],
   );
 
-  const handleElementRemoved = useCallback(
+    const handleElementRemoved = useCallback(
     async (elementId: string) => {
       clientLogger.debug("[editor] Element removed:", elementId);
       setDirty(true);
       deselectElement(elementId);
-      const pageNumber = currentPageIndex + 1;
 
-      // Best-effort bounds lookup before the element is gone. Thread the
-      // engine run index (present on parsed text runs in the scene graph) so
-      // apply-operations can fire the TRUE in-place removeElement instead of
-      // redact+add. Undefined for added/non-text elements — the engine then
-      // falls back to redact+add on its own.
-      const removed = currentPage?.elements.find((e) => e.elementId === elementId);
+      const ownerPageIndex = pages.findIndex((p) =>
+        p.elements.some((e) => e.elementId === elementId),
+      );
+      const ownerPage =
+        ownerPageIndex >= 0 ? pages[ownerPageIndex] : currentPage;
+      const pageNumber =
+        (ownerPageIndex >= 0 ? ownerPageIndex : effectivePageIndex) + 1;
+
+      const removed = ownerPage?.elements.find((e) => e.elementId === elementId);
       if (removed) {
         const removedIndex = (removed as { index?: number }).index;
-        queueDelete(pageNumber, elementId as UUID, removed.bounds, removedIndex);
+        queueDelete(
+          pageNumber,
+          elementId as UUID,
+          removed.bounds,
+          removedIndex,
+        );
       }
 
-      // Mirror the removal in the local scene graph so the Properties
-      // panel + selection shrink accordingly.
       removeElementFromPage(elementId);
-
-      // Émettre via WebSocket pour la collaboration
       emitElementDelete(elementId);
 
-      // Supprimer l'élément du backend avec retry exponentiel
       if (documentId) {
         try {
           await withRetry(
@@ -2293,7 +2297,6 @@ function EditorPageInner() {
                 ),
             },
           );
-          clientLogger.debug("[API] Element deleted from backend:", elementId);
         } catch (error) {
           clientLogger.error(
             "[API] deleteElement failed after retries — deletion will persist via PDF bake:",
@@ -2302,10 +2305,20 @@ function EditorPageInner() {
         }
       }
 
-      // Sauvegarder le PDF vers S3
       saveWithPriority("debounced");
     },
-    [setDirty, emitElementDelete, saveWithPriority, documentId, deselectElement, currentPageIndex, currentPage, queueDelete, removeElementFromPage]
+    [
+      setDirty,
+      emitElementDelete,
+      saveWithPriority,
+      documentId,
+      deselectElement,
+      pages,
+      currentPage,
+      effectivePageIndex,
+      queueDelete,
+      removeElementFromPage,
+    ],
   );
 
   // Gérer le mouvement du curseur pour la collaboration
@@ -2991,18 +3004,29 @@ function EditorPageInner() {
   // When `reparse` is true (default), the PDF is re-parsed after the op so
   // the scene graph reflects the new layout. Set to false for ops that
   // don't change element coordinates.
-  const adoptModifiedPdf = useCallback(
-    (blob: Blob, opts: { reparse?: boolean } = {}): File | null => {
+    const adoptModifiedPdf = useCallback(
+    (
+      blob: Blob,
+      opts: { reparse?: boolean; bakedIndices?: number[] | null } = {},
+    ): File | null => {
       const file = currentPdfFileRef.current;
       if (!file) return null;
       const newFile = new File([blob], file.name, {
-        type: 'application/pdf',
+        type: "application/pdf",
       });
-      updateCurrentPdfFile(newFile);
+      // null = full canvas rebuild (rotate / resize / reparse).
+      // [] = same page structure, keep existing Fabric objects at their
+      // current zoom/size. Add/delete/move MUST use this or overlays
+      // remount at the unscaled parse box until the user clicks them.
+      const bakedIndices =
+        opts.bakedIndices !== undefined
+          ? opts.bakedIndices
+          : opts.reparse === false
+            ? []
+            : null;
+      updateCurrentPdfFile(newFile, bakedIndices);
       setDirty(true);
-      saveWithPriority('immediate');
-      // Refresh the scene graph from the new binary so the canvas
-      // re-renders text items at the correct new bounds.
+      saveWithPriority("immediate");
       if (opts.reparse !== false) {
         void reparseFromFile(newFile);
       }
@@ -3351,16 +3375,57 @@ function EditorPageInner() {
     tableEditBusy,
   ]);
 
-  // Shared helper: run a page-level op through /api/pdf/pages, swap the
-  // binary in memory, and trigger an immediate save. Returns the new file
-  // so callers can run extra local-state updates (duplicate/add/delete need
-  // to mirror the scene graph) in the same tick.
+    // Shared helper: bake pending scene-graph edits into the PDF FIRST, then
+  // run a page-level op through /api/pdf/pages, swap the in-memory binary,
+  // and trigger an immediate save. Returns the new file so callers can run
+  // extra local-state updates (duplicate/add/delete need to mirror the
+  // scene graph) in the same tick.
+  //
+  // Structural ops (add/copy/delete/move) MUST pass `{ reparse: false }` and
+  // then update the scene graph locally. A full reparse here wipes in-memory
+  // text/images that were not yet in the parse output and races the save.
   const runPageOperation = useCallback(
     async (
-      operation: 'add' | 'copy' | 'rotate' | 'delete' | 'move' | 'resize',
+      operation: "add" | "copy" | "rotate" | "delete" | "move" | "resize",
       params: Record<string, unknown>,
       opts: { reparse?: boolean } = {},
     ): Promise<File | null> => {
+      const pendingBeforePrepare =
+        peekOperations().length + contentModificationsRef.current.length;
+      const fileBeforePrepare = currentPdfFileRef.current;
+
+      if (pendingBeforePrepare > 0) {
+        try {
+          const prepared = await getPreparedBlob();
+          if (
+            !prepared ||
+            (currentPdfFileRef.current === fileBeforePrepare &&
+              peekOperations().length + contentModificationsRef.current.length >
+                0)
+          ) {
+            toast({
+              title: "Could not save edits before changing pages",
+              description:
+                "Existing text and objects could not be written into the PDF first. The page change was cancelled so nothing disappears.",
+              variant: "destructive",
+            });
+            return null;
+          }
+        } catch (err) {
+          clientLogger.error(
+            "[editor] Failed to bake edits before page operation:",
+            err,
+          );
+          toast({
+            title: "Could not save edits before changing pages",
+            description:
+              "Existing text and objects could not be written into the PDF first. The page change was cancelled so nothing disappears.",
+            variant: "destructive",
+          });
+          return null;
+        }
+      }
+
       const file = currentPdfFileRef.current;
       if (!file) return null;
       try {
@@ -3375,7 +3440,7 @@ function EditorPageInner() {
         return null;
       }
     },
-    [pageOperation, adoptModifiedPdf],
+    [pageOperation, adoptModifiedPdf, getPreparedBlob, peekOperations, toast],
   );
 
   // ── Word-like per-page content margins (consolidated, pageId-keyed) ────────
@@ -4393,10 +4458,15 @@ function EditorPageInner() {
     navigateToPage(pending.index, "start");
   }, [pages, navigateToPage]);
 
-  const handleAddPage = useCallback(async () => {
-    // afterPage=pages.length inserts at the end. pdf-engine treats it as
-    // 1-indexed insertion point, so we pass the current page count as-is.
-    const ok = await runPageOperation('add', { afterPage: pages.length });
+    const handleAddPage = useCallback(async () => {
+    // afterPage=pages.length inserts at the end (1-based insertion point).
+    // reparse MUST stay false: a full parse replaces live text/images with
+    // raw glyph boxes, which look shrunk until the user clicks them.
+    const ok = await runPageOperation(
+      "add",
+      { afterPage: pages.length },
+      { reparse: false },
+    );
     if (ok) addPageLocal();
   }, [runPageOperation, pages.length, addPageLocal]);
 
@@ -4406,7 +4476,7 @@ function EditorPageInner() {
   // rebuilds the scene graph with the new, possibly-different-sized page), then
   // RE-BAKES the running header/footer (re-supplying the registered images via
   // scheduleHfBake) because adding a page shifts every {{page}}/{{pages}} token.
-  const handleAddPageFormat = useCallback(
+    const handleAddPageFormat = useCallback(
     async (
       format: PageFormat,
       orientation: PageOrientation,
@@ -4420,7 +4490,11 @@ function EditorPageInner() {
         { currentPageIndex: effectivePageIndex, pageCount: pages.length },
         custom,
       );
-      const ok = await runPageOperation('add', { afterPage, width, height });
+      const ok = await runPageOperation(
+        "add",
+        { afterPage, width, height },
+        { reparse: false },
+      );
       if (!ok) return;
       addPageLocal();
       const def = hfDefRef.current;
@@ -4668,15 +4742,13 @@ function EditorPageInner() {
    * 0-indexed page index maps to "after the current page", and one less maps to
    * "before".
    */
-  const handleInsertBlankPage = useCallback(
+    const handleInsertBlankPage = useCallback(
     async (position: "before" | "after") => {
       const idx = effectivePageIndex;
       const afterPage = position === "after" ? idx : idx - 1;
-      const ok = await runPageOperation("add", { afterPage });
+      const ok = await runPageOperation("add", { afterPage }, { reparse: false });
       if (!ok) return;
       addPageLocal();
-      // Inserting before the current page shifts it down by one — follow it so
-      // the user stays on the same content.
       if (position === "before") {
         goToPage(idx + 1);
       }
@@ -4702,33 +4774,44 @@ function EditorPageInner() {
     [selectedTextElements, handleElementUpdate],
   );
 
-  const handleDuplicatePage = useCallback(
+    const handleDuplicatePage = useCallback(
     async (pageIndex: number) => {
-      const ok = await runPageOperation('copy', {
-        pageNumber: pageIndex + 1,
-        insertAfter: pageIndex + 1,
-      });
+      const ok = await runPageOperation(
+        "copy",
+        {
+          pageNumber: pageIndex + 1,
+          insertAfter: pageIndex + 1,
+        },
+        { reparse: false },
+      );
       if (ok) duplicatePageLocal(pageIndex);
     },
     [runPageOperation, duplicatePageLocal],
   );
 
-  const handleDeletePage = useCallback(
+    const handleDeletePage = useCallback(
     async (pageIndex: number) => {
-      // pdf-engine refuses to delete the last remaining page; guard locally.
       if (pages.length <= 1) return;
-      const ok = await runPageOperation('delete', { pageNumber: pageIndex + 1 });
+      const ok = await runPageOperation(
+        "delete",
+        { pageNumber: pageIndex + 1 },
+        { reparse: false },
+      );
       if (ok) deletePageLocal(pageIndex);
     },
     [runPageOperation, pages.length, deletePageLocal],
   );
 
-  const handleReorderPages = useCallback(
+    const handleReorderPages = useCallback(
     async (fromIndex: number, toIndex: number) => {
-      const ok = await runPageOperation('move', {
-        fromPage: fromIndex + 1,
-        toPage: toIndex + 1,
-      });
+      const ok = await runPageOperation(
+        "move",
+        {
+          fromPage: fromIndex + 1,
+          toPage: toIndex + 1,
+        },
+        { reparse: false },
+      );
       if (ok) reorderPagesLocal(fromIndex, toIndex);
     },
     [runPageOperation, reorderPagesLocal],
@@ -5056,11 +5139,11 @@ function EditorPageInner() {
     } else {
       setContentEditActive(true);
     }
-  }, [isContentEditActive, setContentEditActive]);
+  }, [isContentEditActive, setContentEditActive, setContentModifications]);
 
   const handleContentModificationsChange = useCallback((modifications: ElementModification[]) => {
     setContentModifications(modifications);
-  }, []);
+  }, [setContentModifications]);
 
   // Handler pour la navigation TOC. pageNumber is 1-indexed; navigateToPage
   // expects 0-indexed and scrolls the page into view in continuous mode.
@@ -6016,7 +6099,7 @@ function EditorPageInner() {
             size="sm"
             className="shrink-0 gap-2"
             onClick={save}
-            disabled={saving || !isDirty}
+            disabled={saving || (!isDirty && !saveError)}
             aria-label={t("save")}
             title={t("save")}
           >
@@ -6092,7 +6175,7 @@ function EditorPageInner() {
               <DropdownMenuItem
                 className="md:hidden"
                 onClick={save}
-                disabled={saving || !isDirty}
+                disabled={saving || (!isDirty && !saveError)}
               >
                 {saving ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

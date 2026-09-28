@@ -157,6 +157,15 @@ export function useDocumentSave(options: UseDocumentSaveOptions): UseDocumentSav
 
   // Refs pour éviter les problèmes de closure
   const savingRef = useRef(false);
+  const saveRequestedRef = useRef(false);
+  const performSaveRef = useRef<
+    | ((
+        saveName: string,
+        saveFolderId?: string | null,
+        forceNewDocument?: boolean,
+      ) => Promise<boolean>)
+    | null
+  >(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingChangesRef = useRef(0);
   const isOfflineRef = useRef(isOffline);
@@ -186,7 +195,11 @@ export function useDocumentSave(options: UseDocumentSaveOptions): UseDocumentSav
       saveFolderId?: string | null,
       forceNewDocument: boolean = false
     ): Promise<boolean> => {
-      if (!documentId || savingRef.current) {
+      if (!documentId) {
+        return false;
+      }
+      if (savingRef.current) {
+        saveRequestedRef.current = true;
         return false;
       }
 
@@ -211,6 +224,9 @@ export function useDocumentSave(options: UseDocumentSaveOptions): UseDocumentSav
       savingRef.current = true;
       setSaving(true);
       setSaveError(null);
+      const pendingAtStart = pendingChangesRef.current;
+      let preparationFailed = false;
+      let pdfBlob: Blob | null = null;
 
       try {
         logger.info('Saving document to S3', { documentId, name: saveName });
@@ -218,23 +234,36 @@ export function useDocumentSave(options: UseDocumentSaveOptions): UseDocumentSav
         // Let the caller inject a PDF that already has local edits applied
         // (via /api/pdf/apply-elements). Falls back to the S3 download path
         // when there's nothing to apply or the caller opts out.
-        let pdfBlob: Blob | null = null;
-        const prepare = getPreparedBlobRef.current;
+                const prepare = getPreparedBlobRef.current;
         if (prepare) {
           try {
             const prepared = await prepare();
             if (prepared) {
               pdfBlob = prepared;
-              logger.debug('Using prepared blob with applied elements');
+              logger.debug("Using prepared blob with applied elements");
             }
           } catch (prepareErr) {
-            logger.warn('getPreparedBlob failed, falling back to S3 download', {
+            preparationFailed = true;
+            logger.error("Could not prepare edited PDF for save", {
               errorMessage:
-                prepareErr instanceof Error ? prepareErr.message : String(prepareErr),
+                prepareErr instanceof Error
+                  ? prepareErr.message
+                  : String(prepareErr),
             });
+            throw prepareErr;
           }
         }
+
+        // Never fall back to the original S3/session PDF when the caller
+        // provided getPreparedBlob but it returned null. That path uploads
+        // stale bytes and wipes unsaved edits / newly created content.
         if (!pdfBlob) {
+          if (prepare) {
+            preparationFailed = true;
+            throw new Error(
+              "Edited PDF is not ready to save yet. Retry after the document finishes loading.",
+            );
+          }
           pdfBlob = await fetchPdfBlobForSave(documentId);
         }
 
@@ -257,9 +286,15 @@ export function useDocumentSave(options: UseDocumentSaveOptions): UseDocumentSav
         }
 
         setLastSaved(new Date());
-        setPendingChanges(0);
-        pendingChangesRef.current = 0;
-        setDirty?.(false);
+        const remainingChanges = Math.max(
+          0,
+          pendingChangesRef.current - pendingAtStart,
+        );
+        setPendingChanges(remainingChanges);
+        pendingChangesRef.current = remainingChanges;
+        if (remainingChanges === 0) {
+          setDirty?.(false);
+        }
         onSaved?.(storedId);
 
         logger.info('Document saved successfully', { storedId });
@@ -269,29 +304,47 @@ export function useDocumentSave(options: UseDocumentSaveOptions): UseDocumentSav
         setSaveError(message);
         logger.error('Save failed', { documentId, errorMessage: message });
 
-        // Enqueue en cas d'erreur réseau (connexion perdue pendant la requête)
-        await offlineQueue.enqueue({
-          type: 'save_document',
-          payload: {
-            documentId,
-            storedDocumentId: storedDocumentId ?? null,
-            name: saveName,
-            folderId: saveFolderId ?? folderId ?? null,
-            tags,
-            forceNewDocument,
-          },
-        });
-        await refreshQueueSize();
-        logger.warn('Document queued after save error', { documentId });
+        // A prepared-edit failure must not be retried from the session's
+        // original PDF: that would save stale bytes and discard the edits.
+        if (!preparationFailed) {
+          await offlineQueue.enqueue({
+            type: 'save_document',
+            payload: {
+              documentId,
+              storedDocumentId: storedDocumentId ?? null,
+              name: saveName,
+              folderId: saveFolderId ?? folderId ?? null,
+              tags,
+              forceNewDocument,
+              ...(pdfBlob ? { file: pdfBlob } : {}),
+            },
+          });
+          await refreshQueueSize();
+          logger.warn('Document queued after save error', { documentId });
+        }
 
         return false;
       } finally {
         setSaving(false);
         savingRef.current = false;
+        if (saveRequestedRef.current) {
+          saveRequestedRef.current = false;
+          window.setTimeout(() => {
+            void performSaveRef.current?.(
+              saveName,
+              saveFolderId,
+              forceNewDocument,
+            );
+          }, 0);
+        }
       }
     },
     [documentId, folderId, tags, storedDocumentId, onSaved, setDirty, logger, refreshQueueSize]
   );
+
+  useEffect(() => {
+    performSaveRef.current = performSave;
+  }, [performSave]);
 
   // --------------------------------------------------------------------------
   // Handler de replay pour le flush offline
@@ -320,8 +373,13 @@ export function useDocumentSave(options: UseDocumentSaveOptions): UseDocumentSav
         forceNewDocument: boolean;
       };
 
-      // Re-fetch PDF bytes at replay time — Blobs cannot be persisted in IndexedDB
-      const pdfBlob = await fetchPdfBlobForSave(opDocId);
+      // Prefer the exact prepared PDF bytes from the failed upload. Re-fetching
+      // the session document here can silently replay the previous, unedited PDF.
+      const queuedFile = op.payload.file;
+      const pdfBlob =
+        queuedFile instanceof Blob
+          ? queuedFile
+          : await fetchPdfBlobForSave(opDocId);
 
       if (opStoredId && !forceNewDocument) {
         await api.createDocumentVersion(opStoredId, {

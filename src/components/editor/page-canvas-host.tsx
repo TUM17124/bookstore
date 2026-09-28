@@ -100,15 +100,16 @@ export function PageCanvasHost({
   const { w: pageW, h: pageH } = effectivePagePoints(page);
   const cssWidth = pageW * scale;
   const cssHeight = pageH * scale;
-  // Repaint when the arranged text changes, not only when the PDF bytes do.
-  // Otherwise a paste that fills the next pages stays invisible until click.
+  // Repaint the read-only text layer whenever any text layout/style metadata
+  // changes, not only when content and bounds change. Otherwise inactive pages
+  // can keep a stale text overlay until they become active.
   const overlayKey = page.elements
     .map((el) =>
       el.type === "text"
-        ? `${el.elementId}\t${el.content}\t${el.bounds.x}\t${el.bounds.y}\t${el.bounds.width}\t${el.bounds.height}`
+        ? JSON.stringify(el)
         : el.elementId,
     )
-    .join("\n");
+    .join("\n") + JSON.stringify(page.blockGroups ?? []);
 
   useEffect(() => {
     const host = containerRef.current;

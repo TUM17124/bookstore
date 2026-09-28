@@ -664,6 +664,22 @@ export async function deleteAudioNote(id: number) {
   return api(`/audio-notes/${id}/`, { method: "DELETE" })
 }
 
+export async function updateAudioNote(
+  id: number,
+  note: string,
+  position?: number,
+) {
+  return api<{ id: number; position: number; note: string }>(
+    `/audio-notes/${id}/`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(
+        position == null ? { note } : { note, position },
+      ),
+    },
+  )
+}
+
 export type PdfNoteRow = {
   id: number | string
   page: number
@@ -691,6 +707,22 @@ export async function addPdfNote(
 export async function deletePdfNote(id: string) {
   return api(`/pdf-notes/${id}/`, { method: "DELETE" })
 }
+
+
+
+export async function updatePdfNote(
+  id: string,
+  page: number,
+  quote: string,
+  thought: string,
+) {
+  return api<PdfNoteRow>(`/pdf-notes/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify({ page, quote, thought, note: thought }),
+  })
+}
+
+
 
 export async function getPdfProgress(bookId: string) {
   return api<{ page: number }>(`/books/${bookId}/pdf-progress/`)

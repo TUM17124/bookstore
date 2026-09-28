@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type Cl
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { getToken } from '@/lib/api'
-import { getPdfProgress, savePdfProgress, getPdfNotes, addPdfNote, deletePdfNote } from '@/lib/api'
+import { getPdfProgress, savePdfProgress, getPdfNotes, addPdfNote, updatePdfNote, deletePdfNote, type PdfNoteRow } from '@/lib/api'
 import {
   notesStorageKey,
   normalizeNoteText,
@@ -294,7 +294,9 @@ export function PdfReader({
   const [obscured, setObscured] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
   const [thoughts, setThoughts] = useState<PdfThought[]>([])
-  const [draft, setDraft] = useState<{
+  const visibleThoughts = loggedIn ? thoughts : []
+    const [draft, setDraft] = useState<{
+    id?: string
     page: number
     quote: string
     thought: string
@@ -816,9 +818,10 @@ export function PdfReader({
   }
 
   useEffect(() => {
+    if (!loggedIn) return
     const local = readStoredThoughts(bookId, url)
     setThoughts(local)
-    if (!loggedIn || !bookId) return
+    if (!bookId) return
     let cancelled = false
     getPdfNotes(bookId)
       .then((rows) => {
@@ -845,7 +848,7 @@ export function PdfReader({
   }, [bookId, url, loggedIn])
 
   function quotesOnPage(pageNum: number): string[] {
-    return thoughts
+    return visibleThoughts
       .filter((row) => row.page === pageNum)
       .map((row) => row.quote)
   }
@@ -866,7 +869,7 @@ export function PdfReader({
   }
 
   function captureHighlight() {
-    if (!notesOpen) return
+    if (!loggedIn || !notesOpen) return
     window.setTimeout(() => {
     const selection = window.getSelection()
     if (!selection || selection.isCollapsed) return
@@ -878,12 +881,16 @@ export function PdfReader({
     const section = element?.closest('section[id^="read-page-"]')
     const pageNum =
       Number(section?.id.replace('read-page-', '')) || pageRef.current
-    setDraft({ page: pageNum, quote, thought: '' })
+        setDraft({ page: pageNum, quote, thought: '' })
     setNoteMsg('')
     }, 0)
   }
 
-  async function saveThought() {
+    async function saveThought() {
+    if (!loggedIn) {
+      setNoteMsg('Log in to create and save PDF notes.')
+      return
+    }
     if (!draft || savingNote) return
     const quote = normalizeNoteText(draft.quote).slice(0, 500)
     if (quote.length < 2) {
@@ -893,7 +900,9 @@ export function PdfReader({
     const thought = draft.thought.trim().slice(0, 280)
     setSavingNote(true)
     const existing = thoughts.find(
-      (row) => row.page === draft.page && row.quote === quote,
+      (row) =>
+        row.id === draft.id ||
+        (row.page === draft.page && row.quote === quote),
     )
     const row: PdfThought = {
       id: existing?.id || `local-${Date.now()}`,
@@ -908,16 +917,23 @@ export function PdfReader({
     writeStoredThoughts(bookId, url, next)
     setDraft(null)
     window.getSelection()?.removeAllRanges()
-    if (!loggedIn || !bookId) {
-      setNoteMsg('Saved on this device.')
+    if (!bookId) {
+      setNoteMsg('Could not save this note because the book is unavailable.')
       setSavingNote(false)
       return
     }
     try {
+      let saved: PdfNoteRow | null = null
       if (existing && /^\d+$/.test(existing.id)) {
-        await deletePdfNote(existing.id).catch(() => {})
+        try {
+          saved = await updatePdfNote(existing.id, row.page, row.quote, row.thought)
+        } catch {
+          await deletePdfNote(existing.id).catch(() => {})
+          saved = await addPdfNote(bookId, row.page, row.quote, row.thought)
+        }
+      } else {
+        saved = await addPdfNote(bookId, row.page, row.quote, row.thought)
       }
-      const saved = await addPdfNote(bookId, row.page, row.quote, row.thought)
       const id = String(saved?.id || row.id)
       const swapped = next.map((item) =>
         item.id === row.id ? { ...item, id } : item,
@@ -931,11 +947,32 @@ export function PdfReader({
     setSavingNote(false)
   }
 
+  function startEditThought(row: PdfThought) {
+    if (!loggedIn) return
+    setNotesOpen(true)
+    setDraft({
+      id: row.id,
+      page: row.page,
+      quote: row.quote,
+      thought: row.thought || '',
+    })
+    setNoteMsg('')
+  }
+
+  function cancelEditThought() {
+    setDraft(null)
+    window.getSelection()?.removeAllRanges()
+  }
+
   function removeThought(row: PdfThought) {
+    if (!loggedIn) return
     const next = thoughts.filter((item) => item.id !== row.id)
     setThoughts(next)
     writeStoredThoughts(bookId, url, next)
-    if (loggedIn && /^\d+$/.test(row.id)) {
+    if (draft?.id === row.id) {
+      setDraft(null)
+    }
+    if (/^\d+$/.test(row.id)) {
       void deletePdfNote(row.id).catch(() => {})
     }
   }
@@ -1390,6 +1427,28 @@ export function PdfReader({
         word.style.boxShadow = '0 1px 3px rgb(0 0 0 / 20%)'
       }
     }
+  }
+
+  function clearActiveWordHighlight() {
+    const previous = ttsActiveWordRef.current
+    if (!previous) return
+
+    for (const prefix of ['tts-sentence', 'pip-tts-sentence'] as const) {
+      const sentence = findSentenceEl(
+        prefix,
+        previous.pageNum,
+        previous.sentenceIndex,
+      )
+      const word = sentence?.querySelector<HTMLElement>(
+        `[data-tts-word="${previous.wordIndex}"]`,
+      )
+      if (word) {
+        word.style.backgroundColor = ''
+        word.style.color = ''
+        word.style.boxShadow = ''
+      }
+    }
+    ttsActiveWordRef.current = null
   }
 
   function scrollPipSentenceIntoView(
@@ -2655,14 +2714,15 @@ export function PdfReader({
           ({ sentence, start }, i: number) => (
             <span
               key={i}
-              role="button"
-              tabIndex={0}
-              title={
-                notesOpen
-                  ? 'Select text to highlight it'
-                  : 'Start robot reader from here'
-              }
+              {...(!notesOpen
+                ? {
+                    role: 'button',
+                    tabIndex: 0,
+                    title: 'Start robot reader from here',
+                  }
+                : {})}
               onClick={() => {
+                if (notesOpen) return
                 const selection = window.getSelection()
                 if (
                   selection &&
@@ -2679,6 +2739,7 @@ export function PdfReader({
               onKeyDown={(
                 e: KeyboardEvent<HTMLSpanElement>,
               ) => {
+                if (notesOpen) return
                 if (
                   e.key === 'Enter' ||
                   e.key === ' '
@@ -2691,7 +2752,11 @@ export function PdfReader({
                   )
                 }
               }}
-              className="cursor-pointer rounded px-0.5 hover:bg-[#f591ac]/25"
+              className={
+                notesOpen
+                  ? 'rounded px-0.5'
+                  : 'cursor-pointer rounded px-0.5 hover:bg-[#f591ac]/25'
+              }
             >
               {paintPieces(
                 piecesBetween(sentence, start, ranges),
@@ -2720,24 +2785,27 @@ export function PdfReader({
         {ttsSentences.map(
           (s: string, i: number) => {
             let wordIndex = 0
-            const isActiveSentence = i === ttsActiveSentence
+            const isActiveSentence = !notesOpen && i === ttsActiveSentence
 
             return (
               <span
                 key={i}
                 id={`${idPrefix}-${pageNum}-${i}`}
-                role="button"
-                tabIndex={0}
-                title="Start robot reader from here"
+                {...(!notesOpen
+                  ? {
+                      role: 'button',
+                      tabIndex: 0,
+                      title: 'Start robot reader from here',
+                    }
+                  : {})}
                 onClick={() =>
-                  void startFromSentence(
-                    pageNum,
-                    i,
-                  )
+                  !notesOpen &&
+                  void startFromSentence(pageNum, i)
                 }
                 onKeyDown={(
                   e: KeyboardEvent<HTMLSpanElement>,
                 ) => {
+                  if (notesOpen) return
                   if (
                     e.key === 'Enter' ||
                     e.key === ' '
@@ -2751,9 +2819,11 @@ export function PdfReader({
                   }
                 }}
                 className={
-                  isActiveSentence
-                    ? 'cursor-pointer rounded bg-[#f591ac]/50 px-0.5 transition-colors'
-                    : 'cursor-pointer rounded px-0.5 transition-colors hover:bg-[#f591ac]/20'
+                  notesOpen
+                    ? 'rounded px-0.5 transition-colors'
+                    : isActiveSentence
+                      ? 'cursor-pointer rounded bg-[#f591ac]/50 px-0.5 transition-colors'
+                      : 'cursor-pointer rounded px-0.5 transition-colors hover:bg-[#f591ac]/20'
                 }
               >
                 {s.split(/(\s+)/).map((part, partIndex) => {
@@ -3127,7 +3197,15 @@ export function PdfReader({
         <button
           type="button"
           onClick={() => {
-            setNotesOpen((open) => !open)
+            const opening = !notesOpen
+            if (opening) {
+              ttsAudioRef.current?.pause()
+              setTtsPlaying(false)
+              ttsPlayingRef.current = false
+              stopFollowLoop()
+              clearActiveWordHighlight()
+            }
+            setNotesOpen(opening)
             setNoteMsg('')
           }}
           className={`rounded-full px-3 py-1 text-sm font-bold ${
@@ -3136,7 +3214,7 @@ export function PdfReader({
               : 'bg-black/10 text-black'
           }`}
         >
-          Notes{thoughts.length ? ` (${thoughts.length})` : ''}
+          Notes{visibleThoughts.length ? ` (${visibleThoughts.length})` : ''}
         </button>
 
         {marked > 0 && (
@@ -3304,14 +3382,16 @@ export function PdfReader({
       )}
 
       {notesOpen ? (
-        <div className="shrink-0 border-b border-black/10 bg-[#efe8d8] px-4 py-3">
+        <div className="flex max-h-[40vh] shrink-0 flex-col overflow-hidden border-b border-black/10 bg-[#efe8d8] px-4 py-3">
           <p className="text-[12px] font-bold uppercase tracking-wider text-black/45">
             Highlight and thoughts
           </p>
           <p className="mt-1 text-[13px] text-black/60">
-            Select a passage on the page, then type what it made you think.
+            {loggedIn
+              ? 'Select a passage on the page, then type what it made you think.'
+              : 'Log in or create an account to highlight passages and keep PDF notes.'}
           </p>
-          {draft ? (
+          {loggedIn && draft ? (
             <div className="mt-3">
               <p className="rounded-xl bg-[#f6e27a] px-3 py-2 text-sm font-semibold leading-relaxed text-black">
                 {draft.quote}
@@ -3330,57 +3410,37 @@ export function PdfReader({
                   disabled={savingNote}
                   className="min-w-0 flex-1 rounded-full border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none disabled:opacity-50"
                 />
-                <button
+                                <button
                   type="button"
                   disabled={savingNote}
                   onClick={() => void saveThought()}
                   className="rounded-full bg-[#f591ac] px-3 py-2 text-sm font-bold text-[#141a32] disabled:opacity-60"
                 >
-                  {savingNote ? 'Saving…' : 'Save'}
+                  {savingNote
+                    ? draft.id
+                      ? 'Updating…'
+                      : 'Saving…'
+                    : draft.id
+                      ? 'Update'
+                      : 'Save'}
                 </button>
+                {draft.id ? (
+                  <button
+                    type="button"
+                    disabled={savingNote}
+                    onClick={cancelEditThought}
+                    className="rounded-full bg-black/10 px-3 py-2 text-sm font-bold text-black disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                ) : null}
               </div>
             </div>
-          ) : (
+          ) : loggedIn ? (
             <p className="mt-2 text-[13px] text-black/45">
               No passage selected yet.
             </p>
-          )}
-          {noteMsg ? (
-            <p className="mt-2 text-[12px] font-semibold text-[#c45b78]">
-              {noteMsg}
-            </p>
           ) : null}
-          <ul className="mt-3 space-y-2">
-            {thoughts.map((row) => (
-              <li key={row.id} className="flex items-start gap-2 text-sm">
-                <button
-                  type="button"
-                  onClick={() => void gotoPage(row.page)}
-                  className="shrink-0 font-bold text-[#c45b78]"
-                >
-                  p.{row.page}
-                </button>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold text-black">
-                    {row.quote}
-                  </span>
-                  {row.thought ? (
-                    <span className="block truncate text-black/60">
-                      {row.thought}
-                    </span>
-                  ) : null}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removeThought(row)}
-                  className="text-black/40"
-                  aria-label="Delete note"
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
           {!loggedIn ? (
             <p className="mt-3 text-[13px] text-black/55">
               <Link href={loginHref} className="font-semibold text-[#c45b78] underline">
@@ -3389,9 +3449,57 @@ export function PdfReader({
               {' · '}
               <Link href={signupHref} className="font-semibold text-[#c45b78] underline">
                 Sign up
-              </Link>{' '}
-              to keep these notes on your account. Until then they stay on this device.
+              </Link>
             </p>
+          ) : null}
+          {loggedIn && noteMsg ? (
+            <p className="mt-2 text-[12px] font-semibold text-[#c45b78]">
+              {noteMsg}
+            </p>
+          ) : null}
+          {loggedIn ? (
+            <ul
+              aria-label="Saved PDF notes"
+              className="mt-3 min-h-0 space-y-2 overflow-y-auto overscroll-contain pr-1"
+            >
+                        {visibleThoughts.map((row) => (
+                <li key={row.id} className="flex items-start gap-2 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => void gotoPage(row.page)}
+                    className="shrink-0 font-bold text-[#c45b78]"
+                  >
+                    p.{row.page}
+                  </button>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold text-black">
+                      {row.quote}
+                    </span>
+                    {row.thought ? (
+                      <span className="block truncate text-black/60">
+                        {row.thought}
+                      </span>
+                    ) : null}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => startEditThought(row)}
+                    className="shrink-0 font-semibold text-[#c45b78]"
+                    aria-label="Edit note"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeThought(row)}
+                    className="text-black/40"
+                    aria-label="Delete note"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
           ) : null}
         </div>
       ) : null}
