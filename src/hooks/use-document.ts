@@ -24,6 +24,18 @@ function boundsApproxEqual(
   );
 }
 
+// After bake+parse, the text Y shifts: parsed.y = stored.y + stored.height - fontSize,
+// parsed.height = fontSize. So the BOTTOM edge (y + height) is invariant across the
+// round-trip. Use this for text element dedup instead of the top-edge comparison.
+function textBoundsApproxEqual(
+  s: { x: number; y: number; width: number; height: number },
+  el: { x: number; y: number; width: number; height: number },
+): boolean {
+  const xMatch = Math.abs(s.x - el.x) <= DEDUP_POS_TOLERANCE;
+  const bottomMatch = Math.abs((s.y + s.height) - (el.y + el.height)) <= DEDUP_POS_TOLERANCE;
+  return xMatch && bottomMatch;
+}
+
 function elementContent(el: Element): string {
   if (el.type === "text" || el.type === "annotation") return el.content ?? "";
   return "";
@@ -76,7 +88,12 @@ function mergeBackendElements(
       if (s.type !== el.type) return false;
       const sContent = s.content;
       // Exact match (single-line or already-normalized content).
-      if (sContent === elContent && boundsApproxEqual(s.bounds, el.bounds)) return true;
+      // For text elements use bottom-edge comparison: after bake+parse the Y shifts
+      // by (textBoxHeight - fontSize) so top-edge comparison always fails.
+      const posMatch = s.type === "text"
+        ? textBoundsApproxEqual(s.bounds, el.bounds)
+        : boundsApproxEqual(s.bounds, el.bounds);
+      if (sContent === elContent && posMatch) return true;
       // Multi-line text: the PDF renderer writes each visual line as a separate
       // text object. Two layouts to handle:
       //
@@ -107,7 +124,7 @@ function mergeBackendElements(
         elContent.length >= 8 &&
         !sContent.includes("\n") &&
         sContent.startsWith(elContent) &&
-        boundsApproxEqual(s.bounds, el.bounds)
+        textBoundsApproxEqual(s.bounds, el.bounds)
       ) return true;
       return false;
     });
