@@ -155,13 +155,16 @@ export class PageRenderPool {
       throw new Error("PageRenderPool: acquire after dispose");
     }
 
+    const fabric = await this.ensureFabric();
+    if (this.disposed) throw new Error("PageRenderPool: acquire after dispose");
     const existing = this.live.get(index);
-    if (existing) {
+    if (existing?.canvas.lowerCanvasEl === el) {
       existing.lastUsed = this.nextTick();
       return existing.canvas;
     }
-
-    const fabric = await this.ensureFabric();
+    // A new host must not share a canvas with an old render still in flight.
+    // The former owner releases its own instance after its render settles.
+    if (existing) this.live.delete(index);
 
     // Make room before allocating so we never exceed the cap.
     if (this.live.size >= this.maxLive) {
@@ -194,11 +197,13 @@ export class PageRenderPool {
    * `fabric.Canvas` instance onto the free-list for reuse. No-op if `index`
    * is not live.
    */
-  release(index: number): void {
+  release(index: number, expectedCanvas?: FabricCanvas): void {
     const entry = this.live.get(index);
-    if (!entry) {
+    if (expectedCanvas && entry?.canvas !== expectedCanvas) {
+      this.safeDispose(expectedCanvas);
       return;
     }
+    if (!entry) return;
     this.live.delete(index);
     this.recycle(entry.canvas);
   }
@@ -417,15 +422,10 @@ export class PageRenderPool {
    */
   private rebind(canvas: FabricCanvas, el: HTMLCanvasElement): void {
     try {
-      const withEl = canvas as unknown as {
-        lowerCanvasEl?: HTMLCanvasElement;
-        setDimensions?: (d: { width: number; height: number }) => void;
-      };
-      if (withEl.lowerCanvasEl && withEl.lowerCanvasEl !== el) {
-        // Replace the live <canvas> node in the DOM and the Fabric reference so
-        // the recycled context draws onto the host's element.
-        el.replaceWith(withEl.lowerCanvasEl);
-      }
+      // Keep both canvases, their wrapper and listeners together. Moving only
+      // the lower canvas leaves an empty page-height wrapper in the old host.
+      if (canvas.wrapperEl) el.replaceWith(canvas.wrapperEl);
+      else if (canvas.lowerCanvasEl !== el) el.replaceWith(canvas.lowerCanvasEl);
     } catch (err) {
       clientLogger.warn("[PageRenderPool] rebind failed:", err);
     }

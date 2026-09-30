@@ -306,6 +306,29 @@ export class OfflineQueue {
     });
   }
 
+  /** Acknowledge only these snapshots; keep other documents and newer saves. */
+  async remove(ids: readonly string[]): Promise<void> {
+    if (!ids.length) return;
+    const selected = new Set(ids);
+    this.memoryQueue = this.memoryQueue.filter((op) => !selected.has(op.id));
+    const db = await this.getDb();
+    if (!db) return;
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const index = store.index('id');
+      for (const id of selected) {
+        const request = index.getKey(id);
+        request.onsuccess = () => {
+          if (request.result !== undefined) store.delete(request.result);
+        };
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  }
+
   /**
    * Vide intégralement la queue (succès de flush ou abandon).
    */
@@ -358,24 +381,23 @@ export class OfflineQueue {
    * @returns Nombre d'opérations rejouées avec succès
    */
   async flush(
-    handler: (op: PendingOperation) => Promise<void>
+    handler: (op: PendingOperation) => Promise<void>,
+    matches: (op: PendingOperation) => boolean = () => true,
   ): Promise<number> {
     let successCount = 0;
     const now = Date.now();
 
-    while (true) {
-      const op = await this.peek();
-      if (!op) break;
+    for (const op of (await this.getAll()).filter(matches)) {
 
       // Purge des ops expirées
       if (now - op.timestamp > OP_MAX_AGE_MS) {
-        await this.dequeue();
+        await this.remove([op.id]);
         log.warn('Purging expired pending operation', { component: 'OfflineQueue', opId: op.id, opType: op.type });
         continue;
       }
 
       // Retirer de la queue avant d'appeler le handler
-      await this.dequeue();
+      await this.remove([op.id]);
 
       try {
         await handler(op);

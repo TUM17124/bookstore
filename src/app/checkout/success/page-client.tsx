@@ -3,28 +3,10 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { getOrder, confirmOrderPayment, getPurchases, type PurchaseItem } from '@/lib/api'
+import { getOrder, confirmOrderPayment, getToken, getBookAccess, downloadBook, requestGuestLink, type BookAccess } from '@/lib/api'
 import { getStoredUser } from '@/lib/auth-client'
+import { useLoggedIn } from '@/lib/use-logged-in'
 import { PdfReader } from '@/components/pdf-reader'
-
-const API = process.env.NEXT_PUBLIC_API_URL!
-
-async function triggerDownload(url: string, fallbackName: string) {
-  const res = await fetch(url)
-  if (!res.ok) return
-  const cd = res.headers.get('Content-Disposition') ?? ''
-  const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)
-  const filename = m?.[1] ? decodeURIComponent(m[1].replace(/"/g, '')) : fallbackName
-  const blob = await res.blob()
-  const objUrl = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = objUrl
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  URL.revokeObjectURL(objUrl)
-  document.body.removeChild(a)
-}
 
 function readStoredBook() {
   if (typeof window === 'undefined') return { id: '', title: '' }
@@ -57,10 +39,11 @@ function SuccessInner() {
   const [productType, setProductType] = useState('')
   const [bookId, setBookId] = useState(bookFromQuery)
   const [bookTitle, setBookTitle] = useState('')
-  const [purchases, setPurchases] = useState<{
-    ebooks: PurchaseItem[]
-    audiobooks: PurchaseItem[]
-  }>({ ebooks: [], audiobooks: [] })
+  const [access, setAccess] = useState<BookAccess | null>(null)
+  const loggedIn = useLoggedIn()
+  const [linkMsg, setLinkMsg] = useState('')
+  const [linkBusy, setLinkBusy] = useState(false)
+
 
   useEffect(() => {
     const fromQuery = (sp.get('email') || '').trim().toLowerCase()
@@ -115,8 +98,17 @@ function SuccessInner() {
         setBookTitle(
           String(o.book?.title || o.book_title || o.title || stored.title || ''),
         )
-        const list = await getPurchases(email)
-        if (!cancelled) setPurchases(list)
+        // Account holders: ask the server what this order unlocks. Guests
+        // (no account) get their access link by email instead.
+        const bid = String(o.book?.id || o.book_id || bookFromQuery || stored.id || '')
+        if (getToken() && bid && o.status === 'paid') {
+          try {
+            const a = await getBookAccess(bid)
+            if (!cancelled) setAccess(a)
+          } catch {
+            // buttons stay hidden
+          }
+        }
       } catch {
         if (!cancelled) {
           const stored = readStoredBook()
@@ -132,14 +124,6 @@ function SuccessInner() {
     }
   }, [orderId, email, reference, bookFromQuery])
 
-  useEffect(() => {
-    if (bookId || !orderId) return
-    const row = [...purchases.ebooks, ...purchases.audiobooks].find(
-      (p) => String(p.order_id) === String(orderId),
-    )
-    if (row?.book_id) setBookId(String(row.book_id))
-  }, [purchases, orderId, bookId])
-
   function applyEmail(e: React.FormEvent) {
     e.preventDefault()
     const next = emailInput.trim().toLowerCase()
@@ -149,19 +133,23 @@ function SuccessInner() {
     setEmail(next)
   }
 
-  const downloadUrl =
-    orderId && email && status === 'paid'
-      ? `${API}/orders/${orderId}/download/?email=${encodeURIComponent(email)}`
-      : null
-
-  const readUrl = downloadUrl ? `${downloadUrl}&inline=1` : null
-  const canRead = Boolean(readUrl && productType !== 'audiobook')
+  const kind = productType === 'audiobook' ? 'audiobook' : 'ebook'
+  const entry = access ? access[kind] : null
+  const canRead = status === 'paid' && kind === 'ebook' && entry?.read === 'full'
+  const canDownload = status === 'paid' && !!entry?.can_download
   const backHref = bookId ? `/?book=${encodeURIComponent(bookId)}` : '/'
 
-  const allPurchases = [
-    ...purchases.ebooks.map((p) => ({ ...p, kind: 'Ebook' })),
-    ...purchases.audiobooks.map((p) => ({ ...p, kind: 'Audiobook' })),
-  ]
+  async function sendLink() {
+    if (!email || linkBusy) return
+    setLinkBusy(true)
+    try {
+      setLinkMsg(await requestGuestLink(email))
+    } catch (err) {
+      setLinkMsg(err instanceof Error ? err.message : 'Could not send a new link.')
+    } finally {
+      setLinkBusy(false)
+    }
+  }
 
   return (
     <main className="mx-auto max-w-md px-4 py-16 text-center">
@@ -202,7 +190,31 @@ function SuccessInner() {
 
       {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
 
-      {downloadUrl && (
+      {status === 'paid' && !loggedIn && (
+        <section className="mt-6 rounded-2xl border border-foreground/10 p-4 text-left text-sm">
+          <p className="font-semibold">Check your email</p>
+          <p className="mt-1 text-foreground/65">
+            We&apos;ve sent a secure link to <strong>{email}</strong>. Open it to read, listen
+            or download (as the author allows). Your purchase never expires — only the link does,
+            and you can always get a new one.
+          </p>
+          <button
+            type="button"
+            disabled={linkBusy}
+            onClick={() => void sendLink()}
+            className="mt-3 rounded-full border border-foreground/20 px-4 py-2 text-xs font-semibold disabled:opacity-50"
+          >
+            {linkBusy ? 'Sending…' : "Didn't get it? Send a new access link"}
+          </button>
+          {linkMsg ? <p className="mt-2 text-xs text-foreground/60" role="status">{linkMsg}</p> : null}
+          <p className="mt-3 text-xs text-foreground/55">
+            <Link href="/signup" className="underline">Create an account</Link> or{' '}
+            <Link href="/login" className="underline">log in</Link> with this email to keep your books in your library.
+          </p>
+        </section>
+      )}
+
+      {(canRead || canDownload) && (
         <div className="mt-6 flex flex-col items-center gap-3">
           {canRead && (
             <button
@@ -213,63 +225,29 @@ function SuccessInner() {
               Read
             </button>
           )}
-          <button
-            type="button"
-            disabled={downloading}
-            onClick={async () => {
-              if (downloading) return
-              setDownloading(true)
-              try {
-                const ext = productType === 'audiobook' ? 'mp3' : 'pdf'
-                await triggerDownload(downloadUrl, `book-${bookId || orderId}.${ext}`)
-              } finally {
-                setDownloading(false)
-              }
-            }}
-            className="inline-flex rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background disabled:opacity-50"
-          >
-            {downloading ? 'Downloading…' : 'Download this file'}
-          </button>
+          {canDownload && (
+            <button
+              type="button"
+              disabled={downloading}
+              onClick={async () => {
+                if (downloading || !bookId) return
+                setDownloading(true)
+                setError('')
+                try {
+                  await downloadBook(bookId, kind, `book-${bookId}.${kind === 'audiobook' ? 'mp3' : 'pdf'}`)
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Download failed.')
+                } finally {
+                  setDownloading(false)
+                }
+              }}
+              className="inline-flex rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background disabled:opacity-50"
+            >
+              {downloading ? 'Downloading…' : 'Download this file'}
+            </button>
+          )}
+          <Link href="/purchases" className="text-xs underline text-foreground/55">Open your purchases</Link>
         </div>
-      )}
-
-      {email && allPurchases.length > 0 && (
-        <section className="mt-10 text-left">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-foreground/40">
-            Your purchases
-          </h2>
-          <ul className="mt-3 space-y-2">
-            {allPurchases.map((p) => (
-              <li
-                key={`${p.kind}-${p.order_id}`}
-                className="flex items-center justify-between rounded-xl border border-foreground/10 px-3 py-2 text-sm"
-              >
-                <Link
-                  href={`/?book=${p.book_id}`}
-                  className="min-w-0 truncate font-medium hover:underline"
-                >
-                  {p.kind} · book #{p.book_id}
-                </Link>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const url = `${API}/orders/${p.order_id}/download/?email=${encodeURIComponent(email)}`
-                    const ext = p.kind === 'Audiobook' ? 'mp3' : 'pdf'
-                    await triggerDownload(url, `book-${p.book_id}.${ext}`)
-                  }}
-                  className="shrink-0 text-xs font-semibold underline"
-                >
-                  Download
-                </button>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-center text-xs text-foreground/45">
-            <Link href={bookId ? `/purchases?book=${encodeURIComponent(bookId)}` : '/purchases'} className="underline">
-              Open full purchase list
-            </Link>
-          </p>
-        </section>
       )}
 
       <p className="mt-8">
@@ -281,7 +259,7 @@ function SuccessInner() {
         </Link>
       </p>
 
-      {readerOpen && readUrl && (
+      {readerOpen && canRead && bookId && (
         <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
             <button
@@ -295,7 +273,7 @@ function SuccessInner() {
               {bookTitle || 'Reader'}
             </p>
           </header>
-          <PdfReader url={readUrl} bookId={bookId || undefined} />
+          <PdfReader bookId={bookId} />
         </div>
       )}
     </main>

@@ -25,6 +25,7 @@ import { addPdfBackground, backgroundRenderScale } from "./lib/pdf-background";
 import { effectivePagePoints } from "./lib/page-layout";
 import type { PageRenderPool } from "./lib/page-render-pool";
 import { renderElementsOverlay } from "./render-elements";
+import { SerialRenderQueue } from "./lib/serial-render-queue";
 
 export interface PageCanvasHostProps {
   /** Page to render. */
@@ -85,6 +86,7 @@ export function PageCanvasHost({
   // (taking the canvas + Fabric wrapper with it) — no phantom removeChild.
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
+  const renderQueueRef = useRef(new SerialRenderQueue());
 
   // Keep the latest callbacks in refs so the render effect does not re-run (and
   // re-rasterise the page) merely because a parent passed new closures.
@@ -127,7 +129,10 @@ export function PageCanvasHost({
     el.style.width = `${cssWidth}px`;
     el.style.height = `${cssHeight}px`;
     el.style.display = "block";
-    host.appendChild(el);
+    // Detach the whole Fabric surface when this render is replaced.
+    const mount = document.createElement("div");
+    mount.appendChild(el);
+    host.appendChild(mount);
     canvasElRef.current = el;
 
     // `cancelled` guards against the effect being torn down (unmount, dep
@@ -136,7 +141,9 @@ export function PageCanvasHost({
     let cancelled = false;
     let acquired: FabricCanvas | null = null;
 
-    void (async () => {
+    let settled = false;
+    void renderQueueRef.current.run(async () => {
+      if (cancelled) return;
       let canvas: FabricCanvas;
       try {
         canvas = await pool.acquire(index, el);
@@ -146,7 +153,7 @@ export function PageCanvasHost({
       }
       if (cancelled) {
         // Effect already cleaned up; release immediately and bail.
-        pool.release(index);
+        pool.release(index, canvas);
         return;
       }
       acquired = canvas;
@@ -203,7 +210,9 @@ export function PageCanvasHost({
       if (page.elements.length > 0) {
         try {
           const fontResolver = getFontFaceNameRef.current;
-          await renderElementsOverlay(canvas, page.elements, await import("fabric"), {
+          const fabric = await import("fabric");
+          if (cancelled) return;
+          await renderElementsOverlay(canvas, page.elements, fabric, {
             readonly: true,
             ...(fontResolver ? { getFontFaceName: fontResolver } : {}),
             ...(page.blockGroups && page.blockGroups.length > 0
@@ -224,28 +233,24 @@ export function PageCanvasHost({
         // ignore — canvas may have been recycled
       }
       onReadyRef.current?.(index);
-    })();
+    }).catch((error: unknown) => {
+      clientLogger.warn("[PageCanvasHost] render failed:", error);
+    }).finally(() => {
+      settled = true;
+      if (cancelled && acquired) pool.release(index, acquired);
+    });
 
     return () => {
       cancelled = true;
-      if (acquired) {
+      if (acquired && settled) {
         // Recycle the Fabric canvas back to the pool (clear + free-list). The
         // pool keeps the DOM node alive for reuse; it is not removed here.
-        pool.release(index);
+        pool.release(index, acquired);
         onDisposeRef.current?.(index);
       }
-      // Detach any residual <canvas> (the impérative one and/or the pool's
-      // recycled node Fabric left behind) so an in-place re-init (scale/page
-      // change WITHOUT a React unmount) starts from an empty container instead
-      // of stacking canvases. On a real React unmount this container <div> is
-      // removed wholesale by React, so this is a best-effort cleanup for the
-      // re-run path only.
-      const container = containerRef.current;
-      if (container) {
-        for (const node of Array.from(container.querySelectorAll("canvas"))) {
-          node.parentNode?.removeChild(node);
-        }
-      }
+      // Remove the entire effect-owned mount, including empty wrappers.
+      // Keep Fabric's internal DOM intact for reuse after the render settles.
+      mount.remove();
       canvasElRef.current = null;
     };
     // Re-render on page identity, geometry, pool change, OR a background-revision

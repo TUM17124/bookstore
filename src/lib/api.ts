@@ -156,23 +156,22 @@ export async function api<T = unknown>(
   return data as T
 }
 
-export async function getPurchases(email: string): Promise<{
+/** The logged-in account's own purchases (the server no longer answers
+ * anonymous lookups by email). */
+export async function getPurchases(): Promise<{
   ebooks: PurchaseItem[]
   audiobooks: PurchaseItem[]
 }> {
-  if (!email) return { ebooks: [], audiobooks: [] }
-  const res = await fetch(
-    `${API}/orders/purchases/?email=${encodeURIComponent(email)}`,
-  )
+  const token = getToken()
+  if (!token) return { ebooks: [], audiobooks: [] }
+  const res = await fetch(`${API}/orders/purchases/`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
   if (res.status === 429) {
     throw new Error("Too many lookups. Wait a minute and try again.")
   }
   if (!res.ok) return { ebooks: [], audiobooks: [] }
   return res.json()
-}
-
-export function downloadOrderUrl(orderId: number, email: string) {
-  return `${API}/orders/${orderId}/download/?email=${encodeURIComponent(email)}`
 }
 
 export async function getBooks(params?: {
@@ -504,16 +503,6 @@ export async function confirmOrderPayment(
   return res.json()
 }
 
-export function freeBookUrl(
-  bookId: string | number,
-  type: "ebook" | "audiobook" = "ebook",
-  inline = false,
-) {
-  const q = new URLSearchParams({ type })
-  if (inline) q.set("inline", "1")
-  return `${API}/books/${bookId}/free/?${q}`
-}
-
 export async function getOrder(orderId: string, email?: string) {
   const q = email ? `?email=${encodeURIComponent(email)}` : ""
   return api(`/orders/${orderId}/${q}`)
@@ -781,10 +770,6 @@ export async function searchTrack(payload: {
   } catch {
     // never block UI
   }
-}
-
-export function previewBookUrl(bookId: string | number) {
-  return `${API}/books/${bookId}/preview/?inline=1`
 }
 
 export type BookmarkRow = {
@@ -1077,3 +1062,233 @@ export async function unsubscribePush(endpoint?: string) {
 
 export default searchTrack
 
+
+// ─── Book content (entitlement-checked; see backend shop/views_books.py) ──
+//
+// The browser never receives a protected book FILE. The reader asks the
+// server for a short-lived manifest of per-page URLs and fetches one page's
+// text at a time; audio plays from a short-lived signed stream URL; downloads
+// go through an endpoint that re-checks the downloadable flag + limit.
+// Guests (no account) are identified by their purchase-link token in the
+// X-Guest-Token header instead of a Bearer JWT.
+
+export type BookKind = "ebook" | "audiobook"
+
+export type BookAccessEntry = {
+  available: boolean
+  read: "full" | "preview" | "none"
+  preview_pages: number | null
+  can_download: boolean
+  purchased: boolean
+  privileged: boolean
+  downloads_remaining?: number
+}
+
+export type BookAccess = { ebook: BookAccessEntry; audiobook: BookAccessEntry }
+
+export type ReaderManifest = {
+  book_id: string
+  total_pages: number
+  allowed_pages: number
+  preview: boolean
+  expires_in: number
+  watermark: string
+  copy_protected: boolean
+  pages: { page: number; url: string }[]
+}
+
+export class ContentError extends Error {
+  status: number
+  code: string
+  constructor(message: string, status: number, code = "") {
+    super(message)
+    this.name = "ContentError"
+    this.status = status
+    this.code = code
+  }
+}
+
+/** Origin of the Django API ("https://plugyard.com" for ".../api"). The
+ * server hands back paths like "/api/books/…"; resolve them against this. */
+export function apiOrigin(): string {
+  try {
+    return new URL(API).origin
+  } catch {
+    return ""
+  }
+}
+
+function contentHeaders(guestToken?: string | null): Record<string, string> {
+  const h: Record<string, string> = {}
+  if (guestToken) h["X-Guest-Token"] = guestToken
+  else {
+    const t = getToken()
+    if (t) h.Authorization = `Bearer ${t}`
+  }
+  return h
+}
+
+/** fetch() for book-content endpoints: attaches the Bearer token (or guest
+ * token), retries once after refreshing an expired access token, and turns
+ * error bodies into ContentError with the server's message + code. */
+export async function contentFetch(
+  pathOrUrl: string,
+  init: RequestInit = {},
+  guestToken?: string | null,
+): Promise<Response> {
+  const url = /^https?:/.test(pathOrUrl)
+    ? pathOrUrl
+    : pathOrUrl.startsWith("/api/")
+      ? `${apiOrigin()}${pathOrUrl}`
+      : `${API}${pathOrUrl}`
+  const go = async () => {
+    try {
+      return await fetch(url, {
+        ...init,
+        cache: "no-store",
+        headers: { ...(init.headers as Record<string, string>), ...contentHeaders(guestToken) },
+      })
+    } catch {
+      // Network failure / blocked request: never show the raw "Failed to fetch".
+      throw new ContentError("Couldn't reach PlugYard. Check your connection and try again.", 0, "network")
+    }
+  }
+  let res = await go()
+  if (res.status === 401 && !guestToken && getRefreshToken()) {
+    try {
+      await refreshAccessToken()
+      res = await go()
+    } catch {
+      // fall through with the 401
+    }
+  }
+  if (!res.ok) {
+    const body = (await res.clone().json().catch(() => ({}))) as { error?: string; detail?: string; code?: string }
+    const msg =
+      body.error ||
+      (res.status === 429 ? "Too many requests — slow down and try again in a minute." : "") ||
+      body.detail ||
+      `Request failed (${res.status})`
+    throw new ContentError(msg, res.status, body.code || "")
+  }
+  return res
+}
+
+export async function getBookAccess(bookId: string | number, guestToken?: string | null): Promise<BookAccess> {
+  const res = await contentFetch(`/books/${bookId}/access/`, {}, guestToken)
+  return res.json()
+}
+
+export async function getReaderManifest(bookId: string | number, guestToken?: string | null): Promise<ReaderManifest> {
+  const res = await contentFetch(`/books/${bookId}/reader/`, {}, guestToken)
+  return res.json()
+}
+
+export async function getReaderPageText(url: string, guestToken?: string | null): Promise<string> {
+  const res = await contentFetch(url, {}, guestToken)
+  const data = (await res.json()) as { text?: string }
+  return data.text || ""
+}
+
+export async function getAudioStreamUrl(bookId: string | number, guestToken?: string | null): Promise<string> {
+  const res = await contentFetch(`/books/${bookId}/audio/stream-url/`, { method: "POST" }, guestToken)
+  const data = (await res.json()) as { url: string }
+  return `${apiOrigin()}${data.url}`
+}
+
+function filenameFrom(res: Response, fallback: string) {
+  const cd = res.headers.get("Content-Disposition") ?? ""
+  const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)
+  return m?.[1] ? decodeURIComponent(m[1].replace(/"/g, "")) : fallback
+}
+
+/** Fetch an allowed download (server re-checks flag + limit every time). */
+export async function fetchBookDownload(
+  bookId: string | number,
+  kind: BookKind,
+  guestToken?: string | null,
+  fallbackName?: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await contentFetch(`/books/${bookId}/download/?kind=${kind}`, {}, guestToken)
+  return {
+    blob: await res.blob(),
+    filename: filenameFrom(res, fallbackName || (kind === "ebook" ? "book.pdf" : "book.mp3")),
+  }
+}
+
+/** Download and hand the file to the browser's save flow. */
+export async function downloadBook(
+  bookId: string | number,
+  kind: BookKind,
+  fallbackName: string,
+  guestToken?: string | null,
+): Promise<void> {
+  const { blob, filename } = await fetchBookDownload(bookId, kind, guestToken, fallbackName)
+  const objUrl = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = objUrl
+  a.download = filename || fallbackName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(objUrl), 1000)
+}
+
+// ─── Guest purchases ─────────────────────────────────────────────────────
+
+export type GuestLibraryItem = {
+  order_id: number
+  kind: BookKind
+  book: { id: string; title: string; author: string }
+  available: boolean
+  can_read: boolean
+  can_download: boolean
+  downloads_remaining: number
+}
+
+export type GuestLibrary = { email: string; expires_at: string; items: GuestLibraryItem[] }
+
+export async function getGuestLibrary(guestToken: string): Promise<GuestLibrary> {
+  const res = await contentFetch(`/guest/access/`, {}, guestToken)
+  return res.json()
+}
+
+/** "Get a new access link". Always resolves with the same generic message
+ * (the server never reveals whether the email bought anything). */
+export async function requestGuestLink(email: string): Promise<string> {
+  const res = await fetch(`${API}/guest/renew/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { message?: string; detail?: string }
+  if (res.status === 429) throw new Error("Too many requests for a new link. Try again later.")
+  if (!res.ok) throw new Error(data.detail || "Could not send a new link. Try again.")
+  return data.message || "If this email has purchases, we've sent a link."
+}
+
+const GUEST_TOKEN_KEY = "plugyard_guest_token"
+
+export function storeGuestToken(token: string) {
+  try {
+    sessionStorage.setItem(GUEST_TOKEN_KEY, token)
+  } catch {
+    // private mode: token only lives in memory for this page
+  }
+}
+
+export function readGuestToken(): string | null {
+  try {
+    return sessionStorage.getItem(GUEST_TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function clearGuestToken() {
+  try {
+    sessionStorage.removeItem(GUEST_TOKEN_KEY)
+  } catch {
+    // ignore
+  }
+}

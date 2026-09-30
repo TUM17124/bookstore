@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
-import { getToken } from '@/lib/api'
+import { getToken, getReaderManifest, getReaderPageText, ContentError, type ReaderManifest } from '@/lib/api'
 import { getPdfProgress, savePdfProgress, getPdfNotes, addPdfNote, updatePdfNote, deletePdfNote, type PdfNoteRow } from '@/lib/api'
 import {
   notesStorageKey,
@@ -32,15 +32,6 @@ import {
 } from '@/lib/api'
 import { usePictureInPicture } from '@/lib/pip'
 import { ProGateModal } from '@/components/pro-gate-modal'
-
-declare global {
-  interface Window {
-    pdfjsLib?: {
-      GlobalWorkerOptions: { workerSrc: string }
-      getDocument: (opts: Record<string, unknown>) => { promise: Promise<any> }
-    }
-  }
-}
 
 function markKey(url: string) {
   return `plugyard-read-mark:${url.split('?')[0]}`
@@ -245,20 +236,33 @@ function highlightSelectStyle(on: boolean): CSSProperties {
   } as CSSProperties
 }
 
+/**
+ * Reads a book page by page from the server (never the file itself): the
+ * server returns a short-lived manifest of signed per-page URLs covering only
+ * the pages this user may read (preview pages for non-buyers), and each page
+ * returns just its text. Guests pass their purchase-link token instead of a
+ * login. What is readable, the watermark and copy protection are all decided
+ * by the server (backend shop/views_books.py).
+ */
 export function PdfReader({
-  url,
   bookId,
-  previewPages,
-  watermark,
+  guestToken,
+  onAccessError,
 }: {
-  url: string
-  bookId?: string
-  previewPages?: number
-  watermark?: string
+  bookId: string
+  guestToken?: string | null
+  /** Called with the server's error (e.g. an expired guest link). */
+  onAccessError?: (err: ContentError) => void
 }) {
+  // Stable per-book key for local progress/notes (formerly the file URL).
+  const url = `book:${bookId}`
   const scrollRef = useRef<HTMLDivElement>(null)
   const pipScrollRef = useRef<HTMLDivElement>(null)
-  const pdfRef = useRef<any>(null)
+  const manifestRef = useRef<ReaderManifest | null>(null)
+  const [previewPages, setPreviewPages] = useState(0)
+  const [watermark, setWatermark] = useState('')
+  const [copyProtected, setCopyProtected] = useState(false)
+  const [accessError, setAccessError] = useState<ContentError | null>(null)
   const maxPagesRef = useRef(0)
   const loadingPage = useRef<Set<number>>(new Set())
   const lastSave = useRef(0)
@@ -721,6 +725,34 @@ export function PdfReader({
   }, [])
 
   useEffect(() => {
+    // Stop TTS immediately when the tab hides or the page unloads.
+    // The robot reader is not a background-playback feature — unlike
+    // the audio player, it should halt the moment the user leaves.
+    const stopTts = () => {
+      const a = ttsAudioRef.current
+      if (a && !a.paused) {
+        a.pause()
+        a.currentTime = 0
+      }
+      if (ttsPlayingRef.current) {
+        ttsPlayingRef.current = false
+        setTtsPlaying(false)
+      }
+      const raf = followRafRef.current
+      if (raf) cancelAnimationFrame(raf)
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') stopTts()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pagehide', stopTts)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', stopTts)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!pipWindow) return
     const doc = pipWindow.document
     doc.documentElement.style.height = '100%'
@@ -993,23 +1025,40 @@ export function PdfReader({
     })
   }
 
+  async function refreshManifest() {
+    const m = await getReaderManifest(bookId, guestToken)
+    manifestRef.current = m
+    return m
+  }
+
   async function extractPage(n: number) {
-    const pdf = pdfRef.current
     const max = maxPagesRef.current
-    if (!pdf || !max || n < 1 || n > max) return
+    if (!manifestRef.current || !max || n < 1 || n > max) return
     if (pagesRef.current[n] || loadingPage.current.has(n)) return
     loadingPage.current.add(n)
     try {
-      const pdfPage = await pdf.getPage(n)
-      const content = await pdfPage.getTextContent()
-      const text = content.items
-        .map((item: { str?: string }) => item.str || '')
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim()
+      const entry = () => manifestRef.current?.pages.find((p) => p.page === n)
+      let text: string
+      try {
+        text = await getReaderPageText(entry()!.url, guestToken)
+      } catch (err) {
+        // Page URLs are short-lived: re-issue the manifest once and retry.
+        if (err instanceof ContentError && err.code === 'expired') {
+          await refreshManifest()
+          text = await getReaderPageText(entry()!.url, guestToken)
+        } else {
+          throw err
+        }
+      }
       commitPageText(n, text || `Page ${n}`)
-    } catch {
-      commitPageText(n, `Page ${n} could not be read.`)
+    } catch (err) {
+      if (err instanceof ContentError && (err.status === 401 || err.status === 403) && err.code !== 'page_not_allowed') {
+        setAccessError(err)
+        onAccessError?.(err)
+      }
+      commitPageText(n, err instanceof ContentError && err.status === 429
+        ? `Page ${n} is loading too fast — wait a moment and scroll again.`
+        : `Page ${n} could not be read.`)
     } finally {
       loadingPage.current.delete(n)
     }
@@ -1017,7 +1066,7 @@ export function PdfReader({
 
   async function bufferAround(center: number, count = AHEAD) {
     const max = maxPagesRef.current
-    if (!pdfRef.current || !max) return
+    if (!manifestRef.current || !max) return
     const start = Math.max(1, center)
     const end = Math.min(max, center + count)
     for (let i = start; i <= end; i++) await extractPage(i)
@@ -1035,35 +1084,25 @@ export function PdfReader({
 
   useEffect(() => {
     let cancelled = false
-    async function loadScript() {
-      if (window.pdfjsLib) return
-      await new Promise<void>((resolve, reject) => {
-        const s = document.createElement('script')
-        s.src = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js'
-        s.onload = () => resolve()
-        s.onerror = () => reject(new Error('pdf.js failed'))
-        document.body.appendChild(s)
-      })
-      window.pdfjsLib!.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js'
-    }
     ;(async () => {
       try {
         setStatus('Opening…')
         setPages({})
+        setAccessError(null)
         pagesRef.current = {}
         maxPagesRef.current = 0
-        await loadScript()
+        const m = await refreshManifest()
         if (cancelled) return
-        const pdf = await window.pdfjsLib!.getDocument({ url, disableStream: false, disableAutoFetch: true }).promise
-        if (cancelled) return
-        pdfRef.current = pdf
-        const rawTotal = pdf.numPages
-        const totalPages = previewPages ? Math.min(rawTotal, previewPages) : rawTotal
+        // Only the pages the server allows are ever listed or fetchable.
+        const totalPages = m.allowed_pages
         maxPagesRef.current = totalPages
         totalRef.current = totalPages
         setTotal(totalPages)
+        setPreviewPages(m.preview ? m.allowed_pages : 0)
+        setWatermark(m.watermark || '')
+        setCopyProtected(!!m.copy_protected)
         let saved = Number(localStorage.getItem(markKey(url)) || 0)
-        if (loggedIn && bookId) {
+        if (loggedIn && bookId && !guestToken) {
           try {
             const cloud = await getPdfProgress(bookId)
             if (cloud.page > saved) saved = cloud.page
@@ -1082,16 +1121,24 @@ export function PdfReader({
         requestAnimationFrame(() => {
           document.getElementById(`read-page-${startAt}`)?.scrollIntoView({ block: 'start' })
         })
-      } catch {
-        if (!cancelled) setStatus('Could not open this book.')
+      } catch (err) {
+        if (cancelled) return
+        if (err instanceof ContentError) {
+          setAccessError(err)
+          onAccessError?.(err)
+          setStatus(err.message)
+        } else {
+          setStatus('Could not open this book.')
+        }
       }
     })()
     return () => {
       cancelled = true
-      pdfRef.current = null
+      manifestRef.current = null
       maxPagesRef.current = 0
     }
-  }, [url, bookId, previewPages])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookId, guestToken])
 
   function onScroll() {
     const root = scrollRef.current
@@ -2198,12 +2245,24 @@ export function PdfReader({
         ref={scrollRef}
         onScroll={onScroll}
         onContextMenu={(e: MouseEvent) => {
-          if (highlightMode) e.preventDefault()
+          if (highlightMode || copyProtected) e.preventDefault()
+        }}
+        // Paid books: copying text out is discouraged, not prevented — a
+        // determined user can always read what is on their screen.
+        onCopy={(e: ClipboardEvent) => {
+          if (copyProtected) e.preventDefault()
+        }}
+        onCut={(e: ClipboardEvent) => {
+          if (copyProtected) e.preventDefault()
         }}
         className={`min-h-0 flex-1 overflow-auto ${highlightMode ? highlightSelectClass(true) : 'select-none'}`}
         style={highlightSelectStyle(highlightMode)}
       >
-        {status ? <p className="p-6 text-sm font-semibold text-black/50">{status}</p> : null}
+        {status ? (
+          <p className={`p-6 text-sm font-semibold ${accessError ? 'text-[#b4233c]' : 'text-black/50'}`} role={accessError ? 'alert' : undefined}>
+            {status}
+          </p>
+        ) : null}
         {resumeAt > 1 ? (
           <p className="px-4 pt-4 text-center text-[13px] font-semibold text-[#c45b78]">
             Continuing from page {resumeAt}{loggedIn ? ' · synced to your account' : ''}

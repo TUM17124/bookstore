@@ -24,16 +24,20 @@ function boundsApproxEqual(
   );
 }
 
-// After bake+parse, the text Y shifts: parsed.y = stored.y + stored.height - fontSize,
-// parsed.height = fontSize. So the BOTTOM edge (y + height) is invariant across the
-// round-trip. Use this for text element dedup instead of the top-edge comparison.
+// After bake+parse the text Y may shift depending on textbox height vs fontSize.
+// Both the top edge and the bottom edge have been observed as invariant under
+// different engine/font conditions, so we accept a match if EITHER edge is
+// within tolerance. This handles both tight textboxes (top invariant) and tall
+// textboxes (bottom invariant) without false negatives.
 function textBoundsApproxEqual(
   s: { x: number; y: number; width: number; height: number },
   el: { x: number; y: number; width: number; height: number },
 ): boolean {
   const xMatch = Math.abs(s.x - el.x) <= DEDUP_POS_TOLERANCE;
+  if (!xMatch) return false;
+  const topMatch = Math.abs(s.y - el.y) <= DEDUP_POS_TOLERANCE;
   const bottomMatch = Math.abs((s.y + s.height) - (el.y + el.height)) <= DEDUP_POS_TOLERANCE;
-  return xMatch && bottomMatch;
+  return topMatch || bottomMatch;
 }
 
 function elementContent(el: Element): string {
@@ -135,7 +139,11 @@ function mergeBackendElements(
     // the first occurrence of each (type + content + approximate position).
     if (el.type === "text" && elContent.length > 0) {
       const rx = Math.round(el.bounds.x / DEDUP_POS_TOLERANCE);
-      const ry = Math.round(el.bounds.y / DEDUP_POS_TOLERANCE);
+      // Use bottom edge (y+height) for the Y bucket: baked duplicates share the
+      // same bottom Y even when their top Y and height differ across save/reload
+      // cycles. Using top-Y misses historical duplicates that were baked before
+      // the dedup fix was in place and now live in the PDF binary at shifted Ys.
+      const ry = Math.round((el.bounds.y + el.bounds.height) / DEDUP_POS_TOLERANCE);
       const key = `${rx}:${ry}:${elContent}`;
       if (parsedSeenKey.has(key)) continue;
       parsedSeenKey.add(key);

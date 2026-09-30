@@ -17,6 +17,7 @@ import type {
 } from "@giga-pdf/types";
 import type { Canvas as FabricCanvas, FabricObject } from "fabric";
 import { clientLogger } from "@/lib/pdf-editor/client-logger";
+import { SerialRenderQueue } from "./lib/serial-render-queue";
 // Real-time collaboration (soft-locks between simultaneous editors) is out of
 // scope for this migration - the store/socket wiring was removed. This
 // canvas's lock-mirroring code is left in place but permanently sees an empty
@@ -1453,7 +1454,9 @@ export function EditorCanvas({
       const pageH = pageDimsRef.current.height;
       if (pageW <= 0 || pageH <= 0) return null;
       const availW = wrapper.clientWidth - CANVAS_VIEWPORT_PADDING * 2;
-      const availH = wrapper.clientHeight - CANVAS_VIEWPORT_PADDING * 2;
+      // This wrapper can grow with the page. Fit against the browser height
+      // so the rendered page cannot feed its own height back into the zoom.
+      const availH = window.innerHeight - CANVAS_VIEWPORT_PADDING * 2;
       if (availW <= 0 || availH <= 0) return null;
       const zoomForMode =
         mode === "width" ? availW / pageW : Math.min(availW / pageW, availH / pageH);
@@ -1483,7 +1486,11 @@ export function EditorCanvas({
     recompute();
     const observer = new ResizeObserver(recompute);
     observer.observe(wrapper);
-    return () => observer.disconnect();
+    window.addEventListener("resize", recompute);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", recompute);
+    };
   }, [fitMode, page, computeFitZoom]);
 
   // Ref pour tracker le contenu original des textes (pour detecter les vraies modifications)
@@ -2600,7 +2607,9 @@ export function EditorCanvas({
     if (!containerRef.current) return;
 
     // Import dynamique de Fabric.js pour éviter les erreurs SSR
+    let cancelled = false;
     import("fabric").then((fabricModule) => {
+      if (cancelled) return;
       // Conservé pour la construction hors-loadPage (session de paragraphe).
       fabricModuleRef.current = fabricModule;
       const { Canvas, Rect, Circle, Ellipse, Triangle, Line, IText, Textbox, Group, FabricText, Polyline, Path: FabricPath } = fabricModule;
@@ -2615,7 +2624,8 @@ export function EditorCanvas({
       // on ne l'attend pas, mais on détache nous-mêmes le nœud pour éviter
       // l'empilement de canvases au ré-init in-place).
       if (fabricRef.current) {
-        try { fabricRef.current.dispose(); } catch { /* dispose best-effort */ }
+        fabricRef.current.wrapperEl.remove();
+        try { void fabricRef.current.dispose(); } catch { /* dispose best-effort */ }
         fabricRef.current = null;
       }
       if (canvasRef.current && canvasRef.current.parentNode) {
@@ -3748,7 +3758,13 @@ export function EditorCanvas({
       try { commitLiveTextEdit(); } catch { /* commit best-effort */ }
       // dispose() est ASYNC en fabric v7 (la restauration du DOM par Fabric
       // n'aura pas lieu avant le démontage React) — on ne l'attend pas.
-      try { fabricRef.current?.dispose(); } catch { /* dispose best-effort */ }
+      cancelled = true;
+      loadedPageIdRef.current = null;
+      const oldCanvas = fabricRef.current;
+      // Remove the entire Fabric wrapper immediately; async dispose must not
+      // leave an empty page-height box in the React host.
+      oldCanvas?.wrapperEl.remove();
+      try { void oldCanvas?.dispose(); } catch { /* dispose best-effort */ }
       fabricRef.current = null;
       // Détacher le canvas impératif de SON wrapper Fabric. Sûr car
       // canvasRef.current vit dans le wrapper `.canvas-container` créé par
@@ -3802,13 +3818,16 @@ export function EditorCanvas({
   // `getFontFaceName` had ZERO fonts loaded. Reading the resolver through this
   // ref makes every (re)load use the CURRENT resolver instead, so embedded fonts
   // apply on page navigation (not only on the initial font-finish re-render).
+  const renderQueueRef = useRef(new SerialRenderQueue());
+  const loadedPageIdRef = useRef<string | null>(null);
   const renderElementsOverlayRef = useRef(renderElementsOverlay);
   renderElementsOverlayRef.current = renderElementsOverlay;
 
   // Charger une page dans le canvas
   const loadPage = useCallback(
-    async (pageData: PageObject, fabricModule: typeof import("fabric")) => {
-      if (!fabricRef.current) return false;
+    (pageData: PageObject, fabricModule: typeof import("fabric")) => renderQueueRef.current.run(async () => {
+      if (!fabricRef.current || pageRef.current?.pageId !== pageData.pageId) return false;
+      loadedPageIdRef.current = null;
       // Switching the page shown by this canvas clears every object. Commit
       // the live edit first or the text that was being typed never reaches
       // the scene graph.
@@ -3921,6 +3940,7 @@ export function EditorCanvas({
       applyCollabLocksRef.current?.();
 
       canvas.requestRenderAll();
+      loadedPageIdRef.current = pageData.pageId;
       return true;
       } finally {
         endProgrammaticApply();
@@ -3930,7 +3950,7 @@ export function EditorCanvas({
           focusResumedTextEdit(canvas);
         }
       }
-    },
+    }),
     // beginProgrammaticApply/endProgrammaticApply/renderElementsOverlay sont
     // référencés via la closure du premier render (deps [] volontaires,
     // pattern existant) — begin/end sont stables, renderElementsOverlay ne
@@ -3984,9 +4004,11 @@ export function EditorCanvas({
   // font loading→ready one-shot below to swap fallback metrics for the exact
   // embedded subsets. Wrapped in begin/endProgrammaticApply so the remove/add
   // churn fires no scene-graph mutations (no save loop, no history entry).
-  const reRenderOverlayForFonts = useCallback(async () => {
+  const reRenderOverlayForFonts = useCallback(() => renderQueueRef.current.run(async () => {
     const canvas = fabricRef.current;
-    if (!canvas || !page) return;
+    // Initial loading already reads the latest font resolver. Never paint an
+    // overlay before its background or onto a page that has been replaced.
+    if (!canvas || !page || loadedPageIdRef.current !== page.pageId || pageRef.current?.pageId !== page.pageId) return;
     const fabricModule = await import("fabric");
     beginProgrammaticApply();
     try {
@@ -4011,7 +4033,7 @@ export function EditorCanvas({
     } finally {
       endProgrammaticApply();
     }
-  }, [page, renderElementsOverlay, beginProgrammaticApply, endProgrammaticApply]);
+  }), [page, renderElementsOverlay, beginProgrammaticApply, endProgrammaticApply]);
 
   // Re-render the overlay EXACTLY ONCE, on the embedded-fonts loading→ready EDGE.
   // The first loadPage runs before async font loading finishes, so its text
@@ -4026,7 +4048,9 @@ export function EditorCanvas({
     prevFontsLoadingRef.current = fontsLoading;
     if (wasLoading !== true || fontsLoading) return;
     if (!fabricRef.current || !page) return;
-    void reRenderOverlayForFonts();
+    void reRenderOverlayForFonts().catch((error: unknown) => {
+      clientLogger.warn("[EditorCanvas] Font refresh failed:", error);
+    });
   }, [fontsLoading, page, reRenderOverlayForFonts]);
 
   // The continuation page often finishes loading before the parent passes the
