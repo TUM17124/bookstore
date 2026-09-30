@@ -1553,14 +1553,12 @@ export async function renderElementsOverlay(
         const _indentOffset = leftIndentOffset(textElement.style);
         const { display: _displayText, prefixLen: _markerLen } =
           composeDisplayText(textElement.content || "", textElement.style);
-        // Textbox, not IText: IText never wraps, so a user-typed box (widened
-        // by margin-enforcement's clamp) that grew past one line would come
-        // back from a save+reparse round-trip as a single overflowing line -
-        // exactly the redesign #4 bug this fixes. Textbox at a width that
-        // already fits the content (the common case for genuinely single-
-        // line native PDF text) renders identically to IText: wrapping only
-        // ever engages when the content is actually wider than `width`.
-        const textObj = new Textbox(_displayText, {
+        // Native PDF runs already have fixed line breaks. Even a fraction of
+        // a point of browser font-metric drift can make a Textbox wrap one
+        // character and grow upward into the preceding line. Keep those runs
+        // on one line; only user-created flowing boxes should reflow.
+        const TextObject = (_flowBox ? Textbox : IText) as typeof IText;
+        const textObj = new TextObject(_displayText, {
           ...baseOptions,
           left: baseOptions.left + _indentOffset,
           top: _flowBox ? textElement.bounds.y : _baselineTop,

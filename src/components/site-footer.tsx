@@ -22,10 +22,9 @@ const browseLinks = [
 
 const toolLinks = [
   { href: "/pro", label: "★ PlugYard Pro" },
-  { href: "/tools/pdf-editor", label: "PDF Editor" },
+  { href: "/tools/pdf-editor", label: "Free PDF Editor" },
   { href: "/purchases", label: "My Purchases" },
   { href: "/bookmarks", label: "Bookmarks" },
-  { href: "/credits/paid", label: "TTS Credits" },
 ]
 
 function SiteFooterInner() {
@@ -62,8 +61,8 @@ function SiteFooterInner() {
               </span>
             </Link>
             <p className="mt-3 max-w-xs text-sm leading-relaxed text-foreground/55">
-              Discover featured titles, save bookmarks, and share ratings with a
-              quiet, focused reading experience.
+              Kenya's digital bookstore. Buy eBooks &amp; audiobooks instantly — no
+              account needed. Free PDF editor with auto-save included.
             </p>
 
             {/* Contact — visible */}

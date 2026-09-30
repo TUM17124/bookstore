@@ -4,7 +4,7 @@ import LoginPage from "./page-client"
 export const metadata: Metadata = {
   title: "Log In",
   description:
-    "Log in to your PlugYard account to access your library, bookmarks, reading progress, and purchases.",
+    "Log in to your PlugYard account to access your purchased eBooks, audiobooks, saved PDFs, bookmarks, and reading progress.",
   alternates: {
     canonical: "https://plugyard.com/login/",
   },

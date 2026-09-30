@@ -1,4 +1,9 @@
 const OFFERS = [
+  "Buy eBooks & Audiobooks — No Account Needed",
+  "Free In-Browser PDF Editor with Auto-Save",
+  "Smart Built-In PDF Reader",
+  "Instant Download After Purchase",
+  "Text-to-Speech Audio Narration",
   "Agribusiness loan plans",
   "County tender & RFQ templates",
   "KRA tax & SME bookkeeping",
@@ -51,7 +56,7 @@ export function OfferMarquee() {
             key={i}
             className="shrink-0 px-6 text-[13px] font-semibold tracking-wide text-foreground/80 whitespace-nowrap"
           >
-            <span className="mr-3 font-bold text-foreground">PlugYard library</span>
+            <span className="mr-3 font-bold text-foreground">PlugYard</span>
             {line}
             <span className="mx-8 text-foreground/25">·</span>
           </p>
