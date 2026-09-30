@@ -1,4 +1,11 @@
 User-agent: *
 Allow: /
+Disallow: /checkout/
+Disallow: /checkout/success/
+Disallow: /dashboard/
+Disallow: /settings/
+Disallow: /verify-email/
+Disallow: /reset-password/
+Disallow: /forgot-password/
 
 Sitemap: https://plugyard.com/sitemap.xml

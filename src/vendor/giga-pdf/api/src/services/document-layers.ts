@@ -1,3 +1,4 @@
+import { api } from "@/lib/pdf-editor/api";
 import { apiClient } from '../client';
 import type { LayerObject } from '@giga-pdf/types';
 
@@ -21,30 +22,6 @@ export interface DocumentLayersData {
  * Backend endpoints: /storage/documents/{storedDocumentId}/layers
  */
 export const documentLayersService = {
-  /**
-   * Fetch saved user layers + membership for a stored document.
-   * Returns `{ layers: [], membership: {} }` when none have been saved.
-   * Backend: GET /storage/documents/{storedDocumentId}/layers
-   */
-  getDocumentLayers: async (storedDocumentId: string): Promise<DocumentLayersData> => {
-    const response = await apiClient.get<DocumentLayersData>(
-      `/storage/documents/${storedDocumentId}/layers`
-    );
-    return response.data;
-  },
-
-  /**
-   * Upsert user layers + membership for a stored document.
-   * Backend: PUT /storage/documents/{storedDocumentId}/layers
-   */
-  putDocumentLayers: async (
-    storedDocumentId: string,
-    data: DocumentLayersData
-  ): Promise<DocumentLayersData> => {
-    const response = await apiClient.put<DocumentLayersData>(
-      `/storage/documents/${storedDocumentId}/layers`,
-      data
-    );
-    return response.data;
-  },
+  getDocumentLayers: (id: string): Promise<DocumentLayersData> => api.getDocumentLayers(id),
+  putDocumentLayers: (id: string, data: DocumentLayersData): Promise<DocumentLayersData> => api.putDocumentLayers(id, data),
 };

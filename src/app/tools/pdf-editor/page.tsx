@@ -1,4 +1,5 @@
 "use client";
+import { bakedElements, rememberBakedElements, serialExecutor } from "@/lib/pdf-editor/document-persistence";
 
 import { useState, useCallback, useMemo, useRef, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -253,6 +254,9 @@ import {
  */
 function convertToApiElement(element: Element): ElementCreateRequest {
   const base: ElementCreateRequest = {
+    element_id: element.elementId,
+    revision: element.persistenceRevision,
+    snapshot: element as unknown as Record<string, unknown>,
     type: element.type,
     bounds: {
       x: element.bounds.x,
@@ -1186,7 +1190,35 @@ function EditorPageInner() {
   // upload succeeds — flushed by the onSaved callback below. Keeping them
   // in Redis until S3 confirms means a transient upload failure is recoverable
   // (Redis still has the user data, scene graph rebuilds via merge on reload).
-  const pendingFlushIdsRef = useRef<string[]>([]);
+  const binaryQueueRef = useRef(serialExecutor());
+  const paginationRef = useRef<Promise<boolean> | null>(null);
+  const elementWritesRef = useRef(new Map<string, Promise<unknown>>());
+  // Guards handleElementRemoved against double-invocation (deleteSelected fires
+  // object:removed AND explicitly calls onElementRemoved for the same ID).
+  const deletingElementsRef = useRef(new Set<string>());
+  const writeElement = useCallback((element: Element, pageNumber: number, create: boolean) => {
+    const clientId = element.elementId;
+    const previous = elementWritesRef.current.get(clientId) ?? Promise.resolve();
+    const write = previous.catch(() => undefined).then(async () => {
+      if (!documentId) throw new Error("Document is not ready");
+      const data = convertToApiElement(element);
+      const result = await withRetry(() => create
+        ? api.createElement(documentId, pageNumber, data)
+        : api.updateElement(documentId, clientId, data));
+      // The backend may assign its own UUID as the primary key (ignoring the
+      // client element_id). If so, delete the orphan server-UUID record now so
+      // it does not survive a reload as a stale empty element — the write chain
+      // for clientId remains valid for subsequent PATCH/DELETE lookups.
+      if (create && result.elementId && result.elementId !== clientId) {
+        void api.deleteElement(documentId, result.elementId).catch(() => undefined);
+      }
+      return result;
+    });
+    elementWritesRef.current.set(clientId, write);
+    // Keep a rejected promise observable by save, without an unhandled rejection.
+    void write.catch(() => undefined);
+    return write;
+  }, [documentId]);
 
   // `bakedIndices` records which 0-based page indices had their CONTENT re-baked
   // in this binary swap. Defaults to `null` (structural change / unknown) so
@@ -1194,6 +1226,7 @@ function EditorPageInner() {
   // bake in `getPreparedBlob` passes the precise indices for the fast path.
   const updateCurrentPdfFile = useCallback(
     (file: File | null, bakedIndices: number[] | null = null) => {
+      if (file && currentPdfFileRef.current) rememberBakedElements(file, [...bakedElements(currentPdfFileRef.current), ...bakedElements(file)]);
       currentPdfFileRef.current = file;
       setCurrentPdfFile(file);
       setBakedPageIndices(bakedIndices);
@@ -1212,7 +1245,7 @@ function EditorPageInner() {
     updateCurrentPdfFile(flattenedPdfFile);
   }, [flattenedPdfFile, updateCurrentPdfFile]);
 
-  const getPreparedBlob = useCallback(async (): Promise<Blob | null> => {
+  const prepareBlobCore = useCallback(async (): Promise<Blob | null> => {
     const pdfFile = currentPdfFileRef.current;
     if (!pdfFile) {
       // pdfFile is null only before the initial load resolves. The save flow
@@ -1235,6 +1268,7 @@ function EditorPageInner() {
     // binary was successfully patched.
     const ops = peekOperations();
     const contentMods = contentModificationsRef.current;
+    await Promise.all([...elementWritesRef.current.values()]);
 
     // Nothing to bake — upload the current in-memory PDF as-is. This covers
     // page-level ops (rotate/extract) that already mutated currentPdfFile.
@@ -1320,18 +1354,13 @@ function EditorPageInner() {
         pending.filter((mod) => !contentMods.includes(mod)),
       );
 
-      // Stash the elementIds for post-upload Redis flush. We can't delete
-      // from Redis here because S3 hasn't confirmed yet — if upload fails,
-      // Redis is still our recovery source on next reload (via merge).
-      const elementIdsBaked = bakedOps
-        .map((op) => {
-          const el = op.element as { elementId?: string };
-          return el?.elementId;
-        })
-        .filter((id): id is string => Boolean(id));
-      if (elementIdsBaked.length > 0) {
-        pendingFlushIdsRef.current.push(...elementIdsBaked);
-      }
+      const acknowledgements = bakedOps.flatMap((op) => {
+        const element = op.element as Element;
+        return element.persistenceRevision ? [{ element_id: element.elementId, revision: element.persistenceRevision }] : [];
+      });
+      const entries = [...bakedElements(pdfFile), ...acknowledgements];
+      rememberBakedElements(blob, entries);
+      if (currentPdfFileRef.current) rememberBakedElements(currentPdfFileRef.current, entries);
 
       return blob;
     } catch (err) {
@@ -1347,6 +1376,14 @@ function EditorPageInner() {
     updateCurrentPdfFile,
     setContentModifications,
   ]);
+
+  const prepareBlob = useCallback(() => binaryQueueRef.current(prepareBlobCore), [prepareBlobCore]);
+  const getPreparedBlob = useCallback(async () => {
+    canvasHandle?.commitTextEdit();
+    const flow = paginationRef.current;
+    if (flow && !(await flow)) throw new Error("Text pagination did not complete");
+    return prepareBlob();
+  }, [canvasHandle, prepareBlob]);
 
   // PARTIE 4 — Rafraîchissement des métadonnées GED après un save éditeur.
   // Best-effort + throttlé (max 1 fois / 60s) : (a) régénère la miniature du
@@ -1453,50 +1490,9 @@ function EditorPageInner() {
       // PARTIE 4 — best-effort GED refresh (miniature + texte de recherche),
       // fire-and-forget : ne bloque ni le flush Redis ni le flux de save.
       void refreshGedMetadata();
-      /*
-        Drop the local content-modification cache NOW that S3 has the bytes.
+      // Recovery cleanup is part of the version upload transaction. Never
+      // clear newer local edits in a callback for an older upload.
 
-        This cache exists only to survive the 2s debounce window (a reload in
-        that window would otherwise drop the edits). Once the upload is
-        confirmed, re-applying it is pure harm: every entry is a text
-        modification keyed by a 0-based page index, and it is re-baked on the
-        NEXT save AND re-applied on reload. For a large paste that meant each
-        page kept a second copy of its own text, plus page 1's text reappearing
-        on the last page - exactly the "duplicated / stacked text" report. The
-        old comment here claimed onSaved cleared it; it never did, so the cache
-        grew for the whole editing session.
-      */
-      setContentModifications([]);
-      // Flush Redis backend for elements that were baked into the PDF in the
-      // last apply-elements pass. We only run this AFTER S3 confirms the
-      // upload, otherwise a transient upload failure would lose the data
-      // permanently (Redis cleared + S3 unchanged).
-      const flushIds = pendingFlushIdsRef.current;
-      if (flushIds.length === 0 || !documentId) return;
-      pendingFlushIdsRef.current = [];
-      try {
-        await api.batchElementOperations(
-          documentId,
-          flushIds.map((elementId) => ({
-            action: "delete" as const,
-            element_id: elementId,
-          })),
-        );
-        clientLogger.debug(
-          "[editor] Redis flushed for",
-          flushIds.length,
-          "baked elements",
-        );
-      } catch (err) {
-        // Non-fatal: harmless duplicate at next reload (caught by the dedup
-        // heuristic in mergeBackendElements). Push the ids back so a later
-        // save tick gets another chance to clean up.
-        pendingFlushIdsRef.current.push(...flushIds);
-        clientLogger.warn(
-          "[editor] Redis flush failed — will retry next save:",
-          err,
-        );
-      }
     },
   });
 
@@ -2188,6 +2184,7 @@ function EditorPageInner() {
       pageIndex = effectivePageIndex,
       selectNewElement = true,
     ) => {
+      element = { ...element, persistenceRevision: crypto.randomUUID() };
       clientLogger.debug("[editor] Element added:", element);
       setDirty(true);
       const pageNumber = pageIndex + 1;
@@ -2225,41 +2222,17 @@ function EditorPageInner() {
         });
       }
 
-      // Persister l'élément dans le backend (scene graph Redis) avec retry
-      // exponentiel — couvre les hiccups Redis/réseau transients sans
-      // bloquer l'UI. Le PDF S3 est de toute façon savé en parallèle, donc
-      // un échec définitif côté Redis ne perd pas l'élément (le bake S3
-      // reste).
-      if (documentId) {
-        const apiElement = convertToApiElement(element);
-        try {
-          await withRetry(
-            () => api.createElement(documentId, pageNumber, apiElement),
-            {
-              onAttemptFailed: (attempt, err) =>
-                clientLogger.warn(
-                  `[API] createElement attempt ${attempt} failed:`,
-                  err,
-                ),
-            },
-          );
-          clientLogger.debug("[API] Element created in backend:", element.elementId);
-        } catch (error) {
-          clientLogger.error(
-            "[API] createElement failed after retries — element will be persisted via PDF bake only:",
-            error,
-          );
-        }
-      }
+      await writeElement(element, pageNumber, true);
 
       // Sauvegarder le PDF vers S3 (debounced: batch ajouts rapprochés)
       saveWithPriority("debounced");
     },
-    [setDirty, saveWithPriority, documentId, storedDocumentId, effectivePageIndex, queueAdd, addElementToPage, pages, selectElements]
+    [setDirty, saveWithPriority, documentId, storedDocumentId, effectivePageIndex, queueAdd, addElementToPage, pages, selectElements, writeElement]
   );
 
     const handleElementModified = useCallback(
     async (element: Element, oldBounds?: Element["bounds"]) => {
+      element = { ...element, persistenceRevision: crypto.randomUUID() };
       clientLogger.debug("[editor] Element modified:", element);
       setDirty(true);
 
@@ -2291,42 +2264,13 @@ function EditorPageInner() {
       queueUpdate(pageNumber, element, oldBounds ?? element.bounds);
       emitElementUpdate(element.elementId, element);
 
-      if (documentId) {
-        const updates = convertToApiElement(element);
-        try {
-          await withRetry(
-            () => api.updateElement(documentId, element.elementId, updates),
-            {
-              onAttemptFailed: (attempt, err) => {
-                const status = (err as { status?: number })?.status;
-                if (status === 404) return;
-                clientLogger.warn(
-                  `[API] updateElement attempt ${attempt} failed:`,
-                  err,
-                );
-              },
-            },
-          );
-          clientLogger.debug("[API] Element updated in backend:", element.elementId);
-        } catch (error) {
-          const status = (error as { status?: number })?.status;
-          if (status === 404) {
-            clientLogger.debug(
-              "[API] updateElement: parsed element not in Redis — will persist via PDF bake",
-              element.elementId,
-            );
-          } else {
-            clientLogger.error(
-              "[API] updateElement failed after retries — change will persist via PDF bake:",
-              error,
-            );
-          }
-        }
-      }
+      // Parsed PDF runs have no recovery row until edited; upsert by stable ID.
+      await writeElement(element, pageNumber, true);
 
       saveWithPriority("debounced");
     },
     [
+      writeElement,
       setDirty,
       emitElementUpdate,
       saveWithPriority,
@@ -2370,6 +2314,11 @@ function EditorPageInner() {
 
     const handleElementRemoved = useCallback(
     async (elementId: string) => {
+      // deleteSelected fires object:removed AND an explicit onElementRemoved call
+      // for the same elementId. Guard so the second call is a no-op — otherwise
+      // queueDelete gets two ops (double-bake) and api.deleteElement is called twice.
+      if (deletingElementsRef.current.has(elementId)) return;
+      deletingElementsRef.current.add(elementId);
       clientLogger.debug("[editor] Element removed:", elementId);
       setDirty(true);
       deselectElement(elementId);
@@ -2417,6 +2366,7 @@ function EditorPageInner() {
       }
 
       saveWithPriority("debounced");
+      deletingElementsRef.current.delete(elementId);
     },
     [
       setDirty,
@@ -2827,12 +2777,21 @@ function EditorPageInner() {
     [pages, handleElementUpdate],
   );
 
+  const fetchDocumentBlob = useCallback(async (): Promise<Blob | null> => {
+    if (!documentId) return null;
+    const token = await ensureFreshAuthToken();
+    const res = await fetch(api.getDocumentDownloadUrl(documentId), {
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (!res.ok) return null;
+    return res.blob();
+  }, [documentId]);
+
   const handleExport = useCallback(async () => {
     if (!currentPdfFile) {
-      // Fall back to server download if no local PDF
-      if (documentId) {
-        window.open(api.getDocumentDownloadUrl(documentId), "_blank");
-      }
+      const blob = await fetchDocumentBlob();
+      if (blob) downloadBlob(blob, `${name || 'document'}.pdf`);
       return;
     }
 
@@ -2878,12 +2837,10 @@ function EditorPageInner() {
       downloadBlob(flattenedBlob, `${name || 'document'}.pdf`);
     } catch (err) {
       clientLogger.error('[editor] Export failed:', err);
-      // Fall back to server download
-      if (documentId) {
-        window.open(api.getDocumentDownloadUrl(documentId), "_blank");
-      }
+      const blob = await fetchDocumentBlob();
+      if (blob) downloadBlob(blob, `${name || 'document'}.pdf`);
     }
-  }, [currentPdfFile, currentPage, currentPageIndex, contentModifications, applyElements, flattenPdf, name, documentId]);
+  }, [currentPdfFile, currentPage, currentPageIndex, contentModifications, applyElements, flattenPdf, name, documentId, fetchDocumentBlob]);
 
   // Restore the document to its original (v1) PDF binary by asking the
   // backend to copy v1 forward as a new current version. This is the
@@ -3118,17 +3075,17 @@ function EditorPageInner() {
     const adoptModifiedPdf = useCallback(
     (
       blob: Blob,
-      opts: { reparse?: boolean; bakedIndices?: number[] | null } = {},
+      opts: {
+        reparse?: boolean;
+        bakedIndices?: number[] | null;
+        save?: boolean;
+      } = {},
     ): File | null => {
       const file = currentPdfFileRef.current;
       if (!file) return null;
       const newFile = new File([blob], file.name, {
         type: "application/pdf",
       });
-      // null = full canvas rebuild (rotate / resize / reparse).
-      // [] = same page structure, keep existing Fabric objects at their
-      // current zoom/size. Add/delete/move MUST use this or overlays
-      // remount at the unscaled parse box until the user clicks them.
       const bakedIndices =
         opts.bakedIndices !== undefined
           ? opts.bakedIndices
@@ -3137,7 +3094,9 @@ function EditorPageInner() {
             : null;
       updateCurrentPdfFile(newFile, bakedIndices);
       setDirty(true);
-      saveWithPriority("immediate");
+      if (opts.save !== false) {
+        saveWithPriority("immediate");
+      }
       if (opts.reparse !== false) {
         void reparseFromFile(newFile);
       }
@@ -3145,7 +3104,6 @@ function EditorPageInner() {
     },
     [setDirty, saveWithPriority, updateCurrentPdfFile, reparseFromFile],
   );
-
   // ── Native paragraph/list-format bake (the flat-index ↔ BlockAddr bridge) ──
   //
   // Word-like paragraph formatting (alignment, left indent, line spacing) and
@@ -3499,7 +3457,7 @@ function EditorPageInner() {
     async (
       operation: "add" | "copy" | "rotate" | "delete" | "move" | "resize",
       params: Record<string, unknown>,
-      opts: { reparse?: boolean } = {},
+       opts: { reparse?: boolean; save?: boolean } = {},
     ): Promise<File | null> => {
       const pendingBeforePrepare =
         peekOperations().length + contentModificationsRef.current.length;
@@ -4396,199 +4354,48 @@ function EditorPageInner() {
     [runPageOperation],
   );
 
-  const handleTextOverflow = useCallback(
-    async (
-      continuations: TextElement[],
-      sourcePageIndex: number,
-    ): Promise<boolean> => {
-      const sourcePage = pages[sourcePageIndex];
-      if (!sourcePage || continuations.length === 0) return false;
-
-      // The page operation starts from currentPdfFileRef, not the in-memory
-      // operation queue. Bake the clipped source textbox first so adding pages
-      // cannot replace the PDF with a version that still contains stale text.
-      const pendingBeforePrepare =
-        peekOperations().length + contentModificationsRef.current.length;
-      const fileBeforePrepare = currentPdfFileRef.current;
-      const prepared = await getPreparedBlob();
-      if (
-        !prepared ||
-        (pendingBeforePrepare > 0 &&
-          currentPdfFileRef.current === fileBeforePrepare)
-      ) {
-        toast({
-          title: "Text pagination failed",
-          description:
-            "The edited text could not be saved before adding continuation pages. The original text remains in the text box.",
-          variant: "destructive",
-        });
-        return false;
-      }
-
-      const rollbackInsertedPages = async (count: number): Promise<boolean> => {
-        let rolledBack = true;
-        for (let offset = count - 1; offset >= 0; offset -= 1) {
-          const removed = await runPageOperation(
-            "delete",
-            { pageNumber: sourcePageIndex + offset + 2 },
-            { reparse: false },
-          );
-          if (!removed) {
-            rolledBack = false;
-            clientLogger.error(
-              "[editor] Failed to roll back a partially inserted text page",
-              { sourcePageIndex, offset },
-            );
-          }
-        }
-        const file = currentPdfFileRef.current;
-        if (file) {
-          const parsed = await reparseFromFile(file);
-          if (parsed) replacePages(parsed);
-          else rolledBack = false;
-        } else {
-          rolledBack = false;
-        }
-        return rolledBack;
-      };
-
-      let insertedPages = 0;
-      const pageWidth = sourcePage.dimensions.width;
-      const pageHeight = sourcePage.dimensions.height;
-      for (let offset = 0; offset < continuations.length; offset += 1) {
-        const added = await runPageOperation(
-          "add",
-          {
-            afterPage: sourcePageIndex + offset,
-            width: pageWidth,
-            height: pageHeight,
-          },
-          { reparse: false },
-        );
-        if (!added) break;
-        insertedPages += 1;
-      }
-
-      if (insertedPages !== continuations.length) {
-        const rolledBack = await rollbackInsertedPages(insertedPages);
-        toast({
-          title: "Text pagination failed",
-          description: rolledBack
-            ? "The full text remains in the original text box."
-            : "The full text remains in the original text box, but an empty page may remain.",
-          variant: "destructive",
-        });
-        return false;
-      }
-
-      const file = currentPdfFileRef.current;
-      const parsedPages = file ? await reparseFromFile(file) : null;
-      const currentPages = pagesRef.current;
-      if (
-        !parsedPages ||
-        parsedPages.length < currentPages.length + insertedPages
-      ) {
-        clientLogger.error(
-          "[editor] Could not re-parse pages after text pagination",
-          {
-            sourcePageIndex,
-            insertedPages,
-            parsedPageCount: parsedPages?.length ?? 0,
-            currentPageCount: currentPages.length,
-          },
-        );
-        const rolledBack = await rollbackInsertedPages(insertedPages);
-        toast({
-          title: "Text pagination failed",
-          description: rolledBack
-            ? "The full text remains in the original text box."
-            : "The full text remains in the original text box, but an empty page may remain.",
-          variant: "destructive",
-        });
-        return false;
-      }
-
-      // Page insertion only changes page structure. Keep all current elements
-      // on existing pages (including the just-edited source textbox) instead
-      // of replacing them with a parse of the pre-bake PDF and losing unsaved
-      // scene-graph changes.
-      const lastContinuation = continuations[continuations.length - 1];
-      if (lastContinuation) {
-        // Set before the state updates so the effect below can move the caret
-        // onto the last new page once that page actually contains the text.
-        pendingFlowNavRef.current = {
-          index: sourcePageIndex + continuations.length,
-          elementId: lastContinuation.elementId,
-        };
-      }
-      const insertedFrom = sourcePageIndex + 1;
-      const insertedTo = sourcePageIndex + insertedPages + 1;
-      const insertedFromParse = parsedPages.slice(insertedFrom, insertedTo);
-      if (insertedFromParse.length !== insertedPages) {
-        // The re-parse does not line up with the pages we just inserted, so we
-        // cannot say which parsed pages are the new blank ones. Guessing here is
-        // what previously spliced real content from the WRONG pages into the
-        // document (text shifting onto neighbouring pages) and produced a
-        // phantom trailing page that had no text to show. Fail cleanly and
-        // roll the insertion back instead.
-        clientLogger.error(
-          "[editor] Inserted pages do not match the re-parsed page range",
-          {
-            sourcePageIndex,
-            insertedPages,
-            parsedPageCount: parsedPages.length,
-            got: insertedFromParse.length,
-          },
-        );
-        const rolledBack = await rollbackInsertedPages(insertedPages);
-        toast({
-          title: "Text pagination failed",
-          description: rolledBack
-            ? "The full text remains in the original text box."
-            : "The full text remains in the original text box, but an empty page may remain.",
-          variant: "destructive",
-        });
-        return false;
-      }
-      const nextPages = [
-        ...currentPages.slice(0, sourcePageIndex + 1),
-        ...insertedFromParse,
-        ...currentPages.slice(sourcePageIndex + 1),
-      ];
-      replacePages(nextPages);
-      pagesRef.current = nextPages;
-      /*
-        Sequentially, never Promise.all.
-
-        A 115-page paste produces 114 continuations. Each handleElementAdded
-        call mutates the shared scene graph, appends to the operation queue and
-        fires a createElement request, so running them concurrently let those
-        updates interleave: pages were added in a racy order and a single
-        merge could land several continuations on the same page, which is the
-        "several texts stacked on top of each other" the user reported. One at
-        a time is slower but each continuation is guaranteed its own page, in
-        reading order.
-      */
-      for (let offset = 0; offset < continuations.length; offset += 1) {
-        await handleElementAdded(
-          continuations[offset]!,
-          sourcePageIndex + offset + 1,
-          false,
-        );
-      }
+  const handleTextOverflow = useCallback((continuations: TextElement[], sourcePageIndex: number): Promise<boolean> => {
+    if (paginationRef.current) return paginationRef.current;
+    const work = binaryQueueRef.current(async () => {
+      const source = pagesRef.current[sourcePageIndex];
+      if (!source || !continuations.length) return false;
+      // Source text and all prior edits are baked first. The service then
+      // inserts and paints every continuation in ONE atomic PDF operation.
+      const prepared = await prepareBlobCore();
+      if (!prepared) throw new Error("Document is not ready for pagination");
+      const result = await pageOperation.mutateAsync({ file: prepared, operation: "add", params: {
+        afterPage: sourcePageIndex + 1, count: continuations.length,
+        width: source.dimensions.width, height: source.dimensions.height,
+        elements: continuations,
+      }});
+      if (!(result instanceof Blob)) throw new Error("Pagination returned no PDF");
+      const inserted: PageObject[] = continuations.map((element, offset) => ({
+        ...source, pageId: crypto.randomUUID(), pageNumber: sourcePageIndex + offset + 2,
+        elements: [element], blockGroups: [], preview: { thumbnailUrl: null, fullUrl: null },
+      }));
+      const current = pagesRef.current;
+      const next = [...current.slice(0, sourcePageIndex + 1), ...inserted, ...current.slice(sourcePageIndex + 1)]
+        .map((page, index) => ({ ...page, pageNumber: index + 1 }));
+      const file = new File([result], currentPdfFileRef.current?.name ?? "document.pdf", { type: "application/pdf" });
+      rememberBakedElements(file, bakedElements(prepared));
+      updateCurrentPdfFile(file);
+      pagesRef.current = next;
+      replacePages(next);
+      setDirty(true);
+      pendingFlowNavRef.current = { index: sourcePageIndex + continuations.length, elementId: continuations.at(-1)!.elementId };
       return true;
-    },
-    [
-      pages,
-      runPageOperation,
-      peekOperations,
-      getPreparedBlob,
-      reparseFromFile,
-      replacePages,
-      handleElementAdded,
-      toast,
-    ],
-  );
+    }).catch((error: unknown) => {
+      clientLogger.error("[editor] Text pagination failed", error);
+      toast({ title: "Text pagination failed", description: "The full text remains available in the source text box. No continuation pages were committed.", variant: "destructive" });
+      return false;
+    });
+    paginationRef.current = work;
+    void work.then((success) => {
+      if (paginationRef.current === work) paginationRef.current = null;
+      if (success) saveWithPriority("immediate");
+    });
+    return work;
+  }, [prepareBlobCore, pageOperation, updateCurrentPdfFile, replacePages, setDirty, saveWithPriority, toast]);
 
   // Text that spills past a page is inserted on new pages below it. Navigate
   // there only after those pages and their text elements are in the scene
@@ -4892,7 +4699,7 @@ function EditorPageInner() {
     const handleInsertBlankPage = useCallback(
     async (position: "before" | "after") => {
       const idx = effectivePageIndex;
-      const afterPage = position === "after" ? idx : idx - 1;
+      const afterPage = position === "after" ? idx + 1 : idx;
       const ok = await runPageOperation("add", { afterPage }, { reparse: false });
       if (!ok) return;
       addPageLocal();

@@ -154,17 +154,32 @@ export function paginateFlowLines(
   return pages;
 }
 
+/**
+ * Exclusive source range for one page slice.
+ * Every character belongs to exactly one slice — no overlap, no dropped
+ * wrap-spaces. Using visual-line `.join("\\n")` was what put page 1's
+ * characters onto the last page.
+ */
+export function flowSliceSourceText(
+  text: string,
+  slices: FlowSlice[],
+  index: number,
+): string {
+  const slice = slices[index];
+  if (!slice) return "";
+  const start = Math.max(0, slice.start);
+  const end =
+    index < slices.length - 1
+      ? Math.max(start, slices[index + 1]!.start)
+      : text.length;
+  return text.slice(start, end);
+}
+
 /** Visual lines of one page, joined so a later bake keeps every line. */
 export function flowSliceContent(
   text: string,
-  lines: FlowLine[],
+  _lines: FlowLine[],
   slice: FlowSlice,
 ): string {
-  return slice.lineIndexes
-    .map((index) => {
-      const line = lines[index];
-      if (!line) return "";
-      return text.slice(line.start, line.end);
-    })
-    .join("\n");
+  return text.slice(slice.start, slice.end);
 }

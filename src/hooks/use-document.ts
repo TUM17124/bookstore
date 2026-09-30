@@ -9,17 +9,18 @@ import type { DocumentObject, DocumentLanguageInfo, PageObject, BookmarkObject, 
 
 // Tolerance for "same position" heuristic when matching parsed PDF elements
 // against Redis elements that have a different elementId (post-bake case).
-const DEDUP_BOUNDS_TOLERANCE_PX = 2;
+// Only compare X,Y — width/height differ between the user's text-box size
+// (stored in Redis) and the rendered text width returned by the PDF parser.
+// Increased to 8 to absorb per-render position drift across multiple bake cycles.
+const DEDUP_POS_TOLERANCE = 8;
 
 function boundsApproxEqual(
   a: { x: number; y: number; width: number; height: number },
   b: { x: number; y: number; width: number; height: number },
 ): boolean {
   return (
-    Math.abs(a.x - b.x) <= DEDUP_BOUNDS_TOLERANCE_PX &&
-    Math.abs(a.y - b.y) <= DEDUP_BOUNDS_TOLERANCE_PX &&
-    Math.abs(a.width - b.width) <= DEDUP_BOUNDS_TOLERANCE_PX &&
-    Math.abs(a.height - b.height) <= DEDUP_BOUNDS_TOLERANCE_PX
+    Math.abs(a.x - b.x) <= DEDUP_POS_TOLERANCE &&
+    Math.abs(a.y - b.y) <= DEDUP_POS_TOLERANCE
   );
 }
 
@@ -58,19 +59,57 @@ function mergeBackendElements(
     elementId: el.elementId,
   }));
   const filtered: Element[] = [];
+
+  // Track already-accepted (content, page) signatures to deduplicate parsed
+  // elements that appear more than once in the PDF binary (can happen when a
+  // document was saved while the reload-duplicate bug was still active).
+  const parsedSeenKey = new Set<string>();
+
   for (const el of byId.values()) {
     const isBackendOriginal = backendSignatures.some((s) => s.elementId === el.elementId);
     if (isBackendOriginal) {
       filtered.push(el);
       continue;
     }
-    const looksBaked = backendSignatures.some(
-      (s) =>
-        s.type === el.type &&
-        s.content === elementContent(el) &&
-        boundsApproxEqual(s.bounds, el.bounds),
-    );
-    if (!looksBaked) filtered.push(el);
+    const elContent = elementContent(el);
+    const looksBaked = backendSignatures.some((s) => {
+      if (s.type !== el.type) return false;
+      const sContent = s.content;
+      // Exact match (single-line or already-normalized content).
+      if (sContent === elContent && boundsApproxEqual(s.bounds, el.bounds)) return true;
+      // Multi-line text: the PDF renderer writes each visual line as a separate
+      // text object. Two layouts to handle:
+      //
+      //   a) Old renderer (single addText call): parser merges all lines back
+      //      WITHOUT newlines → "line1line2line3". Strip \n from both sides.
+      //
+      //   b) New renderer (one addText call per line): parser returns one element
+      //      per line → "line1", "line2", … Each line is a proper substring of
+      //      the original multi-line Redis content. Match if the parsed content
+      //      equals any individual line of the Redis element, or the full content
+      //      after stripping newlines.
+      if (s.type === "text" && sContent.includes("\n")) {
+        // Case (a): full content strip match.
+        if (sContent.replace(/\n/g, "") === elContent.replace(/\n/g, "")) return true;
+        // Case (b): parsed element is a single baked line of the Redis element.
+        if (sContent.split("\n").some((line) => line === elContent && line.length > 0)) return true;
+      }
+      return false;
+    });
+    if (looksBaked) continue;
+
+    // Dedup within parsed elements: if the PDF binary itself has duplicates
+    // (e.g., written twice during a previous reload-bug session), only keep
+    // the first occurrence of each (type + content + approximate position).
+    if (el.type === "text" && elContent.length > 0) {
+      const rx = Math.round(el.bounds.x / DEDUP_POS_TOLERANCE);
+      const ry = Math.round(el.bounds.y / DEDUP_POS_TOLERANCE);
+      const key = `${rx}:${ry}:${elContent}`;
+      if (parsedSeenKey.has(key)) continue;
+      parsedSeenKey.add(key);
+    }
+
+    filtered.push(el);
   }
   return filtered;
 }
@@ -427,51 +466,13 @@ export function useDocument(options: UseDocumentOptions): UseDocumentReturn {
       const pagesTotal = parsedPages.length;
       let done = 0;
       advanceProgress({ phase: "elements", pagesTotal, pagesParsed: 0 });
-      const mergedPages = await Promise.all(
-        parsedPages.map(async (page) => {
-          try {
-            // Page 1 of a large pasted document is by far the densest, and a
-            // single flat `per_page: 200` silently truncated it: the parse
-            // produced the text, the backend list was cut off, and the merge
-            // returned a page with almost no elements. That is the "page 1
-            // comes back empty after a save" symptom. Follow the pagination
-            // cursor so every element on the page is merged.
-            let backendElements: Awaited<
-              ReturnType<typeof api.getPageElements>
-            >["elements"] = [];
-            let pageNo = 1;
-            const perPage = 200;
-            // Hard stop so a server that always reports total_pages=1 (or a
-            // broken cursor) cannot spin forever.
-            for (let guard = 0; guard < 50; guard += 1) {
-              const res = await api.getPageElements(docId!, page.pageNumber, {
-                page: pageNo,
-                per_page: perPage,
-              });
-              const batch = res.elements ?? [];
-              backendElements = backendElements.concat(batch);
-              const total = res.pagination?.total_pages ?? 1;
-              if (pageNo >= total || batch.length === 0) break;
-              pageNo += 1;
-            }
-            const merged = mergeBackendElements(
-              page.elements,
-              backendElements as unknown as Element[],
-            );
-            return { ...page, elements: merged };
-          } catch (err) {
-            clientLogger.warn(
-              `[useDocument] getPageElements failed for page ${page.pageNumber} — falling back to PDF parse only:`,
-              err,
-            );
-            return page;
-          } finally {
-            done += 1;
-            const value = pagesTotal > 0 ? 60 + (done / pagesTotal) * 32 : 92;
-            advanceProgress({ value, pagesParsed: done });
-          }
-        }),
-      );
+      const recovery = await api.getDocumentElements(docId!);
+      const mergedPages = parsedPages.map((page) => {
+        const elements = mergeBackendElements(page.elements, (recovery.pages[String(page.pageNumber)] ?? []) as unknown as Element[]);
+        done += 1;
+        advanceProgress({ value: pagesTotal ? 60 + (done / pagesTotal) * 32 : 92, pagesParsed: done });
+        return { ...page, elements };
+      });
       /*
         Re-sort by pageNumber after the merge.
 
@@ -776,10 +777,37 @@ export function useDocument(options: UseDocumentOptions): UseDocumentReturn {
   );
 
   // Ajouter un élément au scene graph d'une page (miroir du canvas Fabric)
+  //
+  // IDEMPOTENT. A single paste can drive the same elementId through this twice:
+  // the text-pagination path re-enters `handleElementAdded` after a re-parse /
+  // save cycle, and a retried `createElement` re-delivers the element. A plain
+  // append stacked the second copy on the first, which renders as two texts
+  // drawn over each other on the same page - and the next save then bakes BOTH,
+  // so the duplication survives a reload. `elementId` is unique per element, so
+  // an existing id means "already there": update it in place instead.
   const addElementToPage = useCallback(
     (pageIndex: number, element: Element) => {
       setDocument((prev) => {
         if (!prev || pageIndex < 0 || pageIndex >= prev.pages.length) return prev;
+        // Already present on ANY page: never add a second copy, and never
+        // leave the same elementId stranded on two pages.
+        const owner = prev.pages.findIndex((p) =>
+          p.elements.some((e) => e.elementId === element.elementId),
+        );
+        if (owner >= 0) {
+          if (owner === pageIndex) {
+            const current = prev.pages[owner]!;
+            const idx = current.elements.findIndex(
+              (e) => e.elementId === element.elementId,
+            );
+            const elements = [...current.elements];
+            elements[idx] = element;
+            const pages = [...prev.pages];
+            pages[owner] = { ...current, elements };
+            return { ...prev, pages };
+          }
+          return prev;
+        }
         const pages = prev.pages.map((p, i) =>
           i === pageIndex
             ? { ...p, elements: [...p.elements, element] }
@@ -993,28 +1021,15 @@ export function useDocument(options: UseDocumentOptions): UseDocumentReturn {
   const replacePages = useCallback((newPages: PageObject[]) => {
     setDocument((prev) => {
       if (!prev) return prev;
-      /*
-        Renumber pages 1..N before handing them back.
-
-        Every consumer addresses pages POSITIONALLY through `doc.pages`, but the
-        element pipeline addresses them by `pageNumber` (api.getPageElements,
-        and the apply-elements bake). After a large paste the incoming array can
-        carry duplicate or shifted pageNumber values - e.g. a blank document's
-        original page 1 is still numbered 1 while 114 pasted pages follow, so
-        two pages both claim to be page 1. That collision is what pushed text
-        onto the wrong pages on reopen, and it made the saved/reloaded document
-        disagree with what was on screen when it was saved.
-
-        Positional order IS the truth here, so stamp it explicitly.
-      */
-      const sorted = sortPagesByNumber(newPages);
-      const renumbered = renumberPages(sorted);
+      // Callers supply document order; old page numbers must never reorder
+      // pages that were just inserted, moved or duplicated.
+      const renumbered = renumberPages(newPages);
       return {
         ...prev,
-        pages: renumberPages(sorted),
+        pages: renumbered,
         metadata: {
           ...prev.metadata,
-          pageCount: sorted.length,
+          pageCount: renumbered.length,
         },
       };
     });

@@ -103,6 +103,6 @@ export function addPageParams(
   custom?: PageFormatPoints,
 ): AddPageParams {
   const { width, height } = formatToPoints(format, orientation, custom);
-  const afterPage = position === "after" ? ctx.currentPageIndex : ctx.pageCount;
+  const afterPage = position === "after" ? ctx.currentPageIndex + 1 : ctx.pageCount;
   return { afterPage, width, height };
 }

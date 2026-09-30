@@ -12,6 +12,23 @@ import { getStoredUser } from '@/lib/auth-client';
 import { PdfReader } from '@/components/pdf-reader';
 import { AudioPlayer } from '@/components/audio-player';
 
+async function triggerDownload(url: string, fallbackName: string) {
+  const res = await fetch(url)
+  if (!res.ok) return
+  const cd = res.headers.get('Content-Disposition') ?? ''
+  const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)
+  const filename = m?.[1] ? decodeURIComponent(m[1].replace(/"/g, '')) : fallbackName
+  const blob = await res.blob()
+  const objUrl = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = objUrl
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  URL.revokeObjectURL(objUrl)
+  document.body.removeChild(a)
+}
+
 export interface BookCfg {
   id: string;
   title: string;
@@ -2077,11 +2094,11 @@ export function BooksShowcase({
                             setDownloadMenu(false);
                             if (!selectedCfg || !hasEbook || ebookDownloadsOff) return;
                             if (isFree) {
-                              window.location.href = freeBookUrl(selectedCfg.id, 'ebook', false);
+                              void triggerDownload(freeBookUrl(selectedCfg.id, 'ebook', false), `${selectedCfg.title || 'book'}.pdf`);
                               return;
                             }
                             if (ownedEbookOrderId && buyerEmail) {
-                              window.location.href = downloadOrderUrl(ownedEbookOrderId, buyerEmail);
+                              void triggerDownload(downloadOrderUrl(ownedEbookOrderId, buyerEmail), `${selectedCfg.title || 'book'}.pdf`);
                               return;
                             }
                             setBuyLoading('ebook');
@@ -2099,11 +2116,11 @@ export function BooksShowcase({
                             setDownloadMenu(false);
                             if (!selectedCfg || !hasAudio || audioDownloadsOff) return;
                             if (isFree) {
-                              window.location.href = freeBookUrl(selectedCfg.id, 'audiobook', false);
+                              void triggerDownload(freeBookUrl(selectedCfg.id, 'audiobook', false), `${selectedCfg.title || 'book'}.mp3`);
                               return;
                             }
                             if (ownedAudioOrderId && buyerEmail) {
-                              window.location.href = downloadOrderUrl(ownedAudioOrderId, buyerEmail);
+                              void triggerDownload(downloadOrderUrl(ownedAudioOrderId, buyerEmail), `${selectedCfg.title || 'book'}.mp3`);
                               return;
                             }
                             setBuyLoading('audiobook');

@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { FormEvent, useEffect, useState } from "react"
 import {
+  cancelProSubscription,
   changeName,
   changeUsername,
   confirmEmailChange,
@@ -24,6 +25,94 @@ import {
   enablePushNotifications,
   getPushSubscription,
 } from "@/lib/push"
+
+function ProSection({
+  proStatus,
+  onCancelled,
+}: {
+  proStatus: ProStatus | null
+  onCancelled: (updated: ProStatus) => void
+}) {
+  const [cancelling, setCancelling] = useState(false)
+  const [cancelError, setCancelError] = useState("")
+  const [confirmed, setConfirmed] = useState(false)
+
+  async function handleCancel() {
+    if (!proStatus?.subscription?.id) return
+    if (!confirmed) { setConfirmed(true); return }
+    setCancelling(true)
+    setCancelError("")
+    try {
+      await cancelProSubscription(proStatus.subscription.id)
+      onCancelled({ is_pro: false, subscription: { ...proStatus.subscription!, status: "cancelled" } })
+    } catch (e) {
+      setCancelError(e instanceof Error ? e.message : "Could not cancel")
+    } finally {
+      setCancelling(false)
+      setConfirmed(false)
+    }
+  }
+
+  return (
+    <section className="min-w-0 space-y-4 rounded-xl border p-5">
+      <h2 className="text-xl font-semibold">Pro</h2>
+      {proStatus?.is_pro ? (
+        <>
+          <p className="inline-flex items-center gap-1.5 rounded-full bg-[#d4af37]/15 px-3 py-1 text-sm font-bold text-[#a3811f]">
+            ★ PlugYard Pro
+          </p>
+          <p className="text-sm text-foreground/60">
+            {proStatus.subscription?.expires_at
+              ? `Renews or expires on ${new Date(
+                  proStatus.subscription.expires_at,
+                ).toLocaleDateString(undefined, {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}.`
+              : "Your subscription is active."}
+          </p>
+          {cancelError && (
+            <p className="text-sm text-red-600">{cancelError}</p>
+          )}
+          <button
+            type="button"
+            disabled={cancelling}
+            onClick={() => void handleCancel()}
+            className="rounded-lg border border-red-400 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+          >
+            {cancelling
+              ? "Cancelling…"
+              : confirmed
+                ? "Tap again to confirm cancel"
+                : "Cancel subscription"}
+          </button>
+          {confirmed && (
+            <p className="text-xs text-foreground/50">
+              Your Pro access continues until {proStatus.subscription?.expires_at
+                ? new Date(proStatus.subscription.expires_at).toLocaleDateString()
+                : "the end of the billing period"}.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-semibold text-foreground/80">Free plan</p>
+          <p className="text-sm text-foreground/60">
+            Upgrade for the floating pop-out reader/player, AI narration with
+            multiple voices, auto-scroll, and sentence highlighting.
+          </p>
+          <Link
+            href="/pro"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#d4af37] px-4 py-2 text-sm font-bold text-[#3a2e08]"
+          >
+            ★ Upgrade to Pro
+          </Link>
+        </>
+      )}
+    </section>
+  )
+}
 
 const SECTIONS = [
   { id: "profile", label: "Profile" },
@@ -344,41 +433,10 @@ export default function SettingsPage() {
             )}
 
             {active === "pro" && (
-              <section className="min-w-0 space-y-4 rounded-xl border p-5">
-                <h2 className="text-xl font-semibold">Pro</h2>
-                {proStatus?.is_pro ? (
-                  <>
-                    <p className="inline-flex items-center gap-1.5 rounded-full bg-[#d4af37]/15 px-3 py-1 text-sm font-bold text-[#a3811f]">
-                      ★ PlugYard Pro
-                    </p>
-                    <p className="text-sm text-foreground/60">
-                      {proStatus.subscription?.expires_at
-                        ? `Renews or expires on ${new Date(
-                            proStatus.subscription.expires_at,
-                          ).toLocaleDateString(undefined, {
-                            year: "numeric",
-                            month: "long",
-                            day: "numeric",
-                          })}.`
-                        : "Your subscription is active."}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm font-semibold text-foreground/80">Free plan</p>
-                    <p className="text-sm text-foreground/60">
-                      Upgrade for the floating pop-out reader/player, AI narration with
-                      multiple voices, auto-scroll, and sentence highlighting.
-                    </p>
-                    <Link
-                      href="/pro"
-                      className="inline-flex items-center gap-1.5 rounded-full bg-[#d4af37] px-4 py-2 text-sm font-bold text-[#3a2e08]"
-                    >
-                      ★ Upgrade to Pro
-                    </Link>
-                  </>
-                )}
-              </section>
+              <ProSection
+                proStatus={proStatus}
+                onCancelled={(updated) => setProStatus(updated)}
+              />
             )}
 
             {active === "affiliate" && (

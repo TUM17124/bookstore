@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
+  cancelProSubscription,
   getProPricing,
   getProStatus,
   subscribePro,
@@ -39,6 +40,8 @@ function ProInner() {
   const [price, setPrice] = useState('')
   const [status, setStatus] = useState<ProStatus | null>(null)
   const [busy, setBusy] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+  const [cancelConfirmed, setCancelConfirmed] = useState(false)
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [justSubscribed, setJustSubscribed] = useState(false)
@@ -88,6 +91,22 @@ function ProInner() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start checkout')
       setBusy(false)
+    }
+  }
+
+  async function handleCancel() {
+    if (!status?.subscription?.id) return
+    if (!cancelConfirmed) { setCancelConfirmed(true); return }
+    setCancelling(true)
+    setError('')
+    try {
+      await cancelProSubscription(status.subscription.id)
+      setStatus({ is_pro: false, subscription: { ...status.subscription!, status: 'cancelled' } })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not cancel')
+    } finally {
+      setCancelling(false)
+      setCancelConfirmed(false)
     }
   }
 
@@ -175,9 +194,24 @@ function ProInner() {
                   ).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}.`
                 : 'Your subscription is active.'}
             </p>
-            <Link href="/settings" className="mt-3 inline-block text-sm underline text-foreground/70">
-              Manage in Settings
-            </Link>
+            <div className="mt-4 flex flex-col items-center gap-2">
+              <Link href="/settings" className="text-sm underline text-foreground/70">
+                Manage in Settings
+              </Link>
+              <button
+                type="button"
+                disabled={cancelling}
+                onClick={() => void handleCancel()}
+                className="rounded-lg border border-red-400 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                {cancelling ? 'Cancelling…' : cancelConfirmed ? 'Tap again to confirm' : 'Cancel subscription'}
+              </button>
+              {cancelConfirmed && (
+                <p className="text-xs text-foreground/50">
+                  Your access continues until the end of the billing period.
+                </p>
+              )}
+            </div>
           </div>
         ) : (
           <button

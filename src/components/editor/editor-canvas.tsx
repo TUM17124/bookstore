@@ -97,6 +97,7 @@ import {
 import {
   flowLinesFromMeasured,
   flowSliceContent,
+   flowSliceSourceText,
   paginateFlowLines,
   wrapPlainText,
   type FlowLine,
@@ -183,6 +184,7 @@ export type TextFormatAction =
   | "alignRight";
 
 export interface EditorCanvasHandle {
+  commitTextEdit: () => void;
   /**
    * Ajouter une image au canvas. `target` (optionnel — Remplir & Signer) :
    * l'image est AJUSTÉE dans ce rect (ratio préservé, centrée) au lieu du
@@ -780,39 +782,38 @@ function continuationFromText(
   height: number,
   maxWidth?: number,
 ): TextElement {
-  const next: TextElement = {
-    ...template,
+  const width =
+    maxWidth != null
+      ? Math.max(1, Math.min(template.bounds.width, maxWidth))
+      : template.bounds.width;
+  return {
     elementId: generateId(),
-    content,
+    type: "text",
     bounds: {
-      ...template.bounds,
-      x: maxWidth != null
-        ? Math.min(template.bounds.x, maxWidth)
-        : template.bounds.x,
+      x:
+        maxWidth != null
+          ? Math.min(template.bounds.x, maxWidth)
+          : template.bounds.x,
       y,
-      /*
-        Clamp the continuation to the printable column width.
-
-        The template is the source text box, whose Fabric `width` is whatever
-        the user last dragged it to. A paste sets that box to the full safe
-        width, but if the box was ever resized narrower (or was created on a
-        differently-sized page) the continuation inherited that narrower
-        width - so the continuation text re-wrapped to a different number of
-        lines than the slice was measured for, overflowed the right margin, and
-        rendered collapsed on top of the page's own text. Passing the safe-area
-        width in here keeps every continuation on the same column as the text
-        it continues.
-      */
-      width: maxWidth != null
-        ? Math.max(1, Math.min(template.bounds.width, maxWidth))
-        : template.bounds.width,
+      width,
       height: Math.max(height, template.style.fontSize || 16),
     },
-    runs: undefined,
+    transform: template.transform ?? {
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1,
+      skewX: 0,
+      skewY: 0,
+    },
+    layerId: template.layerId ?? null,
+    locked: false,
+    visible: true,
+    content,
+    style: { ...template.style },
+    ocrConfidence: null,
+    linkUrl: null,
+    linkPage: null,
   };
-  delete next.index;
-  delete (next as { segments?: unknown }).segments;
-  return next;
 }
 
 /**
@@ -1511,6 +1512,20 @@ export function EditorCanvas({
   // Held while a page-break mutates the text box, so the text:changed that
   // mutation fires cannot start a second break.
   const textFlowLockRef = useRef(false);
+  /*
+    Single-flight guard for a text-flow (paste) pagination.
+
+    `handleTextEditingExited` can run more than once for the SAME box: Fabric
+    fires it, our own `exitEditing()` from `keepTextOnPage` fires it, and the
+    post-save re-parse re-renders the box and fires it again once it carries the
+    still-overflowing `runs`. Each pass inserted a full set of continuation pages
+    and a full set of continuation elements, so a 155-page paste produced 155
+    blank pages AND a second copy of every slice — every page then rendered its
+    own text twice, stacked, with the first page's slice duplicated onto the
+    last. This flag lets exactly one pagination run per element at a time, and
+    refuses a re-run while one is in flight.
+  */
+   const textFlowInFlightRef = useRef<Set<string>>(new Set());
   const resumeTextEditIdRef = useRef<string | null>(resumeTextEditId);
   resumeTextEditIdRef.current = resumeTextEditId;
   const consumedResumeEditRef = useRef<string | null>(null);
@@ -2161,7 +2176,7 @@ export function EditorCanvas({
     const originalText = elementId
       ? originalContentRef.current.get(elementId)
       : undefined;
-    if (
+     if (
       typeName === "textbox" &&
       obj.data?.type === "text" &&
       obj.data?.locked !== true &&
@@ -2180,24 +2195,21 @@ export function EditorCanvas({
         safeRect.bottom - top,
         safeRect.bottom - safeRect.top,
       );
-      // Serialise BEFORE clipping so the template still carries the full style.
-      // Character offsets below refer to `currentText`, not the joined visual
-      // lines the serialiser may store for the bake.
       const serialized = fabricObjectToElement(obj);
       if (slices.length > 1 && serialized?.type === "text" && measurable.set) {
         const fullText = currentText;
-        const pageText = flowSliceContent(fullText, lines, slices[0]!);
-        const continuations = slices.slice(1).map((slice) =>
-          continuationFromText(
-            serialized,
-            flowSliceContent(fullText, lines, slice),
-            safeRect.top,
-            slice.height,
-            // Printable column width, so a continuation wraps exactly like the
-            // slice was measured and can never run past the right margin.
-            Math.max(1, safeRect.right - safeRect.left),
-          ),
-        );
+        const pageText = flowSliceSourceText(fullText, slices, 0);
+        const columnWidth = Math.max(1, safeRect.right - safeRect.left);
+        const continuations = slices.slice(1).map((slice, index) => {
+          const element = continuationFromText(serialized,
+            flowSliceSourceText(fullText, slices, index + 1), safeRect.top, slice.height, columnWidth);
+          const firstTop = serialized.visualLines?.[slice.lineIndexes[0]!]?.top ?? 0;
+          element.visualLines = slice.lineIndexes.flatMap((lineIndex) => {
+            const line = serialized.visualLines?.[lineIndex];
+            return line ? [{ text: line.text, top: line.top - firstTop }] : [];
+          });
+          return element;
+        });
         if (continuations.length > 0) {
           textFlowLockRef.current = true;
           try {
@@ -2207,6 +2219,9 @@ export function EditorCanvas({
             textFlowLockRef.current = false;
           }
           currentText = pageText;
+          if (elementId) {
+            originalContentRef.current.set(elementId, pageText);
+          }
           overflowToPaginate = { continuations, fullText, pageText };
         }
       }
@@ -2274,9 +2289,35 @@ export function EditorCanvas({
     if (overflowToPaginate && onTextOverflow && pageIndex !== undefined) {
       const { continuations, fullText, pageText } = overflowToPaginate;
       const canvas = fabricRef.current;
+      /*
+        Rollback for a FAILED pagination: put the full text back.
+
+        Only legal while THIS canvas still holds the clipped slice, i.e. the
+        pagination is known not to have written anything. Two hard rules:
+
+        1. If the box no longer holds `pageText`, the user has typed again (or
+           the flow was re-split): leave the box alone. Restoring here used to
+           overwrite their text with a stale copy of the whole paste.
+        2. If this page's canvas is GONE (the user scrolled away while the
+           continuation pages were still being inserted), we must NOT re-insert
+           the full text. `handleTextOverflow` has already committed the
+           truncated slice to the scene graph AND added one continuation
+           element per new page, so re-forwarding `fullText` here is what
+           produced the reported corruption: page 1 held the entire 155-page
+           paste while pages 2..156 held their own slice - the same words twice
+           per page - and the next save re-paginated that whole text, stacking
+           yet another copy of every continuation. A lost paste is recoverable
+           by the user; a silently duplicated document is not.
+      */
       const restoreOverflow = () => {
-        const canvasGone = fabricRef.current !== canvas;
-        if (!canvasGone && textObject.text !== pageText) return;
+        if (fabricRef.current !== canvas) {
+          clientLogger.warn(
+            "[editor] Text pagination failed after the source page was unmounted; leaving the scene graph as committed",
+            { elementId, pageIndex },
+          );
+          return;
+        }
+        if (textObject.text !== pageText) return;
         textFlowLockRef.current = true;
         try {
           textObject.set?.({ text: fullText });
@@ -2284,28 +2325,49 @@ export function EditorCanvas({
         } finally {
           textFlowLockRef.current = false;
         }
-        if (!canvasGone) canvas?.requestRenderAll();
-        // The page may already have unmounted (the user moved on while the
-        // break was still saving). Put the full text back into the scene
-        // graph anyway — dropping it here is how a page change lost the paste.
+        canvas?.requestRenderAll();
         if (elementId) forwardElementModified(obj);
       };
       try {
+        /*
+          Single-flight. A second `handleTextEditingExited` for the same box (our
+          own exitEditing from keepTextOnPage, or the post-save re-parse) would
+          otherwise start a SECOND pagination and duplicate every continuation
+          page and every continuation element. Refuse it: the first run owns the
+          box until it settles.
+        */
+         const flowKey = elementId ?? `__page-${pageIndex}`;
+        if (textFlowInFlightRef.current.has(flowKey)) {
+          clientLogger.debug(
+            "[editor] Text pagination already in flight for this box; skipping duplicate run",
+            { elementId, pageIndex },
+          );
+          return;
+        }
+        textFlowInFlightRef.current.add(flowKey);
+        const releaseFlowLock = () => {
+          textFlowInFlightRef.current.delete(flowKey);
+        };
         const result = onTextOverflow(continuations, pageIndex);
         if (result instanceof Promise) {
           void result
             .then((created) => {
+              releaseFlowLock();
               if (!created) restoreOverflow();
             })
             .catch((error: unknown) => {
+              releaseFlowLock();
               clientLogger.error(
                 "[editor] Failed to paginate inserted text:",
                 error,
               );
               restoreOverflow();
             });
+        } else {
+          releaseFlowLock();
         }
       } catch (error) {
+        textFlowInFlightRef.current.delete(elementId ?? `__page-${pageIndex}`);
         clientLogger.error("[editor] Failed to start text pagination:", error);
         restoreOverflow();
       }
@@ -4293,6 +4355,7 @@ export function EditorCanvas({
           });
         });
       },
+      commitTextEdit: commitLiveTextEdit,
       undo: () => {
         if (historyIndex <= 0 || !fabricRef.current) return;
         const newIndex = historyIndex - 1;

@@ -1,3 +1,4 @@
+import { bakedElements, type BakedElement } from "./document-persistence";
 /**
  * API Client for GigaPDF Backend
  *
@@ -530,10 +531,12 @@ class APIClient {
     params: {
       file: Blob;
       comment?: string;
+      bakedElements?: BakedElement[];
     }
   ): Promise<{ stored_document_id: string; version: number; created_at: string }> {
     const fd = new FormData();
     fd.append("file", params.file);
+    fd.append("baked_elements", JSON.stringify(params.bakedElements ?? bakedElements(params.file)));
     if (params.comment) fd.append("comment", params.comment);
 
     // NOTE: no Content-Type header — the browser sets multipart/form-data with boundary automatically
@@ -811,6 +814,23 @@ class APIClient {
   /**
    * Get all elements on a page.
    */
+  async getDocumentElements(documentId: string): Promise<{ pages: Record<string, ElementResponse[]> }> {
+    const response = await this.request<APIResponse<{ pages: Record<string, ElementResponse[]> }>>(
+      `/api/editor/documents/${documentId}/elements/`,
+    );
+    return response.data;
+  }
+
+  async getDocumentLayers(documentId: string): Promise<{ layers: import("@giga-pdf/types").LayerObject[]; membership: Record<string, string> }> {
+    const response = await this.request<APIResponse<{ layers: import("@giga-pdf/types").LayerObject[]; membership: Record<string, string> }>>(`/api/editor/documents/${documentId}/layers/`);
+    return response.data;
+  }
+
+  async putDocumentLayers(documentId: string, data: { layers: import("@giga-pdf/types").LayerObject[]; membership: Record<string, string> }) {
+    const response = await this.request<APIResponse<typeof data>>(`/api/editor/documents/${documentId}/layers/`, { method: "PUT", body: JSON.stringify(data) });
+    return response.data;
+  }
+
   async getPageElements(
     documentId: string,
     pageNumber: number,
@@ -1825,6 +1845,9 @@ export interface ElementTransform {
 }
 
 export interface ElementCreateRequest {
+  element_id?: string;
+  revision?: string;
+  snapshot?: Record<string, unknown>;
   type: "text" | "image" | "shape" | "annotation" | "form_field";
   bounds: ElementBounds;
   content?: string;

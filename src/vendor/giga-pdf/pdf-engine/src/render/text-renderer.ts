@@ -247,7 +247,7 @@ export async function addText(
   // so +y raises the baseline.
   const baseSize = element.style.fontSize;
   const vAlign = element.style.verticalAlign;
-  const renderSize = vAlign === "baseline" ? baseSize : baseSize * 0.583;
+  const renderSize = !vAlign || vAlign === "baseline" ? baseSize : baseSize * 0.583;
   const baselineShift =
     vAlign === "superscript"
       ? baseSize * 0.33
@@ -268,13 +268,14 @@ export async function addText(
   const lines = element.content.split("\n");
   const lineStep = baseSize * (element.style.lineHeight > 0 ? element.style.lineHeight : 1.2);
   const firstBaseline = pdfRect.y + pdfRect.height - baseSize + baselineShift;
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i] ?? "";
+  const layout = element.visualLines?.length ? element.visualLines : lines.map((text, i) => ({ text, top: i * lineStep }));
+  for (const measured of layout) {
+    const line = measured.text;
     if (line.length === 0) continue;
     handle._doc.addText(
       pageNumber,
       pdfRect.x,
-      firstBaseline - i * lineStep,
+      firstBaseline - measured.top,
       renderSize,
       line,
       fontObj,

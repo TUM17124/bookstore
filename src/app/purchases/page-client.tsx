@@ -10,6 +10,23 @@ import { AudioPlayer } from '@/components/audio-player'
 
 const COOLDOWN_MS = 8000
 
+async function triggerDownload(url: string, fallbackName: string) {
+  const res = await fetch(url)
+  if (!res.ok) return
+  const cd = res.headers.get('Content-Disposition') ?? ''
+  const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)
+  const filename = m?.[1] ? decodeURIComponent(m[1].replace(/"/g, '')) : fallbackName
+  const blob = await res.blob()
+  const objUrl = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = objUrl
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  URL.revokeObjectURL(objUrl)
+  document.body.removeChild(a)
+}
+
 function Row({
   p,
   email,
@@ -22,6 +39,19 @@ function Row({
   onListen?: () => void
 }) {
   const isAudio = p.product_type === 'audiobook'
+  const [downloading, setDownloading] = useState(false)
+
+  async function handleDownload() {
+    if (downloading) return
+    setDownloading(true)
+    try {
+      const ext = isAudio ? 'mp3' : 'pdf'
+      await triggerDownload(downloadOrderUrl(p.order_id, email), `book-${p.book_id}.${ext}`)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
     <li className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-foreground/10 px-3 py-2 text-sm">
       <Link
@@ -51,12 +81,14 @@ function Row({
         {p.downloadable === false ? (
           <span className="text-xs font-semibold text-foreground/40">Download off</span>
         ) : (
-          <a
-            href={downloadOrderUrl(p.order_id, email)}
-            className="text-xs font-semibold underline"
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={downloading}
+            className="text-xs font-semibold underline disabled:opacity-50"
           >
-            Download
-          </a>
+            {downloading ? 'Downloading…' : 'Download'}
+          </button>
         )}
       </span>
     </li>

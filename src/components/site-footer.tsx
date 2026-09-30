@@ -20,6 +20,14 @@ const browseLinks = [
   { href: "/?category=lifestyle", label: "Lifestyle" },
 ]
 
+const toolLinks = [
+  { href: "/pro", label: "★ PlugYard Pro" },
+  { href: "/tools/pdf-editor", label: "PDF Editor" },
+  { href: "/purchases", label: "My Purchases" },
+  { href: "/bookmarks", label: "Bookmarks" },
+  { href: "/credits/paid", label: "TTS Credits" },
+]
+
 function SiteFooterInner() {
   const year = new Date().getFullYear()
   const isEditorFocusedRoute = useIsEditorFocusedRoute()
@@ -39,7 +47,7 @@ function SiteFooterInner() {
       />
 
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-5">
           {/* Brand + contact */}
           <div className="sm:col-span-2 lg:col-span-1">
             <Link href="/" className="inline-flex items-center gap-2.5">
@@ -91,6 +99,25 @@ function SiteFooterInner() {
             </h3>
             <ul className="mt-4 space-y-2.5">
               {browseLinks.map((l) => (
+                <li key={l.href}>
+                  <Link
+                    href={l.href}
+                    className="text-sm text-foreground/70 transition-colors hover:text-foreground"
+                  >
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Tools & Pro */}
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/40">
+              Tools & Pro
+            </h3>
+            <ul className="mt-4 space-y-2.5">
+              {toolLinks.map((l) => (
                 <li key={l.href}>
                   <Link
                     href={l.href}

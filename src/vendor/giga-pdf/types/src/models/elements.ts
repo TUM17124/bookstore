@@ -11,6 +11,7 @@ export type ElementType = "text" | "image" | "shape" | "annotation" | "form_fiel
 
 // Base element interface
 export interface ElementBase {
+  persistenceRevision?: string;
   elementId: UUID;
   type: ElementType;
   bounds: Bounds;
@@ -152,6 +153,7 @@ export interface TextStyleRun {
 }
 
 export interface TextElement extends ElementBase {
+  visualLines?: Array<{ text: string; top: number }>;
   type: "text";
   content: string;
   style: TextStyle;

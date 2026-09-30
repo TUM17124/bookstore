@@ -271,6 +271,22 @@ export async function subscribePro(): Promise<{
   return data
 }
 
+export async function cancelProSubscription(subscriptionId: number): Promise<{
+  ok: boolean
+  already_cancelled?: boolean
+  error?: string
+}> {
+  const token = getToken()
+  if (!token) throw new Error("Log in required")
+  const res = await fetch(`${API}/pro/subscriptions/${subscriptionId}/`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data as { error?: string }).error || "Could not cancel")
+  return data
+}
+
 export async function confirmProPayment(reference: string): Promise<{
   ok: boolean
   paid?: boolean

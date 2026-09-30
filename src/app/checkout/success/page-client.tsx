@@ -9,6 +9,23 @@ import { PdfReader } from '@/components/pdf-reader'
 
 const API = process.env.NEXT_PUBLIC_API_URL!
 
+async function triggerDownload(url: string, fallbackName: string) {
+  const res = await fetch(url)
+  if (!res.ok) return
+  const cd = res.headers.get('Content-Disposition') ?? ''
+  const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)
+  const filename = m?.[1] ? decodeURIComponent(m[1].replace(/"/g, '')) : fallbackName
+  const blob = await res.blob()
+  const objUrl = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = objUrl
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  URL.revokeObjectURL(objUrl)
+  document.body.removeChild(a)
+}
+
 function readStoredBook() {
   if (typeof window === 'undefined') return { id: '', title: '' }
   return {
@@ -36,6 +53,7 @@ function SuccessInner() {
   const [emailInput, setEmailInput] = useState('')
   const [error, setError] = useState('')
   const [readerOpen, setReaderOpen] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [productType, setProductType] = useState('')
   const [bookId, setBookId] = useState(bookFromQuery)
   const [bookTitle, setBookTitle] = useState('')
@@ -195,12 +213,23 @@ function SuccessInner() {
               Read
             </button>
           )}
-          <a
-            href={downloadUrl}
-            className="inline-flex rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background"
+          <button
+            type="button"
+            disabled={downloading}
+            onClick={async () => {
+              if (downloading) return
+              setDownloading(true)
+              try {
+                const ext = productType === 'audiobook' ? 'mp3' : 'pdf'
+                await triggerDownload(downloadUrl, `book-${bookId || orderId}.${ext}`)
+              } finally {
+                setDownloading(false)
+              }
+            }}
+            className="inline-flex rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background disabled:opacity-50"
           >
-            Download this file
-          </a>
+            {downloading ? 'Downloading…' : 'Download this file'}
+          </button>
         </div>
       )}
 
@@ -221,12 +250,17 @@ function SuccessInner() {
                 >
                   {p.kind} · book #{p.book_id}
                 </Link>
-                <a
-                  href={`${API}/orders/${p.order_id}/download/?email=${encodeURIComponent(email)}`}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const url = `${API}/orders/${p.order_id}/download/?email=${encodeURIComponent(email)}`
+                    const ext = p.kind === 'Audiobook' ? 'mp3' : 'pdf'
+                    await triggerDownload(url, `book-${p.book_id}.${ext}`)
+                  }}
                   className="shrink-0 text-xs font-semibold underline"
                 >
                   Download
-                </a>
+                </button>
               </li>
             ))}
           </ul>

@@ -309,6 +309,7 @@ export function fabricObjectToElement(
       set?: (props: Record<string, unknown>) => void;
       setCoords?: () => void;
       textLines?: string[];
+      getHeightOfLine?: (index: number) => number;
       height?: number;
     };
     if (
@@ -354,14 +355,13 @@ export function fabricObjectToElement(
     // left untouched, and character-level runs keep their original indexes.
     const visualLines = movable.textLines;
     const flowBox = !isOriginYBottom;
-    const contentForSave =
-      flowBox &&
-      !styleRuns &&
-      !listStyle &&
-      visualLines &&
-      visualLines.length > 1
-        ? visualLines.join("\n")
-        : cleanContent;
+    const contentForSave = cleanContent;
+    let lineTop = 0;
+    const measuredLines = flowBox && visualLines ? visualLines.map((text, index) => {
+      const line = { text, top: lineTop };
+      lineTop += movable.getHeightOfLine?.(index) ?? fontSize * (textObj.lineHeight || 1.2);
+      return line;
+    }) : undefined;
     const measuredHeight = Math.max(
       fontSize,
       (movable.height || fontSize) * (obj.scaleY ?? 1),
@@ -379,6 +379,7 @@ export function fabricObjectToElement(
       },
       type: "text" as const,
       content: contentForSave,
+      ...(measuredLines ? { visualLines: measuredLines } : {}),
       // Character-level style runs (Word-like partial formatting). Omitted
       // (spread of {}) when the text is uniformly styled, so the serialised
       // shape is byte-identical to the legacy one for unstyled runs.

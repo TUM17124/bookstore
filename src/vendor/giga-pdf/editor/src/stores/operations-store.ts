@@ -130,6 +130,16 @@ export const useOperationsStore: UseBoundStore<StoreApi<OperationsStore>> =
 
       queueDelete: (pageNumber, elementId, bounds, index) =>
         set((state) => {
+          // Coalesce repeated deletes of the same element — `deleteSelected`
+          // calls the handler twice (via object:removed + explicit forward),
+          // so without this check we'd queue two identical delete ops which
+          // bake a double-redact into the PDF and batch-DELETE twice in Redis.
+          const alreadyQueued = state.operations.some(
+            (op) =>
+              op.action === "delete" &&
+              (op.element as { elementId: string }).elementId === elementId,
+          );
+          if (alreadyQueued) return;
           state.operations.push({
             action: "delete",
             pageNumber,
