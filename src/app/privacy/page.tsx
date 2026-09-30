@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "https://plugyard.com/privacy/",
   },
+  robots: { index: false, follow: true },
 }
 
 export default function Page() {

@@ -17,11 +17,11 @@ const SITE = "https://plugyard.com"
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
   title: {
-    default: "PlugYard — Buy eBooks & Audiobooks Online",
+    default: "PlugYard — Buy or Sell eBooks & Audiobooks Online",
     template: "%s | PlugYard",
   },
   description:
-    "PlugYard — Kenya's online store for eBooks and audiobooks. Buy and instantly read or listen — no account required. AI-powered narration turns every eBook into an audiobook. Free in-browser PDF editor with auto-save. Business, career, academic, personal finance, and lifestyle titles.",
+    "PlugYard — Kenya's eBook and audiobook marketplace. Buy, read, and listen instantly — no account required. Publish your own eBooks and audiobooks, set your price, and get paid. AI-powered narration. Free in-browser PDF editor. Business, career, academic, personal finance, and lifestyle.",
   keywords: [
     "PlugYard",
     "ebook Kenya",
@@ -74,9 +74,9 @@ export const metadata: Metadata = {
     locale: "en_KE",
     url: SITE,
     siteName: "PlugYard",
-    title: "PlugYard — Buy eBooks & Audiobooks Online",
+    title: "PlugYard — Buy or Sell eBooks & Audiobooks Online",
     description:
-      "Buy eBooks and audiobooks online — no account needed. AI-powered narration on every title. Practical guides for business, career, academic, personal finance, and lifestyle. Free PDF editor with auto-save included.",
+      "Buy eBooks and audiobooks instantly — no account needed. Publish your content, set your price, and get paid. AI narration on every title. Free PDF editor with auto-save.",
     images: [
       {
         url: "/logo.png",
@@ -90,12 +90,48 @@ export const metadata: Metadata = {
     card: "summary",
     title: "PlugYard — Buy eBooks & Audiobooks Online",
     description:
-      "Buy eBooks & audiobooks online — no account needed. AI narration on every title. Business, career, academic, finance & lifestyle guides. Free PDF editor.",
+      "Buy or sell eBooks & audiobooks online. No account to purchase. Publish content and get paid. AI narration. Free PDF editor.",
     images: ["/logo.png"],
   },
   verification: {
     google: "G5QylOyQKIG9YdPoVnVJAABBv2hONBE7kGmMH7XpdCQ",
   },
+}
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": `${SITE}/#website`,
+      "url": SITE,
+      "name": "PlugYard",
+      "description": "Kenya's eBook and audiobook marketplace — buy, publish, and sell digital titles online.",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": { "@type": "EntryPoint", "urlTemplate": `${SITE}/?q={search_term_string}` },
+        "query-input": "required name=search_term_string",
+      },
+    },
+    {
+      "@type": "Organization",
+      "@id": `${SITE}/#organization`,
+      "name": "PlugYard",
+      "url": SITE,
+      "logo": { "@type": "ImageObject", "url": `${SITE}/logo.png` },
+      "contactPoint": { "@type": "ContactPoint", "email": "contact@plugyard.com", "contactType": "customer support" },
+      "sameAs": [],
+    },
+    {
+      "@type": "SiteLinksSearchBox",
+      "url": SITE,
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": `${SITE}/?q={search_term_string}`,
+        "query-input": "required name=search_term_string",
+      },
+    },
+  ],
 }
 
 export default function RootLayout({
@@ -105,6 +141,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en-KE" suppressHydrationWarning>
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body className="antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <BookmarksProvider>
