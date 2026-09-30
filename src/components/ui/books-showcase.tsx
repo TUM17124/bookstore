@@ -7,27 +7,9 @@ import { cn } from '@/lib/utils';
 import { useBookmarks } from '@/components/bookmarks-context';
 import { BookReviews } from '@/components/book-reviews';
 import { createPortal } from 'react-dom';
-import { getPurchases, downloadOrderUrl, freeBookUrl, searchTrack, previewBookUrl, getRatings, getRelatedBooks, type ApiBook } from '@/lib/api';
-import { getStoredUser } from '@/lib/auth-client';
+import { searchTrack, getRatings, getRelatedBooks, getBookAccess, downloadBook, type ApiBook, type BookAccess } from '@/lib/api';
 import { PdfReader } from '@/components/pdf-reader';
 import { AudioPlayer } from '@/components/audio-player';
-
-async function triggerDownload(url: string, fallbackName: string) {
-  const res = await fetch(url)
-  if (!res.ok) return
-  const cd = res.headers.get('Content-Disposition') ?? ''
-  const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)
-  const filename = m?.[1] ? decodeURIComponent(m[1].replace(/"/g, '')) : fallbackName
-  const blob = await res.blob()
-  const objUrl = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = objUrl
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  URL.revokeObjectURL(objUrl)
-  document.body.removeChild(a)
-}
 
 export interface BookCfg {
   id: string;
@@ -385,9 +367,10 @@ export function BooksShowcase({
   const [uiMode, setUiMode] = useState<'hero' | 'opening' | 'detail' | 'closing'>('hero');
   const [selectedCfg, setSelectedCfg] = useState<BookCfg | null>(null);
 
-  const [ownedEbookOrderId, setOwnedEbookOrderId] = useState<number | null>(null);
-  const [ownedAudioOrderId, setOwnedAudioOrderId] = useState<number | null>(null);
-  const [buyerEmail, setBuyerEmail] = useState('');
+  // What the SERVER says this user may do with the selected book. Display
+  // only — every reader page, stream and download is re-checked server-side.
+  const [access, setAccess] = useState<BookAccess | null>(null);
+  const [contentMsg, setContentMsg] = useState('');
   const [buyLoading, setBuyLoading] = useState<'ebook' | 'audiobook' | null>(null);
   const [reviewsOpen, setReviewsOpen] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
@@ -450,31 +433,33 @@ export function BooksShowcase({
   }, [uiMode]);
 
   useEffect(() => {
-    if (!selectedCfg) {
-      setOwnedEbookOrderId(null);
-      setOwnedAudioOrderId(null);
-      return;
-    }
-    const email = (getStoredUser()?.email || sessionStorage.getItem('checkout_email') || '').trim().toLowerCase();
-    setBuyerEmail(email);
-    if (!email) {
-      setOwnedEbookOrderId(null);
-      setOwnedAudioOrderId(null);
-      return;
-    }
+    setAccess(null);
+    setContentMsg('');
+    if (!selectedCfg) return;
     let cancelled = false;
-    getPurchases(email).then((p) => {
-      if (cancelled) return;
-      const id = String(selectedCfg.id);
-      const eb = p.ebooks.find((x) => String(x.book_id) === id);
-      const au = p.audiobooks.find((x) => String(x.book_id) === id);
-      setOwnedEbookOrderId(eb ? eb.order_id : null);
-      setOwnedAudioOrderId(au ? au.order_id : null);
-    });
+    getBookAccess(selectedCfg.id)
+      .then((a) => {
+        if (!cancelled) setAccess(a);
+      })
+      .catch(() => {
+        if (!cancelled) setAccess(null);
+      });
     return () => {
       cancelled = true;
     };
   }, [selectedCfg]);
+
+  async function startDownload(kind: 'ebook' | 'audiobook') {
+    if (!selectedCfg) return;
+    setContentMsg('Preparing download…');
+    try {
+      await downloadBook(selectedCfg.id, kind, `${selectedCfg.title || 'book'}.${kind === 'ebook' ? 'pdf' : 'mp3'}`);
+      setContentMsg('');
+      getBookAccess(selectedCfg.id).then(setAccess).catch(() => {});
+    } catch (err) {
+      setContentMsg(err instanceof Error ? err.message : 'Download failed.');
+    }
+  }
 
   useEffect(() => {
     if (!selectedCfg?.id) {
@@ -2055,19 +2040,24 @@ export function BooksShowcase({
               const isFree = selectedCfg?.isFree === true;
               const hasEbook = selectedCfg?.hasEbook !== false;
               const hasAudio = selectedCfg?.hasAudiobook === true;
-              const canReadEbook = hasEbook && (isFree || !!ownedEbookOrderId);
-              const ebookDownloadsOff = selectedCfg?.ebookDownloadable === false;
-              const audioDownloadsOff = selectedCfg?.audiobookDownloadable === false;
-              const canDlEbook = hasEbook && !ebookDownloadsOff && (isFree || !!ownedEbookOrderId);
-              const canDlAudio = hasAudio && !audioDownloadsOff && (isFree || !!ownedAudioOrderId);
+              const eb = access?.ebook;
+              const au = access?.audiobook;
+              const canReadEbook = hasEbook && eb?.read === 'full';
+              const canListen = hasAudio && au?.read === 'full';
+              const ebookDownloadsOff = selectedCfg?.ebookDownloadable === false && !eb?.privileged;
+              const audioDownloadsOff = selectedCfg?.audiobookDownloadable === false && !au?.privileged;
+              const canDlEbook = hasEbook && !!eb?.can_download;
+              const canDlAudio = hasAudio && !!au?.can_download;
+              const ownsEbook = !!(eb?.purchased || eb?.privileged);
+              const ownsAudio = !!(au?.purchased || au?.privileged);
               return (
                 <>
                   <button
                     type="button"
                     disabled={!canReadEbook}
                     onClick={() => {
-                      if (!selectedCfg || !hasEbook) return;
-                      if (isFree || (ownedEbookOrderId && buyerEmail)) setReaderOpen(true);
+                      if (!selectedCfg || !canReadEbook) return;
+                      setReaderOpen(true);
                     }}
                     className="relative inline-flex h-[54px] shrink-0 items-center gap-[10px] rounded-full bg-[var(--bs-cream)] px-[22px] text-[16.5px] font-semibold text-[var(--bs-navy)] hover:scale-[1.04] disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-4"
                   >
@@ -2093,14 +2083,11 @@ export function BooksShowcase({
                           onClick={() => {
                             setDownloadMenu(false);
                             if (!selectedCfg || !hasEbook || ebookDownloadsOff) return;
-                            if (isFree) {
-                              void triggerDownload(freeBookUrl(selectedCfg.id, 'ebook', false), `${selectedCfg.title || 'book'}.pdf`);
+                            if (canDlEbook) {
+                              void startDownload('ebook');
                               return;
                             }
-                            if (ownedEbookOrderId && buyerEmail) {
-                              void triggerDownload(downloadOrderUrl(ownedEbookOrderId, buyerEmail), `${selectedCfg.title || 'book'}.pdf`);
-                              return;
-                            }
+                            if (isFree || ownsEbook) return;
                             setBuyLoading('ebook');
                             const q = new URLSearchParams({ bookId: selectedCfg.id, type: 'ebook', title: selectedCfg.title });
                             window.location.href = `/checkout?${q}`;
@@ -2115,14 +2102,11 @@ export function BooksShowcase({
                           onClick={() => {
                             setDownloadMenu(false);
                             if (!selectedCfg || !hasAudio || audioDownloadsOff) return;
-                            if (isFree) {
-                              void triggerDownload(freeBookUrl(selectedCfg.id, 'audiobook', false), `${selectedCfg.title || 'book'}.mp3`);
+                            if (canDlAudio) {
+                              void startDownload('audiobook');
                               return;
                             }
-                            if (ownedAudioOrderId && buyerEmail) {
-                              void triggerDownload(downloadOrderUrl(ownedAudioOrderId, buyerEmail), `${selectedCfg.title || 'book'}.mp3`);
-                              return;
-                            }
+                            if (isFree || ownsAudio) return;
                             setBuyLoading('audiobook');
                             const q = new URLSearchParams({ bookId: selectedCfg.id, type: 'audiobook', title: selectedCfg.title });
                             window.location.href = `/checkout?${q}`;
@@ -2138,7 +2122,7 @@ export function BooksShowcase({
                     disabled={!!buyLoading || !hasAudio}
                     onClick={() => {
                       if (!selectedCfg || !hasAudio) return;
-                      if (isFree || ownedAudioOrderId) {
+                      if (canListen) {
                         setPlayerOpen(true);
                         return;
                       }
@@ -2148,7 +2132,7 @@ export function BooksShowcase({
                     }}
                     className="relative inline-flex h-[54px] shrink-0 items-center justify-center rounded-full bg-[#10152c] px-5 text-[16.5px] font-semibold text-white ring-1 ring-[var(--bs-lav)]/25 disabled:opacity-60 @max-[760px]:h-12"
                   >
-                    {!hasAudio ? 'No audio' : isFree || ownedAudioOrderId ? 'Listen' : 'Buy to listen'}
+                    {!hasAudio ? 'No audio' : canListen ? 'Listen' : 'Buy to listen'}
                     {!hasAudio && <span className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500" />}
                   </button>
                   <button type="button" onClick={() => void shareBook()} aria-label="Share this book" className="inline-flex h-[54px] shrink-0 w-[54px] items-center justify-center rounded-full bg-[#242c50] text-[var(--bs-cream)] hover:scale-[1.04]">
@@ -2159,7 +2143,7 @@ export function BooksShowcase({
                       <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
                     </svg>
                   </button>
-                  {selectedCfg && selectedCfg.hasEbook !== false && !selectedCfg.isFree && !ownedEbookOrderId && (
+                  {selectedCfg && selectedCfg.hasEbook !== false && !canReadEbook && eb?.read === 'preview' && (
                     <button
                       type="button"
                       aria-label="Preview pages"
@@ -2180,6 +2164,9 @@ export function BooksShowcase({
                         <circle cx="12" cy="12" r="3" />
                       </svg>
                     </button>
+                  )}
+                  {contentMsg && (
+                    <p className="basis-full px-2 text-[13px] font-semibold text-[var(--bs-pink)]" role="status">{contentMsg}</p>
                   )}
                 </>
               );
@@ -2223,17 +2210,13 @@ export function BooksShowcase({
         document.body,
       )}
 
-      {readerOpen && selectedCfg && typeof document !== 'undefined' && (selectedCfg.isFree ? selectedCfg.hasEbook !== false : !!(ownedEbookOrderId && buyerEmail)) && createPortal(
+      {readerOpen && selectedCfg && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
             <button type="button" onClick={() => setReaderOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10">×</button>
             <h2 className="min-w-0 flex-1 truncate text-[16px] font-bold text-white">{selectedCfg.title}</h2>
           </header>
-          <PdfReader
-            bookId={selectedCfg.id}
-            url={selectedCfg.isFree ? selectedCfg.pdfUrl || freeBookUrl(selectedCfg.id, 'ebook', true) : `${downloadOrderUrl(ownedEbookOrderId!, buyerEmail!)}&inline=1`}
-            watermark={buyerEmail}
-          />
+          <PdfReader bookId={selectedCfg.id} />
         </div>,
         document.body,
       )}
@@ -2247,20 +2230,18 @@ export function BooksShowcase({
               <p className="text-[12px] text-white/50">First pages only. Buy to read the full book.</p>
             </div>
           </header>
-          <PdfReader bookId={selectedCfg.id} url={previewBookUrl(selectedCfg.id)} previewPages={selectedCfg.previewPages} />
+          <PdfReader bookId={selectedCfg.id} />
         </div>,
         document.body,
       )}
 
-      {playerOpen && selectedCfg && typeof document !== 'undefined' && selectedCfg.hasAudiobook === true && (selectedCfg.isFree || !!(ownedAudioOrderId && buyerEmail)) && createPortal(
+      {playerOpen && selectedCfg && typeof document !== 'undefined' && selectedCfg.hasAudiobook === true && createPortal(
         <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
           <AudioPlayer
             title={selectedCfg.title}
             bookId={selectedCfg.id}
-            url={selectedCfg.isFree ? selectedCfg.audioUrl || freeBookUrl(selectedCfg.id, 'audiobook', true) : `${downloadOrderUrl(ownedAudioOrderId!, buyerEmail!)}&inline=1`}
             onClose={() => setPlayerOpen(false)}
-            downloadable={selectedCfg.audiobookDownloadable !== false}
-            watermark={buyerEmail}
+            downloadable={!!access?.audiobook.can_download}
           />
         </div>,
         document.body,

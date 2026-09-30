@@ -8,6 +8,7 @@ import { setStoredUser } from '@/lib/auth-client'
 import { GoogleLoginButton } from '@/components/google-login-button'
 import { LegalAcceptTick } from '@/components/legal-accept'
 import { bindPushToAccount } from '@/lib/push'
+import { GuestLinkRequestForm } from '@/components/guest-link-request-form'
 import { captureReferralFromLocation, getReferralCode } from '@/lib/referral'
 
 function isLegalError(message: string) {
@@ -204,6 +205,15 @@ function LoginInner() {
           Sign up
         </Link>
       </p>
+
+      <details className="mt-6 rounded-xl border border-foreground/10 p-3 text-sm">
+        <summary className="cursor-pointer font-medium">Bought without an account?</summary>
+        <p className="mt-2 text-foreground/60">
+          We&apos;ll email a fresh secure link to your books. Signing up or logging in with the
+          same email also moves those purchases into your account.
+        </p>
+        <GuestLinkRequestForm defaultEmail={email} />
+      </details>
     </main>
   )
 }

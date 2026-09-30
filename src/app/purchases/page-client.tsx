@@ -1,52 +1,37 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { LegalOverlay } from '@/components/legal-overlay'
-import { getPurchases, downloadOrderUrl, type PurchaseItem } from '@/lib/api'
-import { getStoredUser } from '@/lib/auth-client'
+import { getPurchases, downloadBook, type PurchaseItem } from '@/lib/api'
 import { PdfReader } from '@/components/pdf-reader'
 import { AudioPlayer } from '@/components/audio-player'
-
-const COOLDOWN_MS = 8000
-
-async function triggerDownload(url: string, fallbackName: string) {
-  const res = await fetch(url)
-  if (!res.ok) return
-  const cd = res.headers.get('Content-Disposition') ?? ''
-  const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)
-  const filename = m?.[1] ? decodeURIComponent(m[1].replace(/"/g, '')) : fallbackName
-  const blob = await res.blob()
-  const objUrl = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = objUrl
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  URL.revokeObjectURL(objUrl)
-  document.body.removeChild(a)
-}
+import { GuestLinkRequestForm } from '@/components/guest-link-request-form'
+import { useLoggedIn } from '@/lib/use-logged-in'
 
 function Row({
   p,
-  email,
   onRead,
   onListen,
 }: {
   p: PurchaseItem
-  email: string
   onRead?: () => void
   onListen?: () => void
 }) {
   const isAudio = p.product_type === 'audiobook'
   const [downloading, setDownloading] = useState(false)
+  const [msg, setMsg] = useState('')
 
   async function handleDownload() {
     if (downloading) return
     setDownloading(true)
+    setMsg('')
     try {
       const ext = isAudio ? 'mp3' : 'pdf'
-      await triggerDownload(downloadOrderUrl(p.order_id, email), `book-${p.book_id}.${ext}`)
+      // Server re-checks purchase, downloadable flag and download limit.
+      await downloadBook(p.book_id, isAudio ? 'audiobook' : 'ebook', `book-${p.book_id}.${ext}`)
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : 'Download failed.')
     } finally {
       setDownloading(false)
     }
@@ -91,118 +76,82 @@ function Row({
           </button>
         )}
       </span>
+      {msg ? <p className="basis-full text-xs text-red-500" role="alert">{msg}</p> : null}
     </li>
   )
 }
 
 export default function PurchasesPage() {
-  const [email, setEmail] = useState('')
-  const [input, setInput] = useState('')
+  const loggedIn = useLoggedIn()
   const [ebooks, setEbooks] = useState<PurchaseItem[]>([])
   const [audiobooks, setAudiobooks] = useState<PurchaseItem[]>([])
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState(true)
   const [error, setError] = useState('')
   const [reader, setReader] = useState<PurchaseItem | null>(null)
   const [player, setPlayer] = useState<PurchaseItem | null>(null)
-  const lastLookup = useRef(0)
 
   useEffect(() => {
-    const u =
-      getStoredUser()?.email ||
-      (typeof window !== 'undefined'
-        ? localStorage.getItem('checkout_email') ||
-          sessionStorage.getItem('checkout_email') ||
-          ''
-        : '')
-    const e = u.trim().toLowerCase()
-    if (e) {
-      setEmail(e)
-      setInput(e)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!email) return
-    setBusy(true)
-    setError('')
-    getPurchases(email)
+    if (!loggedIn) return
+    let cancelled = false
+    // Authenticated: the server lists THIS account's purchases (it ignores
+    // any other email when a login is present).
+    getPurchases()
       .then((d) => {
+        if (cancelled) return
         setEbooks(d.ebooks || [])
         setAudiobooks(d.audiobooks || [])
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : 'Could not load purchases')
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load purchases')
       })
-      .finally(() => setBusy(false))
-  }, [email])
-
-  function onLookup(e: React.FormEvent) {
-    e.preventDefault()
-    const next = input.trim().toLowerCase()
-    if (!next) return
-    const now = Date.now()
-    if (now - lastLookup.current < COOLDOWN_MS) {
-      setError('Please wait a few seconds before searching again.')
-      return
+      .finally(() => {
+        if (!cancelled) setBusy(false)
+      })
+    return () => {
+      cancelled = true
     }
-    lastLookup.current = now
-    sessionStorage.setItem('checkout_email', next)
-    localStorage.setItem('checkout_email', next)
-    setEmail(next)
-  }
+  }, [loggedIn])
 
   return (
     <>
-      <LegalOverlay title="My purchases" updated="Use checkout email">
-        <p>
-          Use the email from checkout. Open a title to return to that book on the
-          shelf. Close with X to go back.
-        </p>
+      <LegalOverlay title="My purchases" updated="Your library">
+        {!loggedIn ? (
+          <>
+            <p>
+              <Link href="/login" className="underline">Log in</Link> to see the books in your account.
+            </p>
+            <h2>Bought without an account?</h2>
+            <p>
+              Enter the email you used at checkout and we&apos;ll email you a fresh secure link to
+              your books. Your purchases never expire — only the link does.
+            </p>
+            <GuestLinkRequestForm />
+          </>
+        ) : (
+          <>
+            {error ? <p className="mt-3 text-sm text-red-500">{error}</p> : null}
+            {busy ? <p className="mt-6 text-sm text-foreground/50">Loading…</p> : null}
 
-        <form className="mt-4 flex gap-2" onSubmit={onLookup}>
-          <input
-            type="email"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="email used at checkout"
-            className="min-w-0 flex-1 rounded-xl border border-foreground/15 bg-transparent px-3 py-2 text-sm"
-          />
-          <button
-            type="submit"
-            className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background"
-          >
-            Load
-          </button>
-        </form>
+            <h2>Ebooks</h2>
+            <ul className="mt-2 space-y-2">
+              {ebooks.map((p) => (
+                <Row key={p.order_id} p={p} onRead={() => setReader(p)} />
+              ))}
+              {!busy && ebooks.length === 0 ? <li>No ebook purchases yet.</li> : null}
+            </ul>
 
-        {error ? <p className="mt-3 text-sm text-red-500">{error}</p> : null}
-        {busy ? <p className="mt-6 text-sm text-foreground/50">Loading…</p> : null}
-
-        <h2>Ebooks</h2>
-        <ul className="mt-2 space-y-2">
-          {ebooks.map((p) => (
-            <Row key={p.order_id} p={p} email={email} onRead={() => setReader(p)} />
-          ))}
-          {!busy && ebooks.length === 0 ? <li>No ebook purchases yet.</li> : null}
-        </ul>
-
-        <h2>Audiobooks</h2>
-        <ul className="mt-2 space-y-2">
-          {audiobooks.map((p) => (
-            <Row
-              key={p.order_id}
-              p={p}
-              email={email}
-              onListen={() => setPlayer(p)}
-            />
-          ))}
-          {!busy && audiobooks.length === 0 ? (
-            <li>No audiobook purchases yet.</li>
-          ) : null}
-        </ul>
+            <h2>Audiobooks</h2>
+            <ul className="mt-2 space-y-2">
+              {audiobooks.map((p) => (
+                <Row key={p.order_id} p={p} onListen={() => setPlayer(p)} />
+              ))}
+              {!busy && audiobooks.length === 0 ? <li>No audiobook purchases yet.</li> : null}
+            </ul>
+          </>
+        )}
       </LegalOverlay>
 
-      {reader && email && (
+      {reader && (
         <div className="fixed inset-0 z-[10000] flex flex-col bg-[#0b1020]">
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
             <button
@@ -216,22 +165,17 @@ export default function PurchasesPage() {
               Book #{reader.book_id}
             </p>
           </header>
-          <PdfReader
-            bookId={String(reader.book_id)}
-            url={`${downloadOrderUrl(reader.order_id, email)}&inline=1`}
-            watermark={email}
-          />
+          <PdfReader bookId={String(reader.book_id)} />
         </div>
       )}
 
-      {player && email && (
+      {player && (
         <div className="fixed inset-0 z-[10000] flex flex-col bg-[#0b1020]">
           <AudioPlayer
             title={`Book #${player.book_id}`}
             bookId={String(player.book_id)}
-            url={`${downloadOrderUrl(player.order_id, email)}&inline=1`}
             onClose={() => setPlayer(null)}
-            watermark={email}
+            downloadable={player.downloadable !== false}
           />
         </div>
       )}

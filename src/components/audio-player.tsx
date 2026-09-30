@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
-import { getToken } from '@/lib/api'
+import { getToken, getAudioStreamUrl, fetchBookDownload, ContentError } from '@/lib/api'
 import {
   getAudioProgress,
   saveAudioProgress,
@@ -103,22 +103,49 @@ function openDb(): Promise<IDBDatabase> {
   })
 }
 
+/**
+ * Plays an audiobook from a short-lived signed stream URL issued by the
+ * server after it checks entitlement (backend shop/views_books.py) — never
+ * from a public file URL. Guests pass their purchase-link token.
+ */
 export function AudioPlayer({
   title,
-  url,
   bookId,
+  guestToken,
   onClose,
   downloadable = true,
   watermark,
+  onAccessError,
 }: {
   title: string
-  url: string
   bookId: string
+  guestToken?: string | null
   onClose: () => void
   downloadable?: boolean
   watermark?: string
+  onAccessError?: (err: ContentError) => void
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [url, setUrl] = useState('')
+  const [streamError, setStreamError] = useState('')
+
+  useEffect(() => {
+    // Callers mount one player per book, so no reset is needed here.
+    let cancelled = false
+    getAudioStreamUrl(bookId, guestToken)
+      .then((u) => {
+        if (!cancelled) setUrl(u)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setStreamError(err instanceof Error ? err.message : 'Could not open this audiobook.')
+        if (err instanceof ContentError) onAccessError?.(err)
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookId, guestToken])
   const [obscured, setObscured] = useState(false)
   const [isPro, setIsPro] = useState(false)
   const [proGate, setProGate] = useState(false)
@@ -576,9 +603,10 @@ export function AudioPlayer({
     setOfflineBusy(true)
     setOfflineMsg('Saving offline…')
     try {
-      const res = await fetch(url)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const buf = await res.arrayBuffer()
+      // Saving offline is a download: it goes through the download endpoint,
+      // which re-checks the downloadable flag and counts against the limit.
+      const { blob } = await fetchBookDownload(bookId, 'audiobook', guestToken)
+      const buf = await blob.arrayBuffer()
       const db = await openDb()
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction('files', 'readwrite')
@@ -624,7 +652,7 @@ export function AudioPlayer({
       )}
       <audio
         ref={audioRef}
-        src={url.split('#')[0]}
+        src={url ? url.split('#')[0] : undefined}
         preload="metadata"
         onLoadedMetadata={() => void onLoadedMetadata()}
         onCanPlay={() => {
@@ -756,7 +784,9 @@ export function AudioPlayer({
         )}
 
       <div className="flex min-h-0 flex-1 flex-col items-center justify-start gap-6 overflow-y-auto px-6 py-6">
-        {status && !ready ? (
+        {streamError ? (
+          <p className="text-sm font-semibold text-[#f591ac]" role="alert">{streamError}</p>
+        ) : status && !ready ? (
           <p className="text-sm text-white/50">{status}</p>
         ) : (
           <>
