@@ -17,11 +17,11 @@ const SITE = "https://plugyard.com"
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
   title: {
-    default: "PlugYard — eBooks & Audiobooks",
+    default: "PlugYard — Buy eBooks & Audiobooks Online",
     template: "%s | PlugYard",
   },
   description:
-    "Kenya's digital bookstore — buy and instantly read eBooks and audiobooks without an account. Free in-browser PDF editor with auto-save, smart built-in PDF reader, and a growing catalogue of practical guides for business, career, academic, personal finance, and lifestyle.",
+    "PlugYard — Kenya's online store for eBooks and audiobooks. Buy and instantly read or listen — no account required. AI-powered narration turns every eBook into an audiobook. Free in-browser PDF editor with auto-save. Business, career, academic, personal finance, and lifestyle titles.",
   keywords: [
     "PlugYard",
     "ebook Kenya",
@@ -74,9 +74,9 @@ export const metadata: Metadata = {
     locale: "en_KE",
     url: SITE,
     siteName: "PlugYard",
-    title: "PlugYard — Kenya's eBook & Audiobook Store",
+    title: "PlugYard — Buy eBooks & Audiobooks Online",
     description:
-      "Buy and instantly read eBooks and audiobooks — no account needed. Free PDF editor with auto-save. Practical guides for business, career, academic, personal finance, and lifestyle.",
+      "Buy eBooks and audiobooks online — no account needed. AI-powered narration on every title. Practical guides for business, career, academic, personal finance, and lifestyle. Free PDF editor with auto-save included.",
     images: [
       {
         url: "/logo.png",
@@ -88,9 +88,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "PlugYard — Kenya's eBook & Audiobook Store",
+    title: "PlugYard — Buy eBooks & Audiobooks Online",
     description:
-      "Buy eBooks & audiobooks without an account. Free PDF editor with auto-save. Business, career, academic, finance & lifestyle guides.",
+      "Buy eBooks & audiobooks online — no account needed. AI narration on every title. Business, career, academic, finance & lifestyle guides. Free PDF editor.",
     images: ["/logo.png"],
   },
   verification: {

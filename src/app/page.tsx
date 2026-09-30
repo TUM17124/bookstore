@@ -2,9 +2,9 @@ import type { Metadata } from "next"
 import HomePageClient from "./page-client"
 
 export const metadata: Metadata = {
-  title: "PlugYard — Kenya's eBook & Audiobook Store",
+  title: "PlugYard — Buy eBooks & Audiobooks Online | No Account Needed",
   description:
-    "Buy and instantly read eBooks and audiobooks on PlugYard — no account needed. Includes a free in-browser PDF editor with auto-save and a smart PDF reader. Explore practical guides covering business, career, academic, personal finance, and lifestyle.",
+    "Shop Kenya's eBook and audiobook store. Buy and instantly read or listen — no account required. AI-powered narration on every title. Sign up to save your purchases and sync progress. Free built-in PDF editor with auto-save. Browse business, career, academic, personal finance, and lifestyle titles.",
   alternates: {
     canonical: "https://plugyard.com/",
   },
