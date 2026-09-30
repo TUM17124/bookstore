@@ -2778,69 +2778,44 @@ function EditorPageInner() {
   );
 
   const fetchDocumentBlob = useCallback(async (): Promise<Blob | null> => {
-    if (!documentId) return null;
+    // storedDocumentId is the Django EditorDocument PK — the download endpoint
+    // is /api/editor/documents/{pk}/download/ and expects that ID, NOT the
+    // GigaPDF SDK session documentId.
+    if (!storedDocumentId) return null;
     const token = await ensureFreshAuthToken();
-    const res = await fetch(api.getDocumentDownloadUrl(documentId), {
+    const res = await fetch(api.getDocumentDownloadUrl(storedDocumentId), {
       credentials: 'include',
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
     if (!res.ok) return null;
     return res.blob();
-  }, [documentId]);
+  }, [storedDocumentId]);
 
   const handleExport = useCallback(async () => {
-    if (!currentPdfFile) {
-      const blob = await fetchDocumentBlob();
-      if (blob) downloadBlob(blob, `${name || 'document'}.pdf`);
-      return;
-    }
+    const filename = `${name || 'document'}.pdf`;
 
-    try {
-      let fileToExport: File | Blob = currentPdfFile;
-
-      // 1. Apply pending canvas operations (text/shape/image overlays) so
-      //    the binary contains the final scene-graph state, not just the
-      //    parsed original.
-      const canvasElements = currentPage?.elements ?? [];
-      const canvasOps = canvasElements.map((el) => ({
-        action: 'add' as const,
-        pageNumber: currentPageIndex + 1,
-        element: el as unknown as Record<string, unknown>,
-      }));
-      const allOperations = [...canvasOps, ...contentModifications.map((mod) => ({
-        ...mod,
-        pageNumber: mod.pageNumber + 1, // content-edit-layer uses 0-indexed, API uses 1-indexed
-      }))];
-
-      if (allOperations.length > 0) {
-        const modifiedBlob = await applyElements.mutateAsync({
-          file: fileToExport,
-          operations: allOperations,
-        });
-        fileToExport = modifiedBlob;
+    if (currentPdfFile) {
+      // currentPdfFile already has all baked canvas ops from the last save/apply.
+      // Just flatten form fields + annotations so the exported PDF is
+      // self-contained, then download. Never re-apply canvas elements here —
+      // they are already baked into currentPdfFile and re-adding them would
+      // create duplicates in the export.
+      try {
+        const fileForFlatten = new File([currentPdfFile], filename, { type: 'application/pdf' });
+        const flattenedBlob = await flattenPdf.mutateAsync({ file: fileForFlatten });
+        downloadBlob(flattenedBlob, filename);
+        return;
+      } catch (err) {
+        clientLogger.error('[editor] Export flatten failed, falling back to raw file:', err);
+        downloadBlob(currentPdfFile, filename);
+        return;
       }
-
-      // 2. Flatten before export: bakes form fields + annotations into the
-      //    page content so the exported PDF is self-contained. Avoids the
-      //    "doublon d'élément" issue when interactive widgets, native PDF
-      //    annotations and freshly baked overlays would otherwise coexist
-      //    in the downloaded file.
-      const blobToFlatten =
-        fileToExport instanceof Blob ? fileToExport : new Blob([fileToExport]);
-      const fileForFlatten = new File(
-        [blobToFlatten],
-        `${name || 'document'}.pdf`,
-        { type: 'application/pdf' },
-      );
-      const flattenedBlob = await flattenPdf.mutateAsync({ file: fileForFlatten });
-
-      downloadBlob(flattenedBlob, `${name || 'document'}.pdf`);
-    } catch (err) {
-      clientLogger.error('[editor] Export failed:', err);
-      const blob = await fetchDocumentBlob();
-      if (blob) downloadBlob(blob, `${name || 'document'}.pdf`);
     }
-  }, [currentPdfFile, currentPage, currentPageIndex, contentModifications, applyElements, flattenPdf, name, documentId, fetchDocumentBlob]);
+
+    // No in-memory binary — fetch the stored version from the backend.
+    const blob = await fetchDocumentBlob();
+    if (blob) downloadBlob(blob, filename);
+  }, [currentPdfFile, flattenPdf, name, fetchDocumentBlob]);
 
   // Restore the document to its original (v1) PDF binary by asking the
   // backend to copy v1 forward as a new current version. This is the

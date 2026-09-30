@@ -321,6 +321,15 @@ export function useDocumentSave(options: UseDocumentSaveOptions): UseDocumentSav
         setSaveError(message);
         logger.error('Save failed', { documentId, errorMessage: message });
 
+        // Drain the pending-change counter for the changes that WERE attempted
+        // in this save (new changes made while the save ran stay pending). This
+        // prevents pendingChanges from accumulating forever on repeated failures,
+        // which would keep isActivelyEditing=true and fire the beforeunload
+        // warning even after the user explicitly saves.
+        const remainingOnFail = Math.max(0, pendingChangesRef.current - pendingAtStart);
+        setPendingChanges(remainingOnFail);
+        pendingChangesRef.current = remainingOnFail;
+
         // A prepared-edit failure must not be retried from the session's
         // original PDF: that would save stale bytes and discard the edits.
         if (!preparationFailed) {

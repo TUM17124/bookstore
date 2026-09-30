@@ -94,6 +94,21 @@ function mergeBackendElements(
         // Case (b): parsed element is a single baked line of the Redis element.
         if (sContent.split("\n").some((line) => line === elContent && line.length > 0)) return true;
       }
+      // Case (c): character-offset slice (flowSliceSourceText path). The
+      // paginator slices the backend content string at byte offsets rather than
+      // line boundaries, so the parsed copy is a prefix of the backend content
+      // with no newline involved. Require a minimum length to avoid false
+      // positives on very short content fragments, and still require the bounds
+      // to overlap (already checked by boundsApproxEqual above via the outer
+      // exact-match guard — replicate it here since we're inside the sContent!==
+      // branch).
+      if (
+        s.type === "text" &&
+        elContent.length >= 8 &&
+        !sContent.includes("\n") &&
+        sContent.startsWith(elContent) &&
+        boundsApproxEqual(s.bounds, el.bounds)
+      ) return true;
       return false;
     });
     if (looksBaked) continue;
