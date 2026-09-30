@@ -1476,6 +1476,7 @@ function EditorPageInner() {
     save,
     saveWithPriority,
     pendingChanges,
+    offlineQueueSize,
   } = useDocumentSave({
     documentId,
     storedDocumentId,
@@ -1600,7 +1601,7 @@ function EditorPageInner() {
   const remoteReloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const isActivelyEditing = isDirty || saving || pendingChanges > 0;
+  const isActivelyEditing = isDirty || saving || pendingChanges > 0 || offlineQueueSize > 0;
   const isActivelyEditingRef = useRef(isActivelyEditing);
   isActivelyEditingRef.current = isActivelyEditing;
 
@@ -6469,7 +6470,7 @@ function EditorPageInner() {
                 onClick={() => setPagesSidebarCollapsed(true)}
                 title={t("collapsePagesSidebar")}
                 aria-label={t("collapsePagesSidebar")}
-                className="absolute -right-3 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
+                className="absolute right-2 top-2 z-20 flex h-6 w-6 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
               >
                 <ChevronLeft size={14} />
               </button>
@@ -6730,7 +6731,7 @@ function EditorPageInner() {
                 onClick={() => setPropertiesSidebarCollapsed(true)}
                 title={t("collapsePropertiesSidebar")}
                 aria-label={t("collapsePropertiesSidebar")}
-                className="absolute -left-3 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
+                className="absolute right-2 top-2 z-20 flex h-6 w-6 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
               >
                 <ChevronRight size={14} />
               </button>

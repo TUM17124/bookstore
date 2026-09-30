@@ -66,7 +66,7 @@ export function PagesSidebar({
   return (
     <div className="pages-sidebar w-48 bg-muted/30 border-r flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b">
+      <div className="flex items-center justify-between p-3 pr-10 border-b">
         <h3 className="font-medium text-sm">{t("title")}</h3>
         {onPageAdd && (
           <button

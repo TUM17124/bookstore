@@ -721,6 +721,34 @@ export function PdfReader({
   }, [])
 
   useEffect(() => {
+    // Stop TTS immediately when the tab hides or the page unloads.
+    // The robot reader is not a background-playback feature — unlike
+    // the audio player, it should halt the moment the user leaves.
+    const stopTts = () => {
+      const a = ttsAudioRef.current
+      if (a && !a.paused) {
+        a.pause()
+        a.currentTime = 0
+      }
+      if (ttsPlayingRef.current) {
+        ttsPlayingRef.current = false
+        setTtsPlaying(false)
+      }
+      const raf = followRafRef.current
+      if (raf) cancelAnimationFrame(raf)
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') stopTts()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pagehide', stopTts)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', stopTts)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!pipWindow) return
     const doc = pipWindow.document
     doc.documentElement.style.height = '100%'

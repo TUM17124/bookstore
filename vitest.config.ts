@@ -12,6 +12,8 @@ const src = fileURLToPath(new URL("./src", import.meta.url))
 export default defineConfig({
   resolve: {
     alias: [
+      { find: /^@giga-pdf\/logger$/, replacement: `${src}/vendor/giga-pdf/logger/src/index.ts` },
+      { find: /^@giga-pdf\/canvas$/, replacement: `${src}/vendor/giga-pdf/canvas/src/index.ts` },
       { find: /^@giga-pdf\/ui\/lib\/utils$/, replacement: `${src}/vendor/giga-pdf/ui/src/lib/utils.ts` },
       { find: /^@giga-pdf\/pdf-engine\/engine$/, replacement: `${src}/vendor/giga-pdf/pdf-engine/src/engine/index.ts` },
       { find: /^@giga-pdf\/pdf-engine\/parse$/, replacement: `${src}/vendor/giga-pdf/pdf-engine/src/parse/index.ts` },

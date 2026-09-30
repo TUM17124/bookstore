@@ -183,11 +183,13 @@ function CheckoutInner() {
         {mounted && !loggedIn && (
           <div className="mt-4 space-y-3 rounded-2xl border border-foreground/10 bg-foreground/[0.03] px-4 py-4">
             <div>
-              <p className="text-sm font-medium text-foreground/90">Guest checkout</p>
+              <p className="text-sm font-medium text-foreground/90">You are not signed in — guest checkout</p>
               <p className="mt-1.5 text-[13px] leading-relaxed text-foreground/60">
-                You can pay with email only. Keep this address—it is how we match
-                your payment if something goes wrong, and how we unlock downloads
-                after you log in.
+                <strong className="font-semibold text-foreground/80">Why we need your email:</strong>{' '}
+                Your email is the only way to match your payment to your order if something
+                goes wrong (failed payment, missing download, support request). It also lets
+                you re-download your purchase later without paying again — just log in with
+                the same address.
               </p>
             </div>
             <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 px-3 py-3">
@@ -252,10 +254,17 @@ function CheckoutInner() {
         )}
 
         {mounted && loggedIn && (
-          <p className="mt-4 text-[13px] text-foreground/50">
-            You are signed in. Use your account email here so this payment stays
-            linked for support and re-downloads.
-          </p>
+          <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-3">
+            <span className="mt-px text-emerald-600 text-base" aria-hidden>✓</span>
+            <div>
+              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                Signed in{email ? ` as ${email}` : ''}
+              </p>
+              <p className="mt-0.5 text-[13px] text-foreground/60">
+                Your payment will be linked to this account automatically. Use this email to access your downloads any time.
+              </p>
+            </div>
+          </div>
         )}
 
         {error && (

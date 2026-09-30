@@ -22,12 +22,12 @@ const BENEFITS = [
       </svg>
     ),
     title: 'Floating pop-out reader & player',
-    body: 'Keep your page or your audiobook floating above other tabs and windows while you do something else, on desktop.',
+    body: 'Keep your audiobook playing and your page floating even when you switch apps or minimize the browser. Audio continues in the background — close or navigate away from the tab to stop it.',
   },
   {
     icon: <span className="text-lg leading-none">🔊</span>,
     title: 'AI narration, any page',
-    body: 'Have any page read aloud in a natural voice — pick from four distinct voices, control speed, and follow along with auto-scroll and sentence highlighting as it reads.',
+    body: 'Have any page read aloud in a natural voice — pick from four distinct voices, control speed, and follow along with auto-scroll and sentence highlighting as it reads. Narration stops automatically when you close or navigate away from the tab.',
   },
 ]
 

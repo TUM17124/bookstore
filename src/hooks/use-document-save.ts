@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/pdf-editor/api";
 import { offlineQueue, type PendingOperation } from "@/lib/pdf-editor/offline-queue";
 import { useLogger } from "@giga-pdf/logger";
+import { isDocumentSave } from "@/lib/pdf-editor/save-queue";
 
 // ---------------------------------------------------------------------------
 // PDF Blob retrieval — downloads the current PDF bytes from the session
@@ -198,9 +199,9 @@ export function useDocumentSave(options: UseDocumentSaveOptions): UseDocumentSav
   // --------------------------------------------------------------------------
 
   const refreshQueueSize = useCallback(async () => {
-    const size = await offlineQueue.size();
-    setOfflineQueueSize(size);
-  }, []);
+    const ops = await offlineQueue.getAll();
+    setOfflineQueueSize(ops.filter((op) => isDocumentSave(op, documentId, storedDocumentId)).length);
+  }, [documentId, storedDocumentId]);
 
   // --------------------------------------------------------------------------
   // Fonction de sauvegarde vers S3 (online path)
@@ -235,7 +236,8 @@ export function useDocumentSave(options: UseDocumentSaveOptions): UseDocumentSav
         });
         await refreshQueueSize();
         logger.info('Document queued for offline sync', { documentId, saveName });
-        return true;
+        // Queued is not saved; keep the leave warning until upload succeeds.
+        return false;
       }
 
       savingRef.current = true;
@@ -244,8 +246,16 @@ export function useDocumentSave(options: UseDocumentSaveOptions): UseDocumentSav
       const pendingAtStart = pendingChangesRef.current;
       let preparationFailed = false;
       let pdfBlob: Blob | null = null;
+      let supersededSaveIds: string[] = [];
 
       try {
+        // Capture IDs before preparing/uploading. Never clear newer queued work
+        // or a separate Save As request when this upload completes.
+        if (!forceNewDocument) {
+          supersededSaveIds = (await offlineQueue.getAll())
+            .filter((op) => isDocumentSave(op, documentId, storedDocumentId) && !op.payload.forceNewDocument)
+            .map((op) => op.id);
+        }
         logger.info('Saving document to S3', { documentId, name: saveName });
 
         // Let the caller inject a PDF that already has local edits applied
@@ -302,6 +312,8 @@ export function useDocumentSave(options: UseDocumentSaveOptions): UseDocumentSav
           storedId = result.stored_document_id;
         }
 
+        await offlineQueue.remove(supersededSaveIds);
+        await refreshQueueSize();
         setLastSaved(new Date());
         const remainingChanges = Math.max(
           0,
@@ -430,22 +442,25 @@ export function useDocumentSave(options: UseDocumentSaveOptions): UseDocumentSav
   // --------------------------------------------------------------------------
 
   const flushOfflineQueue = useCallback(async () => {
-    const size = await offlineQueue.size();
-    if (size === 0 || isSyncingRef.current) return;
+    const size = (await offlineQueue.getAll())
+      .filter((op) => isDocumentSave(op, documentId, storedDocumentId)).length;
+    if (size === 0 || isSyncingRef.current || savingRef.current) return;
 
     isSyncingRef.current = true;
     setIsSyncing(true);
     logger.info('Flushing offline queue', { pendingOps: size });
 
     try {
-      const synced = await offlineQueue.flush(replayOperation);
+      const synced = await offlineQueue.flush(
+        replayOperation,
+        (op) => isDocumentSave(op, documentId, storedDocumentId),
+      );
       logger.info('Offline queue flushed', { syncedOps: synced });
 
       if (synced > 0) {
         setLastSaved(new Date());
-        setPendingChanges(0);
-        pendingChangesRef.current = 0;
-        setDirty?.(false);
+        // Replaying an older snapshot cannot acknowledge edits made since it.
+        // Only performSave can clear the current document's dirty state.
       }
     } catch (err) {
       logger.error('Offline queue flush error', {
@@ -456,7 +471,7 @@ export function useDocumentSave(options: UseDocumentSaveOptions): UseDocumentSav
       setIsSyncing(false);
       await refreshQueueSize();
     }
-  }, [replayOperation, setDirty, logger, refreshQueueSize]);
+  }, [replayOperation, documentId, storedDocumentId, logger, refreshQueueSize]);
 
   // --------------------------------------------------------------------------
   // Listeners online / offline
@@ -464,6 +479,7 @@ export function useDocumentSave(options: UseDocumentSaveOptions): UseDocumentSav
 
   useEffect(() => {
     const handleOnline = () => {
+      isOfflineRef.current = false;
       setIsOffline(false);
       logger.info('Connection restored, starting offline sync');
       flushOfflineQueue();
