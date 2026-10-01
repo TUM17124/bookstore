@@ -220,7 +220,11 @@ function mayRetry(method: string, init: RequestInit, opts: RequestOptions): bool
 }
 
 export async function authFetch(url: string, init: RequestInit & RequestOptions = {}): Promise<Response> {
-  const { signal, idempotencyKey, pure, retries, timeoutMs, onRetry, auth = true, ...rest } = init
+  const { signal, idempotencyKey: requestedKey, pure, retries, timeoutMs, onRetry, auth = true, ...rest } = init
+  // A pure (stateless) request needs no key, and the PDF service's CORS
+  // policy doesn't allow the header: sending it gets every attempt blocked
+  // by the browser (found in the Part A live check).
+  const idempotencyKey = pure ? undefined : requestedKey
   const opts: RequestOptions = { idempotencyKey, pure }
   const method = (rest.method || "GET").toUpperCase()
   const maxRetries = mayRetry(method, rest, opts) ? Math.max(0, retries ?? RETRY_DELAYS_MS.length) : 0

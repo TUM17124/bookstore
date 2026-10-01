@@ -237,6 +237,12 @@ describe("idempotent writes", () => {
     expect(header(1, "Idempotency-Key")).toBeNull()
   })
 
+  it("`pure` requests never send an Idempotency-Key, even if one is passed", async () => {
+    script(json(200))
+    await settle(authFetch("https://pdf.test/pdf/structure", { method: "POST", pure: true, idempotencyKey: newIdempotencyKey() }))
+    expect(header(0, "Idempotency-Key")).toBeNull()
+  })
+
   it("keys are unique per action", () => {
     const keys = new Set(Array.from({ length: 500 }, newIdempotencyKey))
     expect(keys.size).toBe(500)
