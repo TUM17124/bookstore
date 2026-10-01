@@ -1070,12 +1070,21 @@ export type HomeSectionsPage = {
  * Personal when logged in (and personalisation is on). */
 export async function getHomeSections(category?: string, call?: CallOptions): Promise<HomeSectionsPage> {
   const q = category ? `?category=${encodeURIComponent(category)}` : ""
-  return api<HomeSectionsPage>(`/home/sections/${q}`, {
-    auth: !!getToken(),
-    cache: "no-store",
-    signal: call?.signal,
-    onRetry: call?.onRetry,
-  })
+  const load = (auth: boolean) =>
+    api<HomeSectionsPage>(`/home/sections/${q}`, {
+      auth,
+      cache: "no-store",
+      signal: call?.signal,
+      onRetry: call?.onRetry,
+    })
+  try {
+    return await load(!!getToken())
+  } catch (err) {
+    // A dead session must not blank the home page: show the public
+    // (non-personal) sections instead, like the book list does.
+    if (err instanceof AuthFetchError && err.status === 401) return load(false)
+    throw err
+  }
 }
 
 export async function getPersonalisation(): Promise<{ enabled: boolean }> {
