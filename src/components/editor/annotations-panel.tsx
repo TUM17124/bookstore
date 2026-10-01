@@ -28,6 +28,7 @@ import {
 import { Button } from "@giga-pdf/ui";
 import type { AnnotationElement, AnnotationType, Element } from "@giga-pdf/types";
 import { cn } from "@/lib/pdf-editor/utils";
+import { errorMessage } from "@/lib/auth-fetch";
 
 /**
  * Geometric annotation kinds the panel can create. Each maps 1:1 to a
@@ -407,14 +408,20 @@ function NativeAnnotationsPanel({
   // Key (`page:index`) of the row whose removal is in flight — disables its
   // delete button. Cleared on refresh.
   const [removingKey, setRemovingKey] = useState<string | null>(null);
+  // Shown in the panel; the list keeps its last good contents meanwhile.
+  // Stored raw and translated at render time: `t` is not referentially
+  // stable, so using it inside `refresh` would re-run the load effect on
+  // every render (an endless request loop).
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const next = await onListAnnotations();
       setItems(next);
-    } catch {
-      // Keep the last good list on a transient failure rather than blanking it.
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err ?? new Error("load failed"));
     } finally {
       setLoading(false);
       setRemovingKey(null);
@@ -485,7 +492,26 @@ function NativeAnnotationsPanel({
             <GeometricAddToolbar onAdd={onAdd} addBusy={addBusy} />
           )}
 
-          {items.length === 0 && !loading && (
+          {loadError != null && (
+            <div
+              role="alert"
+              className="mx-1 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive"
+            >
+              <span className="min-w-0 flex-1">
+                {t("loadError")} {errorMessage(loadError, "")}
+              </span>
+              <button
+                type="button"
+                className="shrink-0 font-semibold underline"
+                disabled={loading}
+                onClick={() => void refresh()}
+              >
+                {t("retry")}
+              </button>
+            </div>
+          )}
+
+          {items.length === 0 && !loading && loadError == null && (
             <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("empty")}</p>
           )}
 

@@ -5,7 +5,7 @@
 // src/lib/api.ts's getToken/refreshAccessToken) - this adapts the editor's
 // getAuthToken()/invalidateAuthToken() calls to that, rather than inventing a
 // second auth mechanism.
-import { getToken, refreshAccessToken } from "@/lib/api";
+import { getToken, refreshAccessToken, tokenExpiresInMs } from "@/lib/api";
 
 export async function getAuthToken(): Promise<string | null> {
   return getToken();
@@ -51,11 +51,15 @@ export function invalidateAuthToken(): void {
  */
 export async function ensureFreshAuthToken(): Promise<string | null> {
   const token = getToken();
-  if (token) return token;
-  if (typeof window === "undefined") return null;
-  if (!localStorage.getItem("refresh_token")) return null;
+  const left = tokenExpiresInMs(token);
+  // Use the stored token unless it is missing or (about to be) expired.
+  if (token && (left === null || left > 30_000)) return token;
+  if (typeof window === "undefined") return token;
+  if (!localStorage.getItem("refresh_token")) return token;
   try {
-    return await refreshAccessToken();
+    // Single-flight in src/lib/api.ts: a burst of editor requests that all
+    // find the token expired causes ONE refresh, not one each.
+    return await refreshAccessToken(token);
   } catch {
     // Refresh failed: the session is genuinely over. Do not throw here —
     // callers send the request unauthenticated and surface the real 401.

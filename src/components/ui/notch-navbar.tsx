@@ -40,7 +40,7 @@ import {
   type AuthUser,
 } from "@/lib/auth-client"
 import { getReferralCode } from "@/lib/referral"
-import { getProStatus, refreshAccessToken, SessionEvictedError } from "@/lib/api"
+import { getProStatus, getToken, refreshAccessToken, SessionEvictedError, tokenExpiresInMs } from "@/lib/api"
 
 const NavLink = ({
   href,
@@ -141,13 +141,23 @@ function NotchNavbarInner({
   // evicted by the concurrent-session cap (Part I) finds out: its refresh
   // token comes back blacklisted, and we show that specific reason instead
   // of a generic "please log in again."
+  //
+  // It used to refresh unconditionally on every mount, every `user` change and
+  // every 45 minutes, in every open tab — production logs showed several
+  // refreshes per tick plus bursts, tripping the refresh rate limit. Now it
+  // checks every 5 minutes and only refreshes when the token is close to
+  // expiry; refreshAccessToken is single-flight, and because tokens live in
+  // localStorage, one tab's refresh serves all tabs.
+  const loggedIn = !!user
   useEffect(() => {
-    if (!isLoggedIn()) return
+    if (!loggedIn || !isLoggedIn()) return
     let cancelled = false
 
     async function tick() {
+      const left = tokenExpiresInMs(getToken())
+      if (left !== null && left > 10 * 60 * 1000) return
       try {
-        await refreshAccessToken()
+        await refreshAccessToken(getToken())
       } catch (err) {
         if (cancelled) return
         if (err instanceof SessionEvictedError) {
@@ -161,12 +171,12 @@ function NotchNavbarInner({
     }
 
     void tick()
-    const interval = window.setInterval(tick, 45 * 60 * 1000)
+    const interval = window.setInterval(tick, 5 * 60 * 1000)
     return () => {
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [user])
+  }, [loggedIn])
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {

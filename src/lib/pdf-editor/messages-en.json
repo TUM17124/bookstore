@@ -904,7 +904,9 @@
       "removedTitle": "Annotation removed",
       "removedDescription": "The annotation was removed from the document.",
       "removeErrorTitle": "Could not remove",
-      "removeErrorDescription": "Failed to remove this annotation."
+      "removeErrorDescription": "Failed to remove this annotation.",
+      "loadError": "Couldn't load annotations, please try again.",
+      "retry": "Retry"
     },
     "toc": {
       "title": "Table of Contents",

@@ -103,7 +103,41 @@ export class CheckoutError extends Error {
  * specifically when this session was the one silently evicted by the
  * concurrent-session cap (its refresh token got blacklisted), so callers
  * can show that distinctly rather than a generic "please log in again." */
-export async function refreshAccessToken(): Promise<string> {
+/** Milliseconds until the JWT expires (negative if expired); null if the
+ * token can't be decoded. Reads the payload only — never trusted for
+ * anything but deciding WHEN to refresh. */
+export function tokenExpiresInMs(token: string | null | undefined): number | null {
+  if (!token) return null
+  try {
+    const part = token.split(".")[1]
+    const json = JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/")))
+    return typeof json.exp === "number" ? json.exp * 1000 - Date.now() : null
+  } catch {
+    return null
+  }
+}
+
+// Single shared refresh. Production logs showed bursts of ~30 refreshes in
+// the same second from one client (every parallel editor request refreshed on
+// its own after the token expired) plus several per 45-minute navbar tick;
+// they tripped the refresh rate limit (429) and then retried. Now:
+// - concurrent callers share ONE in-flight request;
+// - a token that is still valid and was obtained after the caller's stale one
+//   (by another request or another tab — tokens live in localStorage) is
+//   reused without a network call;
+// - after a failed refresh, calls fail fast for REFRESH_FAIL_COOLDOWN_MS
+//   instead of hammering the endpoint.
+const REFRESH_FAIL_COOLDOWN_MS = 30_000
+let refreshInFlight: Promise<string> | null = null
+let lastRefreshFailure: { at: number; error: Error } | null = null
+
+/** Test hook: forget single-flight/cooldown state. */
+export function _resetRefreshStateForTests() {
+  refreshInFlight = null
+  lastRefreshFailure = null
+}
+
+async function doRefresh(): Promise<string> {
   const refresh = getRefreshToken()
   if (!refresh) throw new Error("No refresh token")
   const res = await fetch(`${API}/auth/refresh/`, {
@@ -114,12 +148,47 @@ export async function refreshAccessToken(): Promise<string> {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     if ((data as { code?: string }).code === "session_evicted") throw new SessionEvictedError()
+    if (res.status === 429) throw new Error("Too many sign-in refreshes — please wait a moment and try again.")
     throw new Error((data as { error?: string; detail?: string }).error || "Session expired")
   }
   const access = (data as { access?: string }).access
   if (!access) throw new Error("Refresh response had no access token")
   setTokens(access)
   return access
+}
+
+/** Exchanges the stored refresh token for a new access token — the access
+ * token is intentionally short-lived (see backend SIMPLE_JWT comment).
+ * Throws SessionEvictedError specifically when this session was the one
+ * silently evicted by the concurrent-session cap (its refresh token got
+ * blacklisted), so callers can show that distinctly.
+ *
+ * `staleToken`: the access token the caller found to be rejected/expired.
+ * If the stored token is already a different, still-valid one, it is
+ * returned without contacting the server. */
+export async function refreshAccessToken(staleToken?: string | null): Promise<string> {
+  const current = getToken()
+  if (current && current !== staleToken && (tokenExpiresInMs(current) ?? 0) > 30_000) {
+    return current
+  }
+  if (refreshInFlight) return refreshInFlight
+  if (lastRefreshFailure && Date.now() - lastRefreshFailure.at < REFRESH_FAIL_COOLDOWN_MS) {
+    throw lastRefreshFailure.error
+  }
+  refreshInFlight = doRefresh()
+    .then((token) => {
+      lastRefreshFailure = null
+      return token
+    })
+    .catch((err: unknown) => {
+      const error = err instanceof Error ? err : new Error(String(err))
+      if (!(error instanceof SessionEvictedError)) lastRefreshFailure = { at: Date.now(), error }
+      throw error
+    })
+    .finally(() => {
+      refreshInFlight = null
+    })
+  return refreshInFlight
 }
 
 export function clearTokens() {
@@ -1141,6 +1210,7 @@ export async function contentFetch(
     : pathOrUrl.startsWith("/api/")
       ? `${apiOrigin()}${pathOrUrl}`
       : `${API}${pathOrUrl}`
+  const sentToken = guestToken ? null : getToken()
   const go = async () => {
     try {
       return await fetch(url, {
@@ -1156,7 +1226,7 @@ export async function contentFetch(
   let res = await go()
   if (res.status === 401 && !guestToken && getRefreshToken()) {
     try {
-      await refreshAccessToken()
+      await refreshAccessToken(sentToken)
       res = await go()
     } catch {
       // fall through with the 401
