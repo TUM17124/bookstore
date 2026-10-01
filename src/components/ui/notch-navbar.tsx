@@ -352,7 +352,7 @@ function NotchNavbarInner({
           </svg>
         </div>
 
-        <div className="flex h-16 relative z-10 shrink-0 -ml-px max-w-[min(100%,1100px)] lg:w-[min(calc(100vw-120px),1100px)]">
+        <div className="flex h-16 relative z-10 shrink-0 -ml-px max-w-[min(100%,1100px)] lg:w-[min(calc(100vw-120px),1100px)] 2xl:max-w-[min(100%,1400px)] 2xl:w-[min(calc(100vw-160px),1400px)]">
           <div className="w-[36px] sm:w-[50px] h-full relative shrink-0">
             <div className="absolute inset-0 bg-zinc-50 dark:bg-black" style={{ clipPath: "path('M0 0 H50 V64 C25 64 25 40 0 40 Z')" }} />
             <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 50 64">

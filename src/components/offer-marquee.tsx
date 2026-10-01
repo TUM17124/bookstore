@@ -1,4 +1,12 @@
-const OFFERS = [
+"use client"
+
+import { cachedResource } from "@/lib/cached-resource"
+import { getPromptContent } from "@/lib/prompts"
+
+/** Built-in default. The live list is admin-editable: Django admin → Site
+ * copy → slug "offer-marquee", one item per line in the body (Part B).
+ * This list shows when that row is missing or blank. */
+const DEFAULT_OFFERS = [
   "Buy eBooks & Audiobooks — No Account Needed",
   "Free In-Browser PDF Editor with Auto-Save",
   "Smart Built-In PDF Reader",
@@ -39,8 +47,23 @@ const OFFERS = [
   "Car maintenance logs",
 ]
 
+const useOfferResource = cachedResource<string[]>(
+  "plugyard_offer_marquee_v1",
+  async () => {
+    const row = await getPromptContent("offer-marquee")
+    const lines = (row?.body || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+    return lines.length ? lines : null
+  },
+  DEFAULT_OFFERS,
+  5 * 60_000,
+)
+
+function useOffers(): string[] {
+  return useOfferResource()[0]
+}
+
 export function OfferMarquee() {
-  const line = OFFERS.join("  ·  ")
+  const line = useOffers().join("  ·  ")
 
   return (
     <div

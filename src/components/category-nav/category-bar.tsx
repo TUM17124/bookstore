@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { ChevronDown } from "lucide-react"
 import type { CategoryInfo } from "@/lib/api"
-import { categoryHref, categoryIcon } from "@/lib/categories"
+import { CategoryIcon, categoryHref } from "@/lib/categories"
 import { cn } from "@/lib/utils"
 
 /**
@@ -24,7 +24,6 @@ import { cn } from "@/lib/utils"
 const GAP = 16 // px between items (gap-4)
 
 function Item({ c, active, tabIndex }: { c: CategoryInfo; active: boolean; tabIndex?: number }) {
-  const Icon = categoryIcon(c.icon)
   return (
     <Link
       href={categoryHref(c.slug)}
@@ -36,7 +35,7 @@ function Item({ c, active, tabIndex }: { c: CategoryInfo; active: boolean; tabIn
         active ? "bg-foreground/10 text-foreground" : "text-foreground/70 hover:text-foreground",
       )}
     >
-      <Icon className="h-4 w-4 shrink-0 opacity-70 group-hover:opacity-100" aria-hidden />
+      <CategoryIcon name={c.icon} className="h-4 w-4 shrink-0 opacity-70 group-hover:opacity-100" />
       <span className="max-w-[16ch] truncate">{c.label}</span>
     </Link>
   )
@@ -47,7 +46,14 @@ export function CategoryBar({ categories, activeSlug }: { categories: CategoryIn
   const measureRef = useRef<HTMLDivElement>(null)
   const moreMeasureRef = useRef<HTMLButtonElement>(null)
   const [visible, setVisible] = useState<Set<string> | null>(null)
-  const [open, setOpen] = useState(false)
+  // Open for the category it was opened on: navigating closes it.
+  const [openFor, setOpenFor] = useState<string | null>(null)
+  const open = openFor === activeSlug
+  const setOpen = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) =>
+      setOpenFor((prev) => ((typeof v === "function" ? v(prev === activeSlug) : v) ? activeSlug : null)),
+    [activeSlug],
+  )
   const moreBtnRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const active = activeSlug.toLowerCase()
@@ -147,9 +153,7 @@ export function CategoryBar({ categories, activeSlug }: { categories: CategoryIn
       document.removeEventListener("mousedown", onDown)
       document.removeEventListener("keydown", onKey)
     }
-  }, [open])
-
-  useEffect(() => setOpen(false), [activeSlug])
+  }, [open, setOpen])
 
   const cols = inMore.length > 12 ? "grid-cols-3" : inMore.length > 6 ? "grid-cols-2" : "grid-cols-1"
 
@@ -202,7 +206,6 @@ export function CategoryBar({ categories, activeSlug }: { categories: CategoryIn
                 )}
               >
                 {inMore.map((c) => {
-                  const Icon = categoryIcon(c.icon)
                   const on = c.slug.toLowerCase() === active
                   return (
                     <Link
@@ -216,7 +219,7 @@ export function CategoryBar({ categories, activeSlug }: { categories: CategoryIn
                         on && "bg-foreground/10",
                       )}
                     >
-                      <Icon className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                      <CategoryIcon name={c.icon} className="h-4 w-4 shrink-0 opacity-70" />
                       <span className="min-w-0 break-words leading-snug">{c.label}</span>
                     </Link>
                   )

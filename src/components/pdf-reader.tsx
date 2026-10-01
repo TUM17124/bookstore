@@ -2074,7 +2074,7 @@ export function PdfReader({
   const creditChars = ttsUsage?.credit_chars ?? 0
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col bg-[#f4efe4]">
+    <div className="relative flex min-h-0 flex-1 flex-col bg-[#f4efe4] [color-scheme:only_light]">
       <div
         className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-black/10 bg-[#efe8d8] px-2 py-2"
         onContextMenu={(e: MouseEvent) => e.preventDefault()}

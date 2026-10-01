@@ -2352,7 +2352,7 @@ export function BooksShowcase({
       )}
 
       {readerOpen && selectedCfg && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
+        <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020] [color-scheme:only_light]">
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
             <button type="button" onClick={() => setReaderOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10">×</button>
             <h2 className="min-w-0 flex-1 truncate text-[16px] font-bold text-white">{selectedCfg.title}</h2>
@@ -2363,7 +2363,7 @@ export function BooksShowcase({
       )}
 
       {previewOpen && selectedCfg && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
+        <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020] [color-scheme:only_light]">
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
             <button type="button" onClick={() => setPreviewOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10">×</button>
             <div className="min-w-0 flex-1">

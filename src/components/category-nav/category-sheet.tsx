@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { X } from "lucide-react"
-import { categoryHref, categoryIcon, useCategories } from "@/lib/categories"
+import { CategoryIcon, categoryHref, useCategories } from "@/lib/categories"
 
 /**
  * Phones: a bottom sheet listing every navbar category (with icons). Opened
@@ -116,7 +116,6 @@ export function CategorySheet({ activeSlug }: { activeSlug: string }) {
             </Link>
           </li>
           {navbar.map((c) => {
-            const Icon = categoryIcon(c.icon)
             const on = activeSlug.toLowerCase() === c.slug.toLowerCase()
             return (
               <li key={c.slug} className="min-w-0">
@@ -128,7 +127,7 @@ export function CategorySheet({ activeSlug }: { activeSlug: string }) {
                     on ? "border-foreground bg-foreground/10" : "border-foreground/15"
                   }`}
                 >
-                  <Icon className="h-5 w-5 shrink-0 opacity-75" aria-hidden />
+                  <CategoryIcon name={c.icon} className="h-5 w-5 shrink-0 opacity-75" />
                   <span className="min-w-0 break-words leading-tight">{c.label}</span>
                 </Link>
               </li>

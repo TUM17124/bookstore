@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { createElement } from "react"
+import { cachedResource } from "@/lib/cached-resource"
 import {
   Baby,
   BookOpen,
@@ -50,55 +51,24 @@ export function categoryIcon(name: string | undefined): LucideIcon {
   return (name && ICONS[name]) || BookOpen
 }
 
+/** The admin-chosen icon for a category (Lucide), rendered. */
+export function CategoryIcon({ name, className }: { name?: string; className?: string }) {
+  return createElement(categoryIcon(name), { className, "aria-hidden": true })
+}
+
 export function categoryHref(slug: string): string {
   return `/?category=${encodeURIComponent(slug)}`
 }
 
-const CACHE_KEY = "plugyard_categories_v1"
-
 type Cached = { navbar: CategoryInfo[]; all: CategoryInfo[] }
 
-function readCache(): Cached | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY)
-    return raw ? (JSON.parse(raw) as Cached) : null
-  } catch {
-    return null
-  }
-}
+const EMPTY: Cached = { navbar: [], all: [] }
 
-let inflight: Promise<Cached | null> | null = null
+const useCategoriesResource = cachedResource<Cached>("plugyard_categories_v1", getCategories, EMPTY)
 
 /** The admin's categories. Paints instantly from the last copy this browser
  * saw (so the navbar doesn't jump), then refreshes from the server. */
 export function useCategories(): Cached & { ready: boolean } {
-  const [data, setData] = useState<Cached>({ navbar: [], all: [] })
-  const [ready, setReady] = useState(false)
-
-  useEffect(() => {
-    const cached = readCache()
-    if (cached) {
-      setData(cached)
-      setReady(true)
-    }
-    let cancelled = false
-    inflight ??= getCategories().finally(() => {
-      setTimeout(() => (inflight = null), 30_000)
-    })
-    inflight.then((fresh) => {
-      if (cancelled || !fresh) return
-      setData(fresh)
-      setReady(true)
-      try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify(fresh))
-      } catch {
-        // private mode: still shown, just not remembered
-      }
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  return { ...data, ready }
+  const [data, ready] = useCategoriesResource()
+  return { navbar: data.navbar, all: data.all, ready }
 }

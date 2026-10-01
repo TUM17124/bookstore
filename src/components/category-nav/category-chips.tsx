@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useEffect, useRef } from "react"
 import { LayoutGrid } from "lucide-react"
-import { categoryHref, categoryIcon, useCategories } from "@/lib/categories"
+import { CategoryIcon, categoryHref, useCategories } from "@/lib/categories"
 import { openCategorySheet } from "./category-sheet"
 import { edgeMask, useScrollEdges } from "./use-scroll-edges"
 
@@ -45,6 +45,7 @@ export function CategoryChips({ activeSlug }: { activeSlug: string }) {
             type="button"
             onClick={openCategorySheet}
             aria-haspopup="dialog"
+            aria-label="All categories"
             className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-current/20 px-3.5 text-[14px] font-semibold"
           >
             <LayoutGrid className="h-4 w-4" aria-hidden />
@@ -52,7 +53,6 @@ export function CategoryChips({ activeSlug }: { activeSlug: string }) {
           </button>
         </li>
         {navbar.map((c) => {
-          const Icon = categoryIcon(c.icon)
           const on = activeSlug.toLowerCase() === c.slug.toLowerCase()
           return (
             <li key={c.slug} className="snap-start" data-slug={c.slug.toLowerCase()}>
@@ -63,7 +63,7 @@ export function CategoryChips({ activeSlug }: { activeSlug: string }) {
                   on ? "border-current bg-current/10" : "border-current/20 opacity-80"
                 }`}
               >
-                <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                <CategoryIcon name={c.icon} className="h-4 w-4 shrink-0" />
                 <span className="truncate">{c.label}</span>
               </Link>
             </li>
