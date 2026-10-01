@@ -1,5 +1,7 @@
 // src/lib/api.ts
 import { splitName } from "@/lib/name"
+import { AuthFetchError, authFetch, type CallOptions, type RequestOptions } from "@/lib/auth-fetch"
+import { UserError } from "@/lib/user-error"
 
 const API = process.env.NEXT_PUBLIC_API_URL!
 
@@ -87,7 +89,7 @@ export class SessionEvictedError extends Error {
   }
 }
 
-export class CheckoutError extends Error {
+export class CheckoutError extends UserError {
   legalRequired: boolean
   constructor(message: string, legalRequired = false) {
     super(message)
@@ -148,7 +150,7 @@ async function doRefresh(): Promise<string> {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     if ((data as { code?: string }).code === "session_evicted") throw new SessionEvictedError()
-    if (res.status === 429) throw new Error("Too many sign-in refreshes — please wait a moment and try again.")
+    if (res.status === 429) throw new UserError("Too many sign-in refreshes — please wait a moment and try again.")
     throw new Error((data as { error?: string; detail?: string }).error || "Session expired")
   }
   const access = (data as { access?: string }).access
@@ -202,27 +204,52 @@ function bearer(token?: string) {
   return token || getToken() || ""
 }
 
+/** JSON request to the Django API through authFetch (token + one refresh on
+ * 401 + transient-failure retries + readable errors). Throws AuthFetchError
+ * (an Error whose message is the server's error text) on failure.
+ *
+ * Writes are retried only with `idempotencyKey` (pass the action's
+ * CallOptions through) on endpoints the backend lists in
+ * shop/idempotency.py. */
 export async function api<T = unknown>(
   path: string,
-  options: RequestInit = {},
+  options: RequestInit & RequestOptions = {},
 ): Promise<T> {
-  const token = getToken()
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(options.headers as Record<string, string>),
+  const headers = new Headers(options.headers || {})
+  if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json")
   }
-  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await authFetch(`${API}${path}`, { ...options, headers })
+  if (res.status === 204) return {} as T
+  return (await res.json().catch(() => ({}))) as T
+}
 
-  const res = await fetch(`${API}${path}`, { ...options, headers })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) {
-    const msg =
-      (data as { error?: string; detail?: string }).error ||
-      (data as { detail?: string }).detail ||
-      "Request failed"
-    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg))
+/** GET through authFetch (token when logged in, transient retries); resolves
+ * to `fallback` on failure, preserving each caller's existing contract. */
+async function getOr<T>(path: string, fallback: T, init: RequestInit & RequestOptions = {}): Promise<T> {
+  try {
+    const res = await authFetch(`${API}${path}`, init)
+    return (await res.json()) as T
+  } catch {
+    return fallback
   }
-  return data as T
+}
+
+/** api() for login-type calls: no token sent, no retry (their responses
+ * carry tokens and are never stored server-side for replay). */
+function apiNoAuth<T = unknown>(path: string, options: RequestInit & CallOptions = {}): Promise<T> {
+  return api<T>(path, { ...options, auth: false, idempotencyKey: undefined, retries: 0 })
+}
+
+/** api() for an action the backend makes idempotent: retryable with the
+ * caller's idempotency key. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- these endpoints returned untyped JSON before
+function apiAction<T = any>(
+  path: string,
+  options: RequestInit & Pick<RequestOptions, "auth">,
+  call?: CallOptions,
+): Promise<T> {
+  return api<T>(path, { ...options, ...call })
 }
 
 /** The logged-in account's own purchases (the server no longer answers
@@ -231,16 +258,16 @@ export async function getPurchases(): Promise<{
   ebooks: PurchaseItem[]
   audiobooks: PurchaseItem[]
 }> {
-  const token = getToken()
-  if (!token) return { ebooks: [], audiobooks: [] }
-  const res = await fetch(`${API}/orders/purchases/`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  if (res.status === 429) {
-    throw new Error("Too many lookups. Wait a minute and try again.")
+  if (!getToken()) return { ebooks: [], audiobooks: [] }
+  try {
+    const res = await authFetch(`${API}/orders/purchases/`)
+    return await res.json()
+  } catch (err) {
+    if (err instanceof AuthFetchError && err.status === 429) {
+      throw new UserError("Too many lookups. Wait a minute and try again.")
+    }
+    return { ebooks: [], audiobooks: [] }
   }
-  if (!res.ok) return { ebooks: [], audiobooks: [] }
-  return res.json()
 }
 
 export async function getBooks(params?: {
@@ -260,17 +287,17 @@ export async function getBooks(params?: {
   if (params?.pageSize) q.set("page_size", String(params.pageSize))
 
   const qs = q.toString()
-  const url = `${API}/books/${qs ? `?${qs}` : ""}`
-  const res = await fetch(url)
-  if (!res.ok) throw new Error("Failed to load books")
-  return res.json()
+  try {
+    const res = await authFetch(`${API}/books/${qs ? `?${qs}` : ""}`, { auth: false })
+    return await res.json()
+  } catch {
+    throw new UserError("Failed to load books")
+  }
 }
 
 export async function getBook(id: string | number): Promise<ApiBook | null> {
   if (!API) throw new Error("NEXT_PUBLIC_API_URL is not set")
-  const res = await fetch(`${API}/books/${id}/`)
-  if (!res.ok) return null
-  return res.json()
+  return getOr<ApiBook | null>(`/books/${id}/`, null, { auth: false })
 }
 
 /** "You might also like" for a single book — item-similarity + collaborative
@@ -282,12 +309,7 @@ export async function getRelatedBooks(
   limit = 10,
 ): Promise<ApiBook[]> {
   if (!API) throw new Error("NEXT_PUBLIC_API_URL is not set")
-  const token = getToken()
-  const headers: Record<string, string> = {}
-  if (token) headers.Authorization = `Bearer ${token}`
-  const res = await fetch(`${API}/books/${bookId}/related/?limit=${limit}`, { headers })
-  if (!res.ok) return []
-  const data = await res.json().catch(() => [])
+  const data = await getOr<unknown>(`/books/${bookId}/related/?limit=${limit}`, [], { auth: !!getToken() })
   return Array.isArray(data) ? data : []
 }
 
@@ -303,13 +325,8 @@ export type ProStatus = {
 }
 
 export async function getProStatus(): Promise<ProStatus> {
-  const token = getToken()
-  if (!token) return { is_pro: false, subscription: null }
-  const res = await fetch(`${API}/pro/status/`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  if (!res.ok) return { is_pro: false, subscription: null }
-  return res.json()
+  if (!getToken()) return { is_pro: false, subscription: null }
+  return getOr<ProStatus>("/pro/status/", { is_pro: false, subscription: null })
 }
 
 /** Public — no auth required, so the /pro page can show the real
@@ -317,62 +334,37 @@ export async function getProStatus(): Promise<ProStatus> {
  * this value in frontend code; SiteSettings.pro_price_monthly is the
  * single source of truth. */
 export async function getProPricing(): Promise<{ price_monthly: string }> {
-  const res = await fetch(`${API}/pro/pricing/`)
-  if (!res.ok) return { price_monthly: "0" }
-  return res.json()
+  return getOr("/pro/pricing/", { price_monthly: "0" }, { auth: false })
 }
 
-export async function subscribePro(): Promise<{
+export async function subscribePro(call?: CallOptions): Promise<{
   subscription_id: number
   checkout_url: string
   reference: string
   amount: string
 }> {
-  const token = getToken()
-  if (!token) throw new Error("Log in required")
-  const res = await fetch(`${API}/pro/subscribe/`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error((data as { error?: string }).error || "Could not start subscription")
-  return data
+  if (!getToken()) throw new UserError("Log in required")
+  return apiAction("/pro/subscribe/", { method: "POST" }, call)
 }
 
-export async function cancelProSubscription(subscriptionId: number): Promise<{
+export async function cancelProSubscription(subscriptionId: number, call?: CallOptions): Promise<{
   ok: boolean
   already_cancelled?: boolean
   error?: string
 }> {
-  const token = getToken()
-  if (!token) throw new Error("Log in required")
-  const res = await fetch(`${API}/pro/subscriptions/${subscriptionId}/`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error((data as { error?: string }).error || "Could not cancel")
-  return data
+  if (!getToken()) throw new UserError("Log in required")
+  return apiAction(`/pro/subscriptions/${subscriptionId}/`, { method: "DELETE" }, call)
 }
 
-export async function confirmProPayment(reference: string): Promise<{
+export async function confirmProPayment(reference: string, call?: CallOptions): Promise<{
   ok: boolean
   paid?: boolean
   already_paid?: boolean
   error?: string
   subscription?: ProStatus["subscription"]
 }> {
-  const token = getToken()
-  if (!token) return { ok: false, error: "Log in required" }
-  const res = await fetch(`${API}/pro/confirm/`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ reference }),
-  })
-  return res.json()
+  if (!getToken()) return { ok: false, error: "Log in required" }
+  return apiAction("/pro/confirm/", { method: "POST", body: JSON.stringify({ reference }) }, call)
 }
 
 export type TtsVoice = {
@@ -421,7 +413,7 @@ export type TtsResult = {
   usage?: TtsUsageSnapshot
 }
 
-export class TtsError extends Error {
+export class TtsError extends UserError {
   proRequired: boolean
   creditsRequired: boolean
   usage?: TtsUsageSnapshot
@@ -435,10 +427,8 @@ export class TtsError extends Error {
 }
 
 export async function getTtsVoices(): Promise<TtsVoice[]> {
-  const res = await fetch(`${API}/tts/voices/`)
-  if (!res.ok) return []
-  const data = await res.json().catch(() => ({}))
-  return Array.isArray(data.voices) ? data.voices : []
+  const data = await getOr<{ voices?: unknown }>("/tts/voices/", {}, { auth: false })
+  return Array.isArray(data.voices) ? (data.voices as TtsVoice[]) : []
 }
 
 export async function synthesizePage(
@@ -471,47 +461,31 @@ export function ttsAudioUrl(token: string) {
 }
 
 export async function getTtsUsage(): Promise<TtsUsageSnapshot | null> {
-  const token = getToken()
-  if (!token) return null
-  const res = await fetch(`${API}/tts/usage/?_=${Date.now()}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store",
-  })
-  if (!res.ok) return null
-  return res.json()
+  if (!getToken()) return null
+  return getOr<TtsUsageSnapshot | null>(`/tts/usage/?_=${Date.now()}`, null, { cache: "no-store" })
 }
 
 export async function quoteTtsCredits(amount?: string | number): Promise<TtsCreditQuote | null> {
   const q = amount != null ? `?amount=${encodeURIComponent(String(amount))}` : ""
-  const res = await fetch(`${API}/tts/credits/quote/${q}${q ? "&" : "?"}_=${Date.now()}`)
-  if (!res.ok) return null
-  return res.json()
+  return getOr<TtsCreditQuote | null>(`/tts/credits/quote/${q}${q ? "&" : "?"}_=${Date.now()}`, null, { auth: false })
 }
 
-export async function buyTtsCredits(amount: string | number, next = ""): Promise<{
+export async function buyTtsCredits(amount: string | number, next = "", call?: CallOptions): Promise<{
   purchase_id: number
   checkout_url: string
   reference: string
   amount: string
   chars: number
 }> {
-  const token = getToken()
-  if (!token) throw new Error("Log in required")
-  const res = await fetch(`${API}/tts/credits/buy/`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ amount: String(amount), next }),
-    cache: "no-store",
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error((data as { error?: string }).error || "Could not start credit checkout")
-  return data
+  if (!getToken()) throw new UserError("Log in required")
+  return apiAction(
+    "/tts/credits/buy/",
+    { method: "POST", body: JSON.stringify({ amount: String(amount), next }), cache: "no-store" },
+    call,
+  )
 }
 
-export async function confirmTtsCredits(reference: string): Promise<{
+export async function confirmTtsCredits(reference: string, call?: CallOptions): Promise<{
   ok: boolean
   paid?: boolean
   already_paid?: boolean
@@ -519,57 +493,42 @@ export async function confirmTtsCredits(reference: string): Promise<{
   error?: string
   usage?: TtsUsageSnapshot
 }> {
-  const token = getToken()
-  if (!token) return { ok: false, error: "Log in required" }
-  const res = await fetch(`${API}/tts/credits/confirm/`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ reference }),
-    cache: "no-store",
-  })
-  return res.json()
+  if (!getToken()) return { ok: false, error: "Log in required" }
+  return apiAction(
+    "/tts/credits/confirm/",
+    { method: "POST", body: JSON.stringify({ reference }), cache: "no-store" },
+    call,
+  )
 }
 
-export async function createCheckout(payload: {
-  book_id: number
-  product_type: "ebook" | "audiobook"
-  email: string
-  terms_accepted?: boolean
-}) {
-  const token = getToken()
-  const headers: Record<string, string> = { "Content-Type": "application/json" }
-  if (token) headers.Authorization = `Bearer ${token}`
-
-  const res = await fetch(`${API}/checkout/`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) {
-    const body = data as { error?: string; legal_required?: boolean }
-    throw new CheckoutError(body.error || "Checkout failed", !!body.legal_required)
+export async function createCheckout(
+  payload: {
+    book_id: number
+    product_type: "ebook" | "audiobook"
+    email: string
+    terms_accepted?: boolean
+  },
+  call?: CallOptions,
+) {
+  try {
+    return await apiAction<{ order_id: number; checkout_url: string; dev_mode?: boolean }>(
+      "/checkout/",
+      { method: "POST", body: JSON.stringify(payload) },
+      call,
+    )
+  } catch (err) {
+    const body = (err as { body?: { legal_required?: boolean } }).body
+    if (body?.legal_required) throw new CheckoutError((err as Error).message, true)
+    throw err
   }
-  return data as { order_id: number; checkout_url: string; dev_mode?: boolean }
 }
 
 export async function confirmOrderPayment(
   orderId: string,
   payload: { reference?: string; email: string },
+  call?: CallOptions,
 ) {
-  const res = await fetch(`${API}/orders/${orderId}/confirm/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error((err as { error?: string }).error || "Confirm failed")
-  }
-  return res.json()
+  return apiAction(`/orders/${orderId}/confirm/`, { method: "POST", body: JSON.stringify(payload) }, call)
 }
 
 export async function getOrder(orderId: string, email?: string) {
@@ -584,32 +543,39 @@ export async function register(
   confirmPassword = "",
   termsAccepted = false,
   referralCode = "",
+  call?: CallOptions,
 ) {
   const [first_name, last_name] = splitName(name)
-  return api("/auth/register/", {
-    method: "POST",
-    body: JSON.stringify({
-      email,
-      password,
-      confirm_password: confirmPassword || password,
-      name,
-      first_name,
-      last_name,
-      terms_accepted: termsAccepted,
-      referral_code: (referralCode || "").trim(),
-      ref: (referralCode || "").trim(),
-    }),
-  })
+  return apiAction(
+    "/auth/register/",
+    {
+      method: "POST",
+      auth: false,
+      body: JSON.stringify({
+        email,
+        password,
+        confirm_password: confirmPassword || password,
+        name,
+        first_name,
+        last_name,
+        terms_accepted: termsAccepted,
+        referral_code: (referralCode || "").trim(),
+        ref: (referralCode || "").trim(),
+      }),
+    },
+    call,
+  )
 }
 
-export async function verifyEmail(email: string, code: string) {
-  const data = await api<{
+export async function verifyEmail(email: string, code: string, call?: CallOptions) {
+  const data = await apiNoAuth<{
     access?: string
     refresh?: string
     user?: { email?: string; name?: string }
   }>("/auth/verify-email/", {
     method: "POST",
     body: JSON.stringify({ email, code }),
+    signal: call?.signal,
   })
   if (data.access) setTokens(data.access, data.refresh)
   return data
@@ -618,18 +584,17 @@ export async function verifyEmail(email: string, code: string) {
 export async function resendCode(
   email: string,
   purpose: "verify" | "reset" = "verify",
+  call?: CallOptions,
 ) {
-  return api("/auth/resend-code/", {
-    method: "POST",
-    body: JSON.stringify({ email, purpose }),
-  })
+  return apiAction(
+    "/auth/resend-code/",
+    { method: "POST", auth: false, body: JSON.stringify({ email, purpose }) },
+    call,
+  )
 }
 
-export async function forgotPassword(email: string) {
-  return api("/auth/forgot-password/", {
-    method: "POST",
-    body: JSON.stringify({ email }),
-  })
+export async function forgotPassword(email: string, call?: CallOptions) {
+  return apiAction("/auth/forgot-password/", { method: "POST", auth: false, body: JSON.stringify({ email }) }, call)
 }
 
 export async function resetPassword(
@@ -637,8 +602,9 @@ export async function resetPassword(
   code: string,
   password: string,
   confirmPassword: string,
+  call?: CallOptions,
 ) {
-  const data = await api<{
+  const data = await apiNoAuth<{
     access?: string
     refresh?: string
     user?: { email?: string; name?: string }
@@ -650,6 +616,7 @@ export async function resetPassword(
       password,
       confirm_password: confirmPassword,
     }),
+    signal: call?.signal,
   })
   if (data.access) setTokens(data.access, data.refresh)
   return data
@@ -659,8 +626,9 @@ export async function googleLogin(
   credential: string,
   termsAccepted = false,
   referralCode = "",
+  call?: CallOptions,
 ) {
-  const data = await api<{
+  const data = await apiNoAuth<{
     access?: string
     refresh?: string
     user?: { email?: string; name?: string; terms_accepted?: boolean }
@@ -673,13 +641,14 @@ export async function googleLogin(
       referral_code: (referralCode || "").trim(),
       ref: (referralCode || "").trim(),
     }),
+    signal: call?.signal,
   })
   if (data.access) setTokens(data.access, data.refresh)
   return data
 }
 
-export async function login(email: string, password: string, termsAccepted = false) {
-  const data = await api<{
+export async function login(email: string, password: string, termsAccepted = false, call?: CallOptions) {
+  const data = await apiNoAuth<{
     access: string
     refresh: string
     user?: { email?: string; name?: string; terms_accepted?: boolean }
@@ -691,6 +660,7 @@ export async function login(email: string, password: string, termsAccepted = fal
       password,
       terms_accepted: termsAccepted,
     }),
+    signal: call?.signal,
   })
   setTokens(data.access, data.refresh)
   return data
@@ -727,30 +697,25 @@ export async function addAudioNote(
   bookId: string,
   position: number,
   note: string,
+  call?: CallOptions,
 ) {
-  return api(`/books/${bookId}/audio-notes/`, {
-    method: "POST",
-    body: JSON.stringify({ position, note }),
-  })
+  return apiAction(`/books/${bookId}/audio-notes/`, { method: "POST", body: JSON.stringify({ position, note }) }, call)
 }
 
-export async function deleteAudioNote(id: number) {
-  return api(`/audio-notes/${id}/`, { method: "DELETE" })
+export async function deleteAudioNote(id: number, call?: CallOptions) {
+  return apiAction(`/audio-notes/${id}/`, { method: "DELETE" }, call)
 }
 
 export async function updateAudioNote(
   id: number,
   note: string,
   position?: number,
+  call?: CallOptions,
 ) {
-  return api<{ id: number; position: number; note: string }>(
+  return apiAction<{ id: number; position: number; note: string }>(
     `/audio-notes/${id}/`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(
-        position == null ? { note } : { note, position },
-      ),
-    },
+    { method: "PATCH", body: JSON.stringify(position == null ? { note } : { note, position }) },
+    call,
   )
 }
 
@@ -771,15 +736,17 @@ export async function addPdfNote(
   page: number,
   quote: string,
   thought: string,
+  call?: CallOptions,
 ) {
-  return api<PdfNoteRow>(`/books/${bookId}/pdf-notes/`, {
-    method: "POST",
-    body: JSON.stringify({ page, quote, thought, note: thought }),
-  })
+  return apiAction<PdfNoteRow>(
+    `/books/${bookId}/pdf-notes/`,
+    { method: "POST", body: JSON.stringify({ page, quote, thought, note: thought }) },
+    call,
+  )
 }
 
-export async function deletePdfNote(id: string) {
-  return api(`/pdf-notes/${id}/`, { method: "DELETE" })
+export async function deletePdfNote(id: string, call?: CallOptions) {
+  return apiAction(`/pdf-notes/${id}/`, { method: "DELETE" }, call)
 }
 
 
@@ -789,11 +756,13 @@ export async function updatePdfNote(
   page: number,
   quote: string,
   thought: string,
+  call?: CallOptions,
 ) {
-  return api<PdfNoteRow>(`/pdf-notes/${id}/`, {
-    method: "PATCH",
-    body: JSON.stringify({ page, quote, thought, note: thought }),
-  })
+  return apiAction<PdfNoteRow>(
+    `/pdf-notes/${id}/`,
+    { method: "PATCH", body: JSON.stringify({ page, quote, thought, note: thought }) },
+    call,
+  )
 }
 
 
@@ -854,15 +823,12 @@ export async function fetchBookmarks(page = 1): Promise<
   return api(`/bookmarks/${q}`)
 }
 
-export async function addBookmarkApi(bookId: string | number) {
-  return api("/bookmarks/", {
-    method: "POST",
-    body: JSON.stringify({ book_id: Number(bookId) }),
-  })
+export async function addBookmarkApi(bookId: string | number, call?: CallOptions) {
+  return apiAction("/bookmarks/", { method: "POST", body: JSON.stringify({ book_id: Number(bookId) }) }, call)
 }
 
-export async function removeBookmarkApi(bookId: string | number) {
-  return api(`/bookmarks/${bookId}/`, { method: "DELETE" })
+export async function removeBookmarkApi(bookId: string | number, call?: CallOptions) {
+  return apiAction(`/bookmarks/${bookId}/`, { method: "DELETE" }, call)
 }
 
 export async function getRatings(bookId: string) {
@@ -871,11 +837,8 @@ export async function getRatings(bookId: string) {
   )
 }
 
-export async function postRating(bookId: string, value: number) {
-  return api(`/books/${bookId}/ratings/`, {
-    method: "POST",
-    body: JSON.stringify({ value }),
-  })
+export async function postRating(bookId: string, value: number, call?: CallOptions) {
+  return apiAction(`/books/${bookId}/ratings/`, { method: "POST", body: JSON.stringify({ value }) }, call)
 }
 
 export async function getComments(bookId: string) {
@@ -896,215 +859,137 @@ export async function postComment(
   bookId: string,
   body: string,
   parentId?: number | string | null,
+  call?: CallOptions,
 ) {
-  return api(`/books/${bookId}/comments/`, {
-    method: "POST",
-    body: JSON.stringify({
-      body,
-      parentId: parentId != null ? Number(parentId) : null,
-    }),
-  })
+  return apiAction(
+    `/books/${bookId}/comments/`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        body,
+        parentId: parentId != null ? Number(parentId) : null,
+      }),
+    },
+    call,
+  )
 }
 
 export async function getMySales() {
-  const token = bearer()
-  const res = await fetch(`${API}/me/sales/`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  if (!res.ok) return { ok: true, sales: [], books: [] }
-  return res.json()
+  return getOr("/me/sales/", { ok: true, sales: [], books: [] })
 }
 
-export async function requestPayout() {
-  const token = bearer()
-  const res = await fetch(`${API}/me/payouts/`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-  })
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}))
-    throw new Error(e.error || "Payout failed")
-  }
-  return res.json()
+export async function requestPayout(call?: CallOptions) {
+  return apiAction("/me/payouts/", { method: "POST" }, call)
 }
 
 export async function createBoost(book_id: number, days = 7) {
   return initBoost(bearer(), book_id, days)
 }
 
-export async function publishBook(form: FormData) {
-  const token = bearer()
-  const res = await fetch(`${API}/me/books/`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: form,
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || "Could not submit book")
-  return data
+export async function publishBook(form: FormData, call?: CallOptions) {
+  return apiAction("/me/books/", { method: "POST", body: form }, call)
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature kept for existing callers; the token now comes from authFetch
 export async function myBooks(_token?: string) {
-  const token = bearer(_token)
-  const res = await fetch(`${API}/me/books/`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
-  if (!res.ok) throw new Error("Could not load your books")
-  return res.json()
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await api<any>("/me/books/")
+  } catch {
+    throw new UserError("Could not load your books")
+  }
 }
 
-export async function updateMyBook(bookId: string | number, form: FormData) {
-  const token = bearer()
-  const res = await fetch(`${API}/me/books/${bookId}/`, {
-    method: "PATCH",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: form,
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || "Could not update book")
-  return data
+export async function updateMyBook(bookId: string | number, form: FormData, call?: CallOptions) {
+  return apiAction(`/me/books/${bookId}/`, { method: "PATCH", body: form }, call)
 }
 
-export async function deleteMyBook(bookId: string | number) {
-  const token = bearer()
-  const res = await fetch(`${API}/me/books/${bookId}/`, {
-    method: "DELETE",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || "Could not delete book")
-  return data
+export async function deleteMyBook(bookId: string | number, call?: CallOptions) {
+  return apiAction(`/me/books/${bookId}/`, { method: "DELETE" }, call)
 }
 
-export async function initBoost(token: string, bookId: number, days = 7) {
-  const r = await fetch(`${API}/me/boost/init/`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${bearer(token)}`,
-    },
-    body: JSON.stringify({ book_id: bookId, days }),
-  })
-  return r.json()
+export async function initBoost(_token: string, bookId: number, days = 7, call?: CallOptions) {
+  return apiAction("/me/boost/init/", { method: "POST", body: JSON.stringify({ book_id: bookId, days }) }, call)
 }
 
-export async function confirmBoost(token: string, reference: string) {
-  const r = await fetch(`${API}/me/boost/confirm/`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${bearer(token)}`,
-    },
-    body: JSON.stringify({ reference }),
-  })
-  return r.json()
+export async function confirmBoost(_token: string, reference: string, call?: CallOptions) {
+  return apiAction("/me/boost/confirm/", { method: "POST", body: JSON.stringify({ reference }) }, call)
 }
 
-export async function myBoosts(token?: string) {
-  const r = await fetch(`${API}/me/boosts/`, {
-    headers: { Authorization: `Bearer ${bearer(token)}` },
-  })
-  return r.json()
+/** GET that resolves to the server's JSON even for an error status (these
+ * callers read `error` fields from it), with authFetch's token handling and
+ * transient retries. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getJsonAlways(path: string, init: RequestInit & RequestOptions = {}): Promise<any> {
+  try {
+    const res = await authFetch(`${API}${path}`, init)
+    return await res.json().catch(() => ({}))
+  } catch (err) {
+    if (err instanceof AuthFetchError && err.status) return err.body
+    throw err
+  }
 }
 
-export async function payoutAccount(token?: string) {
-  const r = await fetch(`${API}/me/payout-account/`, {
-    headers: { Authorization: `Bearer ${bearer(token)}` },
-  })
-  return r.json()
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature kept for existing callers; the token now comes from authFetch
+export async function myBoosts(_token?: string) {
+  return getJsonAlways("/me/boosts/")
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature kept for existing callers; the token now comes from authFetch
+export async function payoutAccount(_token?: string) {
+  return getJsonAlways("/me/payout-account/")
 }
 
 export async function savePayoutAccount(
-  token: string,
+  _token: string,
   body: {
     method: string
     account_name?: string
     account_number?: string
     extra?: string
   },
+  call?: CallOptions,
 ) {
-  const r = await fetch(`${API}/me/payout-account/`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${bearer(token)}`,
-    },
-    body: JSON.stringify(body),
-  })
-  return r.json()
+  return apiAction("/me/payout-account/", { method: "POST", body: JSON.stringify(body) }, call)
 }
 
-export async function deletePayoutAccount(token?: string) {
-  const t =
-    token ||
-    (typeof window !== "undefined"
-      ? localStorage.getItem("access_token") ||
-        localStorage.getItem("access") ||
-        localStorage.getItem("token") ||
-        ""
-      : "")
-  const API = process.env.NEXT_PUBLIC_API_URL!
-  const r = await fetch(`${API}/me/payout-account/`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${t}` },
-  })
-  return r.json().catch(() => ({ ok: r.ok }))
+export async function deletePayoutAccount(_token?: string, call?: CallOptions) {
+  return apiAction("/me/payout-account/", { method: "DELETE" }, call)
 }
 
 export async function getLegalPages(slug?: string) {
   const q = slug ? `?slug=${encodeURIComponent(slug)}` : ""
-
-  const r = await fetch(`${API}/legal/${q}`, {
-    cache: "no-store",
-  })
-
-  return r.json()
+  return getJsonAlways(`/legal/${q}`, { cache: "no-store", auth: false })
 }
 
 export async function getLegalStatus(token?: string) {
-  const r = await fetch(`${API}/legal/status/`, {
-    headers: token
-      ? {
-          Authorization: `Bearer ${token}`,
-        }
-      : {},
-    cache: "no-store",
-  })
-
-  return r.json()
+  return getJsonAlways("/legal/status/", { cache: "no-store", auth: !!token })
 }
 
 export async function acceptLegal(
-  token: string,
+  _token: string,
   source = "reaccept",
+  call?: CallOptions,
 ) {
-  const r = await fetch(`${API}/legal/accept/`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ source }),
-  })
-
-  return r.json()
+  return apiAction("/legal/accept/", { method: "POST", body: JSON.stringify({ source }) }, call)
 }
 
 export const getSettings = () => api<any>("/me/settings/")
-export const changeUsername = (username: string) => api("/me/settings/username/", { method: "POST", body: JSON.stringify({ username }) })
-export async function changeName(first_name: string, last_name: string) {
-  return api("/settings/name/", {
-    method: "POST",
-    body: JSON.stringify({ first_name, last_name }),
-  })
+export const changeUsername = (username: string, call?: CallOptions) =>
+  apiAction("/me/settings/username/", { method: "POST", body: JSON.stringify({ username }) }, call)
+export async function changeName(first_name: string, last_name: string, call?: CallOptions) {
+  return apiAction("/settings/name/", { method: "POST", body: JSON.stringify({ first_name, last_name }) }, call)
 }
-export const startEmailChange = (email: string, current_password: string) => api("/me/settings/email/", { method: "POST", body: JSON.stringify({ email, current_password }) })
-export const confirmEmailChange = (code: string) => api("/me/settings/email/confirm/", { method: "POST", body: JSON.stringify({ code }) })
-export const requestAffiliateWithdrawal = (amount: string) => api("/me/affiliate/withdrawals/", { method: "POST", body: JSON.stringify({ amount }) })
-export const deleteAccount = (body: { current_password?: string; google_credential?: string; reason?: string }) => api("/me/settings/delete-account/", { method: "POST", body: JSON.stringify(body) })
+export const startEmailChange = (email: string, current_password: string, call?: CallOptions) =>
+  apiAction("/me/settings/email/", { method: "POST", body: JSON.stringify({ email, current_password }) }, call)
+export const confirmEmailChange = (code: string, call?: CallOptions) =>
+  apiAction("/me/settings/email/confirm/", { method: "POST", body: JSON.stringify({ code }) }, call)
+export const requestAffiliateWithdrawal = (amount: string, call?: CallOptions) =>
+  apiAction("/me/affiliate/withdrawals/", { method: "POST", body: JSON.stringify({ amount }) }, call)
+export const deleteAccount = (
+  body: { current_password?: string; google_credential?: string; reason?: string },
+  call?: CallOptions,
+) => apiAction("/me/settings/delete-account/", { method: "POST", body: JSON.stringify(body) }, call)
 
 export type NotificationPrefs = {
   push_enabled: boolean
@@ -1114,19 +999,17 @@ export type NotificationPrefs = {
 export const getNotificationPrefs = () => api<NotificationPrefs>("/me/notification-prefs/")
 export const updateNotificationPrefs = (
   body: Partial<Pick<NotificationPrefs, "push_enabled" | "email_enabled">>,
-) => api<NotificationPrefs>("/me/notification-prefs/", { method: "POST", body: JSON.stringify(body) })
-export async function unsubscribePush(endpoint?: string) {
-  const headers: Record<string, string> = { "Content-Type": "application/json" }
-  const token = getToken()
-  if (token) headers.Authorization = `Bearer ${token}`
-  const res = await fetch(`${API}/push/unsubscribe/`, {
+  call?: CallOptions,
+) =>
+  // Setting the same preference twice is harmless: retry on the safe side
+  // only for network-level failures via the signal; no key needed server-side.
+  api<NotificationPrefs>("/me/notification-prefs/", { method: "POST", body: JSON.stringify(body), signal: call?.signal })
+export async function unsubscribePush(endpoint?: string, call?: CallOptions) {
+  return api("/push/unsubscribe/", {
     method: "POST",
-    headers,
     body: JSON.stringify({ endpoint: endpoint || "" }),
+    signal: call?.signal,
   })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error((data as { error?: string }).error || "Could not unsubscribe")
-  return data
 }
 
 export default searchTrack
@@ -1166,7 +1049,7 @@ export type ReaderManifest = {
   pages: { page: number; url: string }[]
 }
 
-export class ContentError extends Error {
+export class ContentError extends UserError {
   status: number
   code: string
   constructor(message: string, status: number, code = "") {
@@ -1202,7 +1085,7 @@ function contentHeaders(guestToken?: string | null): Record<string, string> {
  * error bodies into ContentError with the server's message + code. */
 export async function contentFetch(
   pathOrUrl: string,
-  init: RequestInit = {},
+  init: RequestInit & Pick<RequestOptions, "pure" | "timeoutMs" | "retries" | "signal" | "onRetry"> = {},
   guestToken?: string | null,
 ): Promise<Response> {
   const url = /^https?:/.test(pathOrUrl)
@@ -1210,38 +1093,23 @@ export async function contentFetch(
     : pathOrUrl.startsWith("/api/")
       ? `${apiOrigin()}${pathOrUrl}`
       : `${API}${pathOrUrl}`
-  const sentToken = guestToken ? null : getToken()
-  const go = async () => {
-    try {
-      return await fetch(url, {
-        ...init,
-        cache: "no-store",
-        headers: { ...(init.headers as Record<string, string>), ...contentHeaders(guestToken) },
-      })
-    } catch {
-      // Network failure / blocked request: never show the raw "Failed to fetch".
-      throw new ContentError("Couldn't reach PlugYard. Check your connection and try again.", 0, "network")
-    }
-  }
-  let res = await go()
-  if (res.status === 401 && !guestToken && getRefreshToken()) {
-    try {
-      await refreshAccessToken(sentToken)
-      res = await go()
-    } catch {
-      // fall through with the 401
-    }
-  }
-  if (!res.ok) {
-    const body = (await res.clone().json().catch(() => ({}))) as { error?: string; detail?: string; code?: string }
+  const headers = new Headers(init.headers || {})
+  if (guestToken) headers.set("X-Guest-Token", guestToken)
+  try {
+    // Guests are identified by their link token, never a Bearer JWT.
+    return await authFetch(url, { ...init, headers, cache: "no-store", auth: !guestToken })
+  } catch (err) {
+    if (!(err instanceof AuthFetchError) || err.code === "aborted") throw err
+    // Keep the server's own wording and code (guest_link_expired, expired,
+    // page_not_allowed...) — the reader and guest library branch on them.
+    const body = err.body as { error?: string; detail?: string }
     const msg =
-      body.error ||
-      (res.status === 429 ? "Too many requests — slow down and try again in a minute." : "") ||
-      body.detail ||
-      `Request failed (${res.status})`
-    throw new ContentError(msg, res.status, body.code || "")
+      (err.status === 401 && guestToken ? body.error || body.detail : "") ||
+      (err.status === 429 ? body.error || "Too many requests — slow down and try again in a minute." : "") ||
+      (err.status !== 401 ? body.error || body.detail : "") ||
+      err.message
+    throw new ContentError(msg, err.status, typeof err.body.code === "string" ? err.body.code : err.code)
   }
-  return res
 }
 
 export async function getBookAccess(bookId: string | number, guestToken?: string | null): Promise<BookAccess> {
@@ -1261,7 +1129,8 @@ export async function getReaderPageText(url: string, guestToken?: string | null)
 }
 
 export async function getAudioStreamUrl(bookId: string | number, guestToken?: string | null): Promise<string> {
-  const res = await contentFetch(`/books/${bookId}/audio/stream-url/`, { method: "POST" }, guestToken)
+  // POST only mints a short-lived signed URL (nothing stored): safe to retry.
+  const res = await contentFetch(`/books/${bookId}/audio/stream-url/`, { method: "POST", pure: true }, guestToken)
   const data = (await res.json()) as { url: string }
   return `${apiOrigin()}${data.url}`
 }
@@ -1279,7 +1148,9 @@ export async function fetchBookDownload(
   guestToken?: string | null,
   fallbackName?: string,
 ): Promise<{ blob: Blob; filename: string }> {
-  const res = await contentFetch(`/books/${bookId}/download/?kind=${kind}`, {}, guestToken)
+  // No timeout: a large file must not be cut off and re-requested (each
+  // completed download counts toward the limit server-side).
+  const res = await contentFetch(`/books/${bookId}/download/?kind=${kind}`, { timeoutMs: 0, retries: 0 }, guestToken)
   return {
     blob: await res.blob(),
     filename: filenameFrom(res, fallbackName || (kind === "ebook" ? "book.pdf" : "book.mp3")),
@@ -1325,16 +1196,20 @@ export async function getGuestLibrary(guestToken: string): Promise<GuestLibrary>
 
 /** "Get a new access link". Always resolves with the same generic message
  * (the server never reveals whether the email bought anything). */
-export async function requestGuestLink(email: string): Promise<string> {
-  const res = await fetch(`${API}/guest/renew/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
-  })
-  const data = (await res.json().catch(() => ({}))) as { message?: string; detail?: string }
-  if (res.status === 429) throw new Error("Too many requests for a new link. Try again later.")
-  if (!res.ok) throw new Error(data.detail || "Could not send a new link. Try again.")
-  return data.message || "If this email has purchases, we've sent a link."
+export async function requestGuestLink(email: string, call?: CallOptions): Promise<string> {
+  try {
+    const data = await apiAction<{ message?: string }>(
+      "/guest/renew/",
+      { method: "POST", auth: false, body: JSON.stringify({ email }) },
+      call,
+    )
+    return data.message || "If this email has purchases, we've sent a link."
+  } catch (err) {
+    if (err instanceof AuthFetchError && err.status === 429) {
+      throw new AuthFetchError("Too many requests for a new link. Try again later.", 429, err.code, err.body)
+    }
+    throw err
+  }
 }
 
 const GUEST_TOKEN_KEY = "plugyard_guest_token"

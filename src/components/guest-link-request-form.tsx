@@ -2,6 +2,8 @@
 
 import { useState, type FormEvent } from 'react'
 import { requestGuestLink } from '@/lib/api'
+import { useAsyncAction } from '@/hooks/use-async-action'
+import { ActionButton, ActionStatus } from '@/components/ui/action-button'
 
 /**
  * "Get a new access link" for guest (no-account) buyers. The server always
@@ -18,25 +20,21 @@ export function GuestLinkRequestForm({
   className?: string
 }) {
   const [email, setEmail] = useState(defaultEmail)
-  const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
-  const [isError, setIsError] = useState(false)
 
-  async function onSubmit(e: FormEvent) {
+  // Sends an email: retried with ONE idempotency key, so never twice.
+  const send = useAsyncAction((ctx, value: string) => requestGuestLink(value, ctx), {
+    successMs: 3000,
+    errorFallback: 'Could not send a new link. Try again.',
+    onSuccess: (m) => setMsg(m ?? ''),
+  })
+
+  function onSubmit(e: FormEvent) {
     e.preventDefault()
     const value = email.trim()
-    if (!value || busy) return
-    setBusy(true)
+    if (!value) return
     setMsg('')
-    setIsError(false)
-    try {
-      setMsg(await requestGuestLink(value))
-    } catch (err) {
-      setIsError(true)
-      setMsg(err instanceof Error ? err.message : 'Could not send a new link. Try again.')
-    } finally {
-      setBusy(false)
-    }
+    void send.run(value)
   }
 
   return (
@@ -56,16 +54,25 @@ export function GuestLinkRequestForm({
           placeholder="name@example.com"
           className="min-w-0 flex-1 rounded-xl border border-foreground/15 bg-transparent px-3 py-2 text-sm"
         />
-        <button
+        <ActionButton
           type="submit"
-          disabled={busy}
-          className="shrink-0 rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background disabled:opacity-50"
+          action={send}
+          loadingLabel="Sending…"
+          successLabel="Sent"
+          errorPlacement="none"
+          retryPlacement="none"
+          className="shrink-0 rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background disabled:opacity-50 aria-busy:opacity-80"
         >
-          {busy ? 'Sending…' : 'Get a new access link'}
-        </button>
+          Get a new access link
+        </ActionButton>
       </div>
-      {msg ? (
-        <p className={`mt-2 text-sm ${isError ? 'text-red-500' : 'text-foreground/70'}`} role="status">
+      <ActionStatus action={send} className="mt-2 text-sm text-foreground/60" />
+      {send.errorText ? (
+        <p className="mt-2 text-sm text-red-500" role="alert">
+          {send.errorText}
+        </p>
+      ) : msg ? (
+        <p className="mt-2 text-sm text-foreground/70" role="status">
           {msg}
         </p>
       ) : null}

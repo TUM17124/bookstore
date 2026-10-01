@@ -1184,11 +1184,11 @@ function PageBoxesSection({
         form.append("page", String(pageNumber));
         form.append("mode", "get");
         const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
-        const { getAuthToken } = await import("@/lib/pdf-editor/api");
-        const token = await getAuthToken();
-        const res = await fetch(`${PDF_SERVICE_URL}/pdf/page-boxes`, {
+        const { authFetch } = await import("@/lib/auth-fetch");
+        // Part A: token refresh + automatic retry (stateless PDF service).
+        const res = await authFetch(`${PDF_SERVICE_URL}/pdf/page-boxes`, {
           method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          pure: true,
           body: form,
         });
         if (aborted) return;
@@ -1245,11 +1245,11 @@ function PageBoxesSection({
       form.append("w", String(w));
       form.append("h", String(h));
       const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
-      const { getAuthToken } = await import("@/lib/pdf-editor/api");
-      const token = await getAuthToken();
-      const res = await fetch(`${PDF_SERVICE_URL}/pdf/page-boxes`, {
+      const { authFetch } = await import("@/lib/auth-fetch");
+      // Part A: token refresh + automatic retry (stateless PDF service).
+      const res = await authFetch(`${PDF_SERVICE_URL}/pdf/page-boxes`, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        pure: true,
         body: form,
       });
       if (!res.ok) {
@@ -1447,11 +1447,11 @@ async function postColorBake(
   form.append("file", new File([blob], "document.pdf", { type: "application/pdf" }));
   for (const { key, value } of fields) form.append(key, value);
   const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
-  const { getAuthToken } = await import("@/lib/pdf-editor/api");
-  const token = await getAuthToken();
-  const res = await fetch(`${PDF_SERVICE_URL}/pdf/color`, {
+  const { authFetch } = await import("@/lib/auth-fetch");
+  // Part A: token refresh + automatic retry (stateless PDF service).
+  const res = await authFetch(`${PDF_SERVICE_URL}/pdf/color`, {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    pure: true,
     body: form,
   });
   if (!res.ok) throw new Error(`bake-failed-${res.status}`);

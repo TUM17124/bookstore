@@ -1,5 +1,6 @@
 "use client";
 
+import { pdfServiceFetch } from "@/lib/pdf-editor/pdf-service-fetch";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useTranslations } from "@/lib/pdf-editor/use-translations";
 import {
@@ -133,7 +134,7 @@ async function postFormsAction(
   const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
   const { getAuthToken } = await import("@/lib/pdf-editor/api");
   const token = await getAuthToken();
-  const res = await fetch(`${PDF_SERVICE_URL}/pdf/forms`, {
+  const res = await pdfServiceFetch(`${PDF_SERVICE_URL}/pdf/forms`, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     body: fd,

@@ -4,6 +4,9 @@ import { Suspense, useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createCheckout, CheckoutError } from '@/lib/api'
+import { useAsyncAction } from '@/hooks/use-async-action'
+import { ActionButton } from '@/components/ui/action-button'
+import { UserError } from '@/lib/user-error'
 import { getStoredUser, isLoggedIn } from '@/lib/auth-client'
 import { getPromptContent, type PromptCopy } from '@/lib/prompts'
 
@@ -43,8 +46,6 @@ function CheckoutInner() {
   const canceled = sp.get('canceled') === '1'
 
   const [email, setEmail] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
   const [legalRequired, setLegalRequired] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
@@ -76,52 +77,50 @@ function CheckoutInner() {
   const signupHref = `/signup?email=${encodeURIComponent(email)}&next=${encodeURIComponent(checkoutPath)}`
   const loginHref = `/login?next=${encodeURIComponent(checkoutPath)}`
 
-  async function onPay(e: React.FormEvent) {
+  // Retried automatically on connection problems with ONE idempotency key per
+  // attempt, so the server never creates a second order or payment session.
+  const pay = useAsyncAction(
+    async (ctx, trimmed: string, accepted: boolean) => {
+      rememberBook(bookId, title, trimmed)
+      const res = await createCheckout(
+        { book_id: Number(bookId), product_type: type, email: trimmed, terms_accepted: accepted },
+        ctx,
+      )
+      if (!res.checkout_url) throw new UserError('No checkout URL returned. Please try again.')
+      return res
+    },
+    {
+      // Stays on "Redirecting…" while the browser leaves for Paystack.
+      successMs: 60_000,
+      errorFallback: 'Checkout failed. Please try again.',
+      onSuccess: (res) => {
+        if (!res) return
+        sessionStorage.setItem('checkout_order_hint', String(res.order_id))
+        let url = res.checkout_url
+        try {
+          const u = new URL(url, window.location.origin)
+          if (u.pathname.includes('/checkout/success')) {
+            u.searchParams.set('email', email.trim().toLowerCase())
+            if (bookId) u.searchParams.set('bookId', bookId)
+            url = u.toString()
+          }
+        } catch {
+          // hosted payment URL
+        }
+        window.location.href = url
+      },
+      onError: (err) => {
+        if (err instanceof CheckoutError && err.legalRequired) setLegalRequired(true)
+      },
+    },
+  )
+
+  function onPay(e: React.FormEvent) {
     e.preventDefault()
     if (!bookId || !email.trim()) return
     if (!loggedIn && !termsAccepted) return
-    setBusy(true)
-    setError('')
     setLegalRequired(false)
-    try {
-      const trimmed = email.trim().toLowerCase()
-      rememberBook(bookId, title, trimmed)
-
-      const res = await createCheckout({
-        book_id: Number(bookId),
-        product_type: type,
-        email: trimmed,
-        terms_accepted: termsAccepted,
-      })
-
-      if (!res.checkout_url) {
-        setError('No checkout URL returned')
-        setBusy(false)
-        return
-      }
-
-      sessionStorage.setItem('checkout_order_hint', String(res.order_id))
-
-      let url = res.checkout_url
-      try {
-        const u = new URL(url, window.location.origin)
-        if (u.pathname.includes('/checkout/success')) {
-          u.searchParams.set('email', trimmed)
-          if (bookId) u.searchParams.set('bookId', bookId)
-          url = u.toString()
-        }
-      } catch {
-        // hosted payment URL
-      }
-
-      window.location.href = url
-    } catch (err) {
-      if (err instanceof CheckoutError && err.legalRequired) {
-        setLegalRequired(true)
-      }
-      setError(err instanceof Error ? err.message : 'Checkout failed')
-      setBusy(false)
-    }
+    void pay.run(email.trim().toLowerCase(), termsAccepted)
   }
 
   return (
@@ -267,20 +266,17 @@ function CheckoutInner() {
           </div>
         )}
 
-        {error && (
-          <p className="mt-3 text-sm text-red-500" role="alert">
-            {error}
-          </p>
-        )}
-
-        <button
+        <ActionButton
           type="submit"
-          disabled={busy || !email.trim() || (mounted && !loggedIn && !termsAccepted)}
-          className="mt-6 w-full rounded-full bg-foreground py-3 text-sm font-semibold text-background transition hover:bg-foreground/90 disabled:opacity-50"
+          action={pay}
+          disabled={!email.trim() || (mounted && !loggedIn && !termsAccepted)}
+          loadingLabel="Starting payment…"
+          successLabel="Redirecting…"
+          errorClassName="mt-3 text-sm text-red-500"
+          className="mt-6 w-full rounded-full bg-foreground py-3 text-sm font-semibold text-background transition hover:bg-foreground/90 disabled:opacity-50 aria-busy:opacity-80"
         >
-          {busy ? 'Redirecting…' : 'Continue to payment'}
-        </button>
-
+          Continue to payment
+        </ActionButton>
         <button
           type="button"
           onClick={() =>

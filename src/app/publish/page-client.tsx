@@ -3,10 +3,12 @@
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { getToken } from '@/lib/api'
+import { getToken, publishBook } from '@/lib/api'
 import { api as editorApi } from '@/lib/pdf-editor/api'
-
-const API = process.env.NEXT_PUBLIC_API_URL!
+import { useAsyncAction } from '@/hooks/use-async-action'
+import { ActionButton } from '@/components/ui/action-button'
+import { AuthFetchError } from '@/lib/auth-fetch'
+import { UserError } from '@/lib/user-error'
 
 const CATEGORIES = [
   { value: 'business-compliance', label: 'Business & Compliance' },
@@ -21,7 +23,6 @@ function PublishPageInner() {
   const editorDocumentId = searchParams.get('editor_document_id') || ''
 
   const [loggedIn, setLoggedIn] = useState(false)
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [ok, setOk] = useState('')
   const [isFree, setIsFree] = useState(false)
@@ -45,6 +46,21 @@ function PublishPageInner() {
       () => setAttachedName('Untitled.pdf'),
     )
   }, [editorDocumentId])
+
+  // Upload + create: idempotent server-side, so a dropped connection is
+  // retried with ONE key and can never create the book twice.
+  const submit = useAsyncAction(
+    async (ctx, fd: FormData) => {
+      try {
+        return await publishBook(fd, ctx)
+      } catch (err) {
+        const missing = err instanceof AuthFetchError ? err.body.missing : null
+        if (Array.isArray(missing) && missing.length) throw new UserError(`Missing: ${missing.join(', ')}`)
+        throw err
+      }
+    },
+    { errorFallback: 'Submit failed. Please try again.' },
+  )
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -85,29 +101,13 @@ function PublishPageInner() {
     fd.set('ebook_downloadable', ebookDownloadable ? 'true' : 'false')
     fd.set('audiobook_downloadable', audiobookDownloadable ? 'true' : 'false')
 
-    setBusy(true)
-    try {
-      const token = getToken()
-      const res = await fetch(`${API}/me/books/`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: fd,
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(
-          data.error || (data.missing ? `Missing: ${data.missing.join(', ')}` : 'Submit failed'),
-        )
-      }
-      setOk(data.message || 'Submitted for review.')
-      formEl.reset()
-      setIsFree(false)
-      setEbookDownloadable(true)
-      setAudiobookDownloadable(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Submit failed')
-    }
-    setBusy(false)
+    const data = await submit.run(fd)
+    if (!data) return // failed (shown under the button) or cancelled
+    setOk(data.message || 'Submitted for review.')
+    formEl.reset()
+    setIsFree(false)
+    setEbookDownloadable(true)
+    setAudiobookDownloadable(true)
   }
 
   if (!loggedIn) {
@@ -249,9 +249,16 @@ function PublishPageInner() {
             {ok}
           </p>
         )}
-        <button type="submit" disabled={busy} className="rounded-full bg-foreground px-4 py-2 font-medium text-background disabled:opacity-50">
-          {busy ? 'Uploading…' : 'Submit for review'}
-        </button>
+        <ActionButton
+          type="submit"
+          action={submit}
+          loadingLabel="Uploading…"
+          successLabel="Submitted"
+          errorClassName="rounded-xl border-2 border-red-600 bg-red-100 p-3 text-sm font-semibold text-red-800 dark:border-red-400 dark:bg-red-950 dark:text-red-300"
+          className="rounded-full bg-foreground px-4 py-2 font-medium text-background disabled:opacity-50 aria-busy:opacity-80"
+        >
+          Submit for review
+        </ActionButton>
       </form>
     </main>
   )

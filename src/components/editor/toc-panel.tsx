@@ -16,10 +16,12 @@ import {
   IndentDecrease,
   Check,
   Sparkles,
-  Loader2,
 } from "lucide-react";
 import type { BookmarkObject } from "@giga-pdf/types";
 import { cn } from "@/lib/pdf-editor/utils";
+import type { CallOptions } from "@/lib/auth-fetch";
+import { useAsyncAction } from "@/hooks/use-async-action";
+import { ActionButton } from "@/components/ui/action-button";
 import {
   treeToFlat,
   flatToTree,
@@ -70,7 +72,7 @@ interface TOCPanelProps {
    * outline-less document and renders the result as a navigable list that can be
    * baked into real bookmarks (via {@link onApplyOutline}/{@link onApplyBookmarks}).
    */
-  onDetectChapters?: () => Promise<BookmarkInput[]>;
+  onDetectChapters?: (call?: CallOptions) => Promise<BookmarkInput[]>;
   /** Number of pages — bounds the destination page input in edit mode. */
   pageCount?: number;
   className?: string;
@@ -318,8 +320,12 @@ export function TOCPanel({
   // Chapter detection (outline-less documents): `null` = not yet detected,
   // `[]` = detected but nothing found, otherwise the navigable preview list.
   const [detected, setDetected] = useState<BookmarkInput[] | null>(null);
-  const [detecting, setDetecting] = useState(false);
-  const [detectFailed, setDetectFailed] = useState(false);
+  // Part A: shared button states (working, retry countdown, error + Try again).
+  const detect = useAsyncAction(
+    (ctx) => (onDetectChapters ? onDetectChapters(ctx) : Promise.resolve([] as BookmarkInput[])),
+    { successMs: 0, errorFallback: t("detectError") },
+  );
+  const detecting = detect.busy;
 
   const canEdit = Boolean(onApplyOutline) || Boolean(onApplyBookmarks);
   const canDetect = Boolean(onDetectChapters);
@@ -330,8 +336,8 @@ export function TOCPanel({
   useEffect(() => {
     setEditing(false);
     setDetected(null);
-    setDetecting(false);
-    setDetectFailed(false);
+    detect.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset is stable; only the outline matters
   }, [outlines]);
 
   const totalCount = useMemo(() => {
@@ -340,19 +346,12 @@ export function TOCPanel({
     return countBookmarks(outlines);
   }, [outlines]);
 
+  const runDetect = detect.run;
   const handleDetect = useCallback(async () => {
     if (!onDetectChapters) return;
-    setDetecting(true);
-    setDetectFailed(false);
-    try {
-      setDetected(await onDetectChapters());
-    } catch {
-      setDetected(null);
-      setDetectFailed(true);
-    } finally {
-      setDetecting(false);
-    }
-  }, [onDetectChapters]);
+    const chapters = await runDetect();
+    if (chapters) setDetected(chapters);
+  }, [onDetectChapters, runDetect]);
 
   // Bake detected chapters through the same pipeline as the manual editor: a
   // flat, level-encoded list rebuilt into a tree for `onApplyOutline` and passed
@@ -501,22 +500,21 @@ export function TOCPanel({
                 {detected ? t("detectEmpty") : canDetect ? t("detectHint") : t("emptyEdit")}
               </p>
               {canDetect && (
-                <button
-                  type="button"
-                  onClick={handleDetect}
-                  disabled={detecting}
+                <ActionButton
+                  action={detect}
+                  onClick={() => void handleDetect()}
+                  loadingLabel={t("detecting")}
+                  errorPlacement="none"
                   className="flex items-center gap-1 rounded-md border border-input px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
                 >
-                  {detecting ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Sparkles className="h-3 w-3" />
-                  )}
-                  {detecting ? t("detecting") : detected ? t("redetect") : t("detectChapters")}
-                </button>
+                  <Sparkles className="h-3 w-3" />
+                  {detected ? t("redetect") : t("detectChapters")}
+                </ActionButton>
               )}
-              {detectFailed && (
-                <p className="text-xs text-destructive">{t("detectError")}</p>
+              {detect.errorText && (
+                <p role="alert" className="text-xs text-destructive">
+                  {detect.errorText}
+                </p>
               )}
             </div>
           )}

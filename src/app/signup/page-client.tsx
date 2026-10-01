@@ -4,6 +4,9 @@ import { Suspense, useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { register } from '@/lib/api'
+import { useAsyncAction } from '@/hooks/use-async-action'
+import { ActionButton } from '@/components/ui/action-button'
+import { errorMessage } from '@/lib/auth-fetch'
 import { GoogleLoginButton } from '@/components/google-login-button'
 import { LegalAcceptTick } from '@/components/legal-accept'
 import {
@@ -87,7 +90,6 @@ function SignupInner() {
   const [legalRequired, setLegalRequired] = useState(false)
 
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     if (prefillEmail) {
@@ -134,7 +136,30 @@ function SignupInner() {
     }
   }
 
-  async function onSubmit(e: React.FormEvent) {
+  // Register sends the verification email: retried with ONE idempotency
+  // key, so a connection drop can't send two emails or report "email
+  // already in use" for the account it just created.
+  const createAccount = useAsyncAction(
+    (ctx, em: string, pw: string, nm: string, cf: string, ref: string) =>
+      register(em, pw, nm, cf, true, ref, ctx),
+    {
+      successMs: 60_000,
+      onSuccess: () => {
+        router.push(
+          `/verify-email?email=${encodeURIComponent(
+            email,
+          )}&next=${encodeURIComponent(nextPath)}`,
+        )
+      },
+      onError: (err) => {
+        const message = errorMessage(err, 'Sign up failed. Please try again.')
+        if (isLegalError(message)) setLegalRequired(true)
+        setError(message)
+      },
+    },
+  )
+
+  function onSubmit(e: React.FormEvent) {
     e.preventDefault()
 
     setError('')
@@ -154,37 +179,7 @@ function SignupInner() {
       return
     }
 
-    setBusy(true)
-
-    try {
-      await register(
-        email,
-        password,
-        name,
-        confirm,
-        true,
-        referralCode,
-      )
-
-      router.push(
-        `/verify-email?email=${encodeURIComponent(
-          email,
-        )}&next=${encodeURIComponent(nextPath)}`,
-      )
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Sign up failed'
-
-      if (isLegalError(message)) {
-        setLegalRequired(true)
-      }
-
-      setError(message)
-    } finally {
-      setBusy(false)
-    }
+    void createAccount.run(email, password, name, confirm, referralCode)
   }
 
   return (
@@ -390,20 +385,21 @@ function SignupInner() {
           )}
 
         {error && (
-          <p className="text-sm text-red-500">
+          <p className="text-sm text-red-500" role="alert">
             {error}
           </p>
         )}
 
-        <button
+        <ActionButton
           type="submit"
-          disabled={busy}
-          className="rounded-full bg-foreground px-4 py-2 font-medium text-background disabled:opacity-50"
+          action={createAccount}
+          loadingLabel="Creating account…"
+          successLabel="Account created"
+          errorPlacement="none"
+          className="rounded-full bg-foreground px-4 py-2 font-medium text-background disabled:opacity-50 aria-busy:opacity-80"
         >
-          {busy
-            ? '…'
-            : 'Create account'}
-        </button>
+          Create account
+        </ActionButton>
       </form>
 
       <p className="mt-4 text-sm text-foreground/60">

@@ -12,6 +12,8 @@ import {
   type ProStatus,
 } from '@/lib/api'
 import { isLoggedIn } from '@/lib/auth-client'
+import { useAsyncAction } from '@/hooks/use-async-action'
+import { ActionButton } from '@/components/ui/action-button'
 
 const BENEFITS = [
   {
@@ -39,8 +41,6 @@ function ProInner() {
   const [loggedIn, setLoggedIn] = useState(false)
   const [price, setPrice] = useState('')
   const [status, setStatus] = useState<ProStatus | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [cancelling, setCancelling] = useState(false)
   const [cancelConfirmed, setCancelConfirmed] = useState(false)
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
@@ -82,32 +82,36 @@ function ProInner() {
     }
   }, [mounted, loggedIn, proRef])
 
-  async function handleUpgrade() {
-    setBusy(true)
-    setError('')
-    try {
-      const res = await subscribePro()
-      window.location.href = res.checkout_url
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start checkout')
-      setBusy(false)
-    }
-  }
+  // Payment initialisation: retried only with ONE idempotency key, so a
+  // connection drop can't open two subscriptions / payment sessions.
+  const upgrade = useAsyncAction((ctx) => subscribePro(ctx), {
+    successMs: 60_000, // "Redirecting…" while the browser leaves for Paystack
+    errorFallback: 'Could not start checkout. Please try again.',
+    onSuccess: (res) => {
+      if (res?.checkout_url) window.location.href = res.checkout_url
+    },
+  })
 
-  async function handleCancel() {
+  const cancel = useAsyncAction(
+    (ctx, subscriptionId: number) => cancelProSubscription(subscriptionId, ctx),
+    {
+      errorFallback: 'Could not cancel. Please try again.',
+      onSuccess: () => {
+        setCancelConfirmed(false)
+        setStatus((cur) =>
+          cur?.subscription ? { is_pro: false, subscription: { ...cur.subscription, status: 'cancelled' } } : cur,
+        )
+      },
+    },
+  )
+
+  function handleCancel() {
     if (!status?.subscription?.id) return
-    if (!cancelConfirmed) { setCancelConfirmed(true); return }
-    setCancelling(true)
-    setError('')
-    try {
-      await cancelProSubscription(status.subscription.id)
-      setStatus({ is_pro: false, subscription: { ...status.subscription!, status: 'cancelled' } })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not cancel')
-    } finally {
-      setCancelling(false)
-      setCancelConfirmed(false)
+    if (!cancelConfirmed) {
+      setCancelConfirmed(true)
+      return
     }
+    void cancel.run(status.subscription.id)
   }
 
   const isPro = !!status?.is_pro
@@ -198,14 +202,16 @@ function ProInner() {
               <Link href="/settings" className="text-sm underline text-foreground/70">
                 Manage in Settings
               </Link>
-              <button
-                type="button"
-                disabled={cancelling}
-                onClick={() => void handleCancel()}
+              <ActionButton
+                action={cancel}
+                onClick={handleCancel}
+                loadingLabel="Cancelling…"
+                successLabel="Cancelled"
+                errorClassName="text-sm text-red-600"
                 className="rounded-lg border border-red-400 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
               >
-                {cancelling ? 'Cancelling…' : cancelConfirmed ? 'Tap again to confirm' : 'Cancel subscription'}
-              </button>
+                {cancelConfirmed ? 'Tap again to confirm' : 'Cancel subscription'}
+              </ActionButton>
               {cancelConfirmed && (
                 <p className="text-xs text-foreground/50">
                   Your access continues until the end of the billing period.
@@ -214,14 +220,20 @@ function ProInner() {
             </div>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => void handleUpgrade()}
-            disabled={busy || !price}
-            className="w-full rounded-full bg-[#d4af37] px-4 py-3.5 text-center text-base font-bold text-[#3a2e08] disabled:opacity-60"
+          <ActionButton
+            action={upgrade}
+            onClick={() => {
+              setError('')
+              void upgrade.run()
+            }}
+            disabled={!price}
+            loadingLabel="Starting checkout…"
+            successLabel="Redirecting…"
+            errorClassName="mt-3 text-center text-sm text-red-700"
+            className="w-full rounded-full bg-[#d4af37] px-4 py-3.5 text-center text-base font-bold text-[#3a2e08] disabled:opacity-60 aria-busy:opacity-80"
           >
-            {busy ? 'Starting checkout…' : `Upgrade to Pro — KES ${price ? Number(price).toLocaleString() : '…'}/month`}
-          </button>
+            {`Upgrade to Pro — KES ${price ? Number(price).toLocaleString() : '…'}/month`}
+          </ActionButton>
         )}
       </div>
     </main>

@@ -906,7 +906,9 @@
       "removeErrorTitle": "Could not remove",
       "removeErrorDescription": "Failed to remove this annotation.",
       "loadError": "Couldn't load annotations, please try again.",
-      "retry": "Retry"
+      "retry": "Retry",
+      "addWorking": "Adding annotation…",
+      "removeWorking": "Removing annotation…"
     },
     "toc": {
       "title": "Table of Contents",
@@ -976,7 +978,9 @@
       "toasts.added": "{count} attachment(s) added",
       "toasts.addFailed": "Could not add the attachment",
       "toasts.removed": "Attachment removed",
-      "toasts.removeFailed": "Could not remove the attachment"
+      "toasts.removeFailed": "Could not remove the attachment",
+      "toasts.adding": "Adding attachment…",
+      "toasts.removing": "Removing attachment…"
     },
     "exportDialog": {
       "title": "Export Document",
@@ -1519,7 +1523,8 @@
         "namedDestCreated": "Destination \"{name}\" created",
         "namedDestFailed": "Failed to create the destination",
         "namedLinkAdded": "Link to \"{name}\" added",
-        "namedLinkFailed": "Failed to add the named link"
+        "namedLinkFailed": "Failed to add the named link",
+        "namedWorking": "Adding the named destination…"
       }
     },
     "colors": {
@@ -1671,7 +1676,8 @@
       "appliedTitle": "Style applied",
       "appliedDescription": "The text style was updated.",
       "errorTitle": "Could not apply style",
-      "errorDescription": "Failed to apply the style to this text."
+      "errorDescription": "Failed to apply the style to this text.",
+      "working": "Applying style…"
     },
     "replaceImage": {
       "appliedTitle": "Image replaced",
@@ -1688,7 +1694,8 @@
     "svg": {
       "toasts": {
         "inserted": "SVG inserted",
-        "failed": "Failed to insert the SVG"
+        "failed": "Failed to insert the SVG",
+        "working": "Inserting SVG…"
       }
     }
   },

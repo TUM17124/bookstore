@@ -7,12 +7,12 @@ import {
   getLegalStatus,
   needsLegalAccept,
 } from '@/lib/legal'
+import { useAsyncAction } from '@/hooks/use-async-action'
+import { ActionButton } from '@/components/ui/action-button'
 
 export function LegalGate() {
   const [open, setOpen] = useState(false)
   const [summary, setSummary] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
 
   const checkLegal = useCallback(async () => {
     const token = getToken()
@@ -44,29 +44,17 @@ export function LegalGate() {
     return () => window.removeEventListener('auth-changed', checkLegal)
   }, [checkLegal])
 
-  if (!open) return null
-
-  async function handleAccept() {
-    const token = getToken()
-    if (!token) return
-
-    setBusy(true)
-    setError('')
-
-    try {
-      await acceptLegal(token)
+  // Idempotent server-side: retried with ONE key on connection problems.
+  const accept = useAsyncAction((ctx) => acceptLegal(getToken() || '', ctx), {
+    successMs: 0,
+    errorFallback: 'Unable to accept the legal terms. Please try again.',
+    onSuccess: () => {
       setOpen(false)
       window.dispatchEvent(new Event('auth-changed'))
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to accept the legal terms.',
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
+    },
+  })
+
+  if (!open) return null
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
@@ -96,16 +84,15 @@ export function LegalGate() {
           .
         </p>
 
-        {error && <p className="text-sm text-red-500">{error}</p>}
-
-        <button
-          type="button"
-          disabled={busy}
-          onClick={handleAccept}
-          className="w-full rounded-lg bg-black py-2 text-white disabled:opacity-50"
+        <ActionButton
+          action={accept}
+          onClick={() => getToken() && void accept.run()}
+          loadingLabel="Saving…"
+          errorClassName="text-sm text-red-500"
+          className="w-full rounded-lg bg-black py-2 text-white disabled:opacity-50 aria-busy:opacity-80"
         >
-          {busy ? 'Saving…' : 'I have read and accept'}
-        </button>
+          I have read and accept
+        </ActionButton>
       </div>
     </div>
   )

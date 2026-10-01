@@ -16,6 +16,40 @@ import {
 import { PdfReader } from '@/components/pdf-reader'
 import { AudioPlayer } from '@/components/audio-player'
 import { GuestLinkRequestForm } from '@/components/guest-link-request-form'
+import { useAsyncAction } from '@/hooks/use-async-action'
+import { ActionButton } from '@/components/ui/action-button'
+
+/** One item's download button (its own request state). Never auto-retried:
+ * each completed download counts toward the limit. */
+function GuestDownloadButton({
+  item,
+  token,
+  onDone,
+  onError,
+}: {
+  item: GuestLibraryItem
+  token: string
+  onDone: () => void
+  onError: (err: unknown) => void
+}) {
+  const download = useAsyncAction(
+    () => downloadBook(item.book.id, item.kind, `${item.book.title}.${item.kind === 'ebook' ? 'pdf' : 'mp3'}`, token),
+    { errorFallback: 'Download failed. Please try again.', onSuccess: onDone, onError },
+  )
+  return (
+    <ActionButton
+      action={download}
+      onClick={() => void download.run()}
+      disabled={item.downloads_remaining <= 0}
+      loadingLabel="Preparing download…"
+      successLabel="Downloaded"
+      errorClassName="basis-full text-xs text-red-500"
+      className="rounded-full border border-foreground/20 px-4 py-2 text-sm font-semibold disabled:opacity-50"
+    >
+      Download ({item.downloads_remaining} left)
+    </ActionButton>
+  )
+}
 
 /**
  * Guest (no-account) buyers land here from their emailed link
@@ -33,7 +67,6 @@ function GuestLibraryInner() {
   const [loading, setLoading] = useState(true)
   const [reading, setReading] = useState<GuestLibraryItem | null>(null)
   const [listening, setListening] = useState<GuestLibraryItem | null>(null)
-  const [dlMsg, setDlMsg] = useState<Record<number, string>>({})
 
   // 1) capture + strip the token from the URL
   useEffect(() => {
@@ -81,17 +114,9 @@ function GuestLibraryInner() {
     }
   }
 
-  async function download(item: GuestLibraryItem) {
-    if (!token) return
-    setDlMsg((m) => ({ ...m, [item.order_id]: 'Preparing download…' }))
-    try {
-      await downloadBook(item.book.id, item.kind, `${item.book.title}.${item.kind === 'ebook' ? 'pdf' : 'mp3'}`, token)
-      setDlMsg((m) => ({ ...m, [item.order_id]: '' }))
-      getGuestLibrary(token).then(setLib).catch(() => {})
-    } catch (err) {
-      if (err instanceof ContentError) onAccessError(err)
-      setDlMsg((m) => ({ ...m, [item.order_id]: err instanceof Error ? err.message : 'Download failed.' }))
-    }
+  function refreshAfterDownload() {
+    // Updates "N left"; on failure the old count stays (the download itself succeeded).
+    if (token) getGuestLibrary(token).then(setLib).catch(() => {})
   }
 
   const expired = error instanceof ContentError && error.code === 'guest_link_expired'
@@ -151,24 +176,21 @@ function GuestLibraryInner() {
                   ) : (
                     <span className="text-xs text-foreground/50">Not available right now</span>
                   )}
-                  {item.can_download ? (
-                    <button
-                      type="button"
-                      onClick={() => void download(item)}
-                      disabled={item.downloads_remaining <= 0}
-                      className="rounded-full border border-foreground/20 px-4 py-2 text-sm font-semibold disabled:opacity-50"
-                    >
-                      Download ({item.downloads_remaining} left)
-                    </button>
+                  {item.can_download && token ? (
+                    <GuestDownloadButton
+                      item={item}
+                      token={token}
+                      onDone={refreshAfterDownload}
+                      onError={(err) => {
+                        if (err instanceof ContentError) onAccessError(err)
+                      }}
+                    />
                   ) : (
                     <span className="text-xs font-semibold text-foreground/45">
                       {item.kind === 'ebook' ? 'Read-only' : 'Streaming only'} — downloads are off for this book
                     </span>
                   )}
                 </div>
-                {dlMsg[item.order_id] ? (
-                  <p className="mt-2 text-xs text-foreground/65" role="status">{dlMsg[item.order_id]}</p>
-                ) : null}
               </li>
             ))}
             {lib.items.length === 0 ? (

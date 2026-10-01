@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "@/lib/pdf-editor/use-translations";
+import { useAsyncAction } from "@/hooks/use-async-action";
+import { ActionButton } from "@/components/ui/action-button";
 import { X, PenLine, Type, Upload, Trash2, FileSignature } from "lucide-react";
 import {
   fetchUserSignatures,
@@ -405,6 +407,10 @@ export function SignatureCaptureDialog({
     onClose();
   };
 
+  // Part A: "Saving…" while the signature is stored to the account (a
+  // best-effort save that never blocks insertion — see handleInsert).
+  const insertAction = useAsyncAction(() => handleInsert(), { successMs: 0 });
+
   const handleDeleteSaved = async (id: string) => {
     // Optimistically drop it from the list; tolerate a failed request.
     setSaved((prev) => prev.filter((s) => s.id !== id));
@@ -666,14 +672,16 @@ export function SignatureCaptureDialog({
             >
               {t("cancel")}
             </button>
-            <button
-              type="button"
-              onClick={handleInsert}
+            <ActionButton
+              action={insertAction}
+              onClick={() => void insertAction.run()}
               disabled={insertDisabled}
+              loadingLabel="Saving…"
+              errorPlacement="sr-only"
               className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               {t("insert")}
-            </button>
+            </ActionButton>
           </div>
         </div>
       </div>

@@ -5,6 +5,8 @@ import { api } from "@/lib/pdf-editor/api";
 import { offlineQueue, type PendingOperation } from "@/lib/pdf-editor/offline-queue";
 import { useLogger } from "@giga-pdf/logger";
 import { isDocumentSave } from "@/lib/pdf-editor/save-queue";
+import { AuthFetchError, authFetch } from "@/lib/auth-fetch";
+import { UserError } from "@/lib/user-error";
 
 // ---------------------------------------------------------------------------
 // PDF Blob retrieval — downloads the current PDF bytes from the session
@@ -19,41 +21,21 @@ import { isDocumentSave } from "@/lib/pdf-editor/save-queue";
  * - Other non-OK status → throws with the HTTP status code
  */
 async function fetchPdfBlobForSave(documentId: string): Promise<Blob> {
-  const { invalidateAuthToken, ensureFreshAuthToken } = await import(
-    "@/lib/pdf-editor/api"
-  );
-  // Retry once on 401 with a refreshed token. The editor's own `api.request`
-  // helper does this for JSON calls, but this download is a bare fetch, and it
-  // is the read that runs on every save — so a stale access token (the 1h
-  // expiry) failed every save until the page was reloaded.
-  const send = (token: string | null) =>
-    fetch(api.getDocumentDownloadUrl(documentId), {
-      credentials: "include",
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    });
-
-  let token = await ensureFreshAuthToken();
-  let response = await send(token);
-  if (response.status === 401 && token) {
-    invalidateAuthToken();
-    const freshToken = await ensureFreshAuthToken();
-    if (freshToken && freshToken !== token) {
-      token = freshToken;
-      response = await send(token);
+  // Part A: authFetch — token refreshed first when expired, ONE shared
+  // refresh on 401, and automatic retry of transient failures (it's a GET,
+  // so retrying is always safe). No timeout: a large PDF may take a while.
+  try {
+    const response = await authFetch(api.getDocumentDownloadUrl(documentId), { timeoutMs: 0 });
+    return await response.blob();
+  } catch (err) {
+    if (err instanceof AuthFetchError && err.status === 401) {
+      throw new UserError("Unauthorized: session expired, please sign in again");
     }
+    if (err instanceof AuthFetchError && err.status === 404) {
+      throw new UserError(`Document not found: ${documentId}`);
+    }
+    throw err;
   }
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error("Unauthorized: session expired, please sign in again");
-    }
-    if (response.status === 404) {
-      throw new Error(`Document not found: ${documentId}`);
-    }
-    throw new Error(`Download failed: HTTP ${response.status}`);
-  }
-
-  return response.blob();
 }
 
 export type SavePriority = "immediate" | "debounced" | "auto";

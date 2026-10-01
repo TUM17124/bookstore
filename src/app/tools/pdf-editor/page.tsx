@@ -1,4 +1,5 @@
 "use client";
+import { pdfServiceFetch } from "@/lib/pdf-editor/pdf-service-fetch";
 import { bakedElements, rememberBakedElements, serialExecutor } from "@/lib/pdf-editor/document-persistence";
 
 import { useState, useCallback, useMemo, useRef, useEffect, Suspense } from "react";
@@ -102,6 +103,11 @@ import {
 } from "@/lib/pdf-editor/collab-shim";
 import { getAuthToken, ensureFreshAuthToken } from "@/lib/pdf-editor/api";
 import { authFetch, errorMessage } from "@/lib/auth-fetch";
+import { useEditorOp } from "@/lib/pdf-editor/use-editor-op";
+import { useAsyncAction } from "@/hooks/use-async-action";
+import { ActionButton } from "@/components/ui/action-button";
+import type { CallOptions } from "@/lib/auth-fetch";
+import { UserError } from "@/lib/user-error";
 import { api, type ElementCreateRequest } from "@/lib/pdf-editor/api";
 import {
   EditorCanvas,
@@ -405,7 +411,7 @@ function UploadToStartPrompt({
     setError(null);
     try {
       const token = await ensureFreshAuthToken();
-      const blankResp = await fetch(`${PDF_SERVICE_URL}/pdf/blank`, {
+      const blankResp = await pdfServiceFetch(`${PDF_SERVICE_URL}/pdf/blank`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -476,6 +482,11 @@ function EditorPageInner() {
   const searchParams = useSearchParams();
   const t = useTranslations("editor");
   const { toast } = useToast();
+  const editorOp = useEditorOp();
+  // "Try again" on a failed editor operation re-runs the latest version of
+  // its handler (handlers are defined further down; each registers itself).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const retryHandlersRef = useRef<Record<string, ((...args: any[]) => unknown) | undefined>>({});
 
   // The site nav (and its account dropdown) is hidden on this route - these
   // are the only way to reach Dashboard/Settings/Log out from the editor.
@@ -1000,7 +1011,7 @@ function EditorPageInner() {
   // failing it just skips the substitute rather than breaking font loading.
   const fetchFontList = useCallback(async (docId: string) => {
     const token = await getAuthToken();
-    const res = await fetch(
+    const res = await pdfServiceFetch(
       `${PDF_SERVICE_URL}/pdf/fonts?documentId=${encodeURIComponent(docId)}`,
       { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
     );
@@ -1012,7 +1023,7 @@ function EditorPageInner() {
 
   const fetchFontData = useCallback(async (docId: string, fontId: string) => {
     const token = await getAuthToken();
-    const res = await fetch(
+    const res = await pdfServiceFetch(
       `${PDF_SERVICE_URL}/pdf/fonts?documentId=${encodeURIComponent(docId)}&fontId=${encodeURIComponent(fontId)}`,
       { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
     );
@@ -1058,28 +1069,11 @@ function EditorPageInner() {
     async function loadPdfBinary() {
       try {
         const downloadUrl = api.getDocumentDownloadUrl(documentId!);
-        const { invalidateAuthToken, ensureFreshAuthToken } = await import(
-          '@/lib/pdf-editor/api'
-        );
-        // This is the read that actually opens the document. It is a bare
-        // fetch (not api.request), so it needs its own 401 -> refresh -> retry,
-        // otherwise a stale 1h access token left the editor stuck on the
-        // loading screen with no visible error.
-        const send = (token: string | null) =>
-          fetch(downloadUrl, {
-            credentials: 'include',
-            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          });
-        let token = await ensureFreshAuthToken();
-        let response = await send(token);
-        if (response.status === 401 && token) {
-          invalidateAuthToken();
-          const freshToken = await ensureFreshAuthToken();
-          if (freshToken && freshToken !== token) {
-            token = freshToken;
-            response = await send(token);
-          }
-        }
+        // This is the read that actually opens the document. authFetch: token
+        // refreshed first when expired, ONE shared refresh on 401, transient
+        // failures retried (it's a GET). No timeout: big PDFs take a while.
+        // HTTP errors come back as a response so the messages below stay.
+        const response = await pdfServiceFetch(downloadUrl, { timeoutMs: 0 });
         if (!response.ok) {
           if (cancelled) return;
           throw new Error(
@@ -1426,7 +1420,7 @@ function EditorPageInner() {
         form.append("format", "png");
         form.append("maxWidth", "480");
         form.append("maxHeight", "640");
-        const res = await fetch(`${PDF_SERVICE_URL}/pdf/preview`, {
+        const res = await pdfServiceFetch(`${PDF_SERVICE_URL}/pdf/preview`, {
           method: "POST",
           credentials: "include",
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -2784,11 +2778,8 @@ function EditorPageInner() {
     // is /api/editor/documents/{pk}/download/ and expects that ID, NOT the
     // GigaPDF SDK session documentId.
     if (!storedDocumentId) return null;
-    const token = await ensureFreshAuthToken();
-    const res = await fetch(api.getDocumentDownloadUrl(storedDocumentId), {
-      credentials: 'include',
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    });
+    // authFetch underneath (token refresh + retries); no timeout for a download.
+    const res = await pdfServiceFetch(api.getDocumentDownloadUrl(storedDocumentId), { timeoutMs: 0 });
     if (!res.ok) return null;
     return res.blob();
   }, [storedDocumentId]);
@@ -2816,8 +2807,13 @@ function EditorPageInner() {
 
     // No in-memory binary — fetch the stored version from the backend.
     const blob = await fetchDocumentBlob();
-    if (blob) downloadBlob(blob, filename);
+    if (!blob) throw new UserError("Couldn't fetch the document to export. Please try again.");
+    downloadBlob(blob, filename);
   }, [currentPdfFile, flattenPdf, name, fetchDocumentBlob]);
+  // Part A: the Export button's working / retrying / error + Try again states.
+  const exportAction = useAsyncAction(() => handleExport(), {
+    errorFallback: "Export failed. Please try again.",
+  });
 
   // Restore the document to its original (v1) PDF binary by asking the
   // backend to copy v1 forward as a new current version. This is the
@@ -2894,7 +2890,7 @@ function EditorPageInner() {
         // Garantit que la version exportée reflète l'état courant
         if (isDirty) await save();
         const token = await getAuthToken();
-        const res = await fetch(`${PDF_SERVICE_URL}/office/export`, {
+        const res = await pdfServiceFetch(`${PDF_SERVICE_URL}/office/export`, {
           method: "POST",
           credentials: "include",
           headers: {
@@ -3015,7 +3011,7 @@ function EditorPageInner() {
         // load attaches. Without it, the first page op of a session silently
         // dropped the paragraph grouping (heuristic fallback) until reload.
         form.append('blockGroups', 'true');
-        const res = await fetch(`${PDF_SERVICE_URL}/pdf/parse`, {
+        const res = await pdfServiceFetch(`${PDF_SERVICE_URL}/pdf/parse`, {
           method: 'POST',
           credentials: 'include',
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -4141,7 +4137,7 @@ function EditorPageInner() {
           form.append("page", String(effectivePageIndex + 1));
           form.append("imageIndex", String(index));
           form.append("image", imageFile, imageFile.name);
-          const res = await fetch(`${PDF_SERVICE_URL}/pdf/replace-image`, {
+          const res = await pdfServiceFetch(`${PDF_SERVICE_URL}/pdf/replace-image`, {
             method: "POST",
             credentials: "include",
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -4201,7 +4197,7 @@ function EditorPageInner() {
           form.append("points", JSON.stringify(points));
           form.append("rgb", String(rgb));
           form.append("lineWidth", String(lineWidth));
-          const res = await fetch(`${PDF_SERVICE_URL}/pdf/ink`, {
+          const res = await pdfServiceFetch(`${PDF_SERVICE_URL}/pdf/ink`, {
             method: "POST",
             credentials: "include",
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -4255,7 +4251,7 @@ function EditorPageInner() {
         // `page` omitted → OCR every page (full, consistent index).
         form.append("granularity", "line");
 
-        const res = await fetch(`${PDF_SERVICE_URL}/pdf/ocr-page`, {
+        const res = await pdfServiceFetch(`${PDF_SERVICE_URL}/pdf/ocr-page`, {
           method: "POST",
           credentials: "include",
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -4570,8 +4566,25 @@ function EditorPageInner() {
           fd.append("name", value.name);
         }
 
-        const resp = await authFetch(`${PDF_SERVICE_URL}/pdf/links`, { method: "POST", body: fd });
-        const blob = await resp.blob();
+        const blob = await editorOp(
+          {
+            working: t("links.toasts.namedWorking"),
+            done:
+              value.kind === "namedCreate"
+                ? t("links.toasts.namedDestCreated", { name: value.name })
+                : t("links.toasts.namedLinkAdded", { name: value.name }),
+            failed:
+              value.kind === "namedCreate"
+                ? t("links.toasts.namedDestFailed")
+                : t("links.toasts.namedLinkFailed"),
+          },
+          async (call) => {
+            const resp = await authFetch(`${PDF_SERVICE_URL}/pdf/links`, { method: "POST", pure: true, body: fd, ...call });
+            return resp.blob();
+          },
+          () => void retryHandlersRef.current.handleInsertLink?.(value),
+        );
+        if (!blob) return;
         // namedCreate moves nothing; namedLink adds an annotation we re-parse so
         // the scene graph reflects it.
         adoptModifiedPdf(blob, { reparse: value.kind === "namedLink" });
@@ -4580,9 +4593,6 @@ function EditorPageInner() {
           setCreatedNamedDests((prev) =>
             prev.includes(value.name) ? prev : [...prev, value.name],
           );
-          toast({ title: t("links.toasts.namedDestCreated", { name: value.name }) });
-        } else {
-          toast({ title: t("links.toasts.namedLinkAdded", { name: value.name }) });
         }
       } catch (err) {
         clientLogger.error("[editor] named destination failed", err);
@@ -4603,10 +4613,14 @@ function EditorPageInner() {
       adoptModifiedPdf,
       effectivePage,
       effectivePageIndex,
+      editorOp,
       toast,
       t,
     ],
   );
+  useEffect(() => {
+    retryHandlersRef.current.handleInsertLink = handleInsertLink;
+  });
 
   /**
    * Embed an SVG graphic on the current page via /api/pdf/insert-svg, then adopt
@@ -4643,17 +4657,25 @@ function EditorPageInner() {
         fd.append("y", String(placement.y));
         fd.append("w", String(placement.w));
         fd.append("h", String(placement.h));
-        const resp = await authFetch(`${PDF_SERVICE_URL}/pdf/insert-svg`, { method: "POST", body: fd });
-        const blob = await resp.blob();
-        adoptModifiedPdf(blob, { reparse: true });
-        toast({ title: t("svg.toasts.inserted") });
+        const blob = await editorOp(
+          { working: t("svg.toasts.working"), done: t("svg.toasts.inserted"), failed: t("svg.toasts.failed") },
+          async (call) => {
+            const resp = await authFetch(`${PDF_SERVICE_URL}/pdf/insert-svg`, { method: "POST", pure: true, body: fd, ...call });
+            return resp.blob();
+          },
+          () => void retryHandlersRef.current.handleInsertSvg?.(value),
+        );
+        if (blob) adoptModifiedPdf(blob, { reparse: true });
       } catch (err) {
         clientLogger.error("[editor] insert svg failed", err);
         toast({ variant: "destructive", title: t("svg.toasts.failed"), description: errorMessage(err) });
       }
     },
-    [getPreparedBlob, adoptModifiedPdf, effectivePage, effectivePageIndex, toast, t],
+    [getPreparedBlob, adoptModifiedPdf, effectivePage, effectivePageIndex, editorOp, toast, t],
   );
+  useEffect(() => {
+    retryHandlersRef.current.handleInsertSvg = handleInsertSvg;
+  });
 
   /** Remove the hyperlink from the selected text element. */
   const handleRemoveLink = useCallback(() => {
@@ -4820,31 +4842,27 @@ function EditorPageInner() {
   // outline: POST the current binary to /api/pdf/structure (action `detect`).
   // The TOC panel previews the returned flat, level-encoded chapters and bakes
   // the chosen ones through the existing onApplyOutline pipeline.
-  const handleDetectChapters = useCallback(async (): Promise<BookmarkInput[]> => {
+  const handleDetectChapters = useCallback(async (call?: CallOptions): Promise<BookmarkInput[]> => {
     const file = currentPdfFileRef.current;
     if (!file) {
-      throw new Error("No document loaded");
+      throw new UserError("No document loaded");
     }
     const form = new FormData();
     form.append("file", file, file.name);
     form.append("action", "detect");
 
-    let res: Response;
-    try {
-      res = await authFetch(`${PDF_SERVICE_URL}/pdf/structure`, {
-        method: "POST",
-        body: form,
-      });
-    } catch (err) {
-      toast({ title: t("toc.detectError"), description: errorMessage(err), variant: "destructive" });
-      throw err;
-    }
+    // The TOC panel's Detect button shows working / retrying / error + Try again.
+    const res = await authFetch(`${PDF_SERVICE_URL}/pdf/structure`, {
+      method: "POST", pure: true,
+      body: form,
+      ...call,
+    });
     const json = (await res.json()) as {
       success: boolean;
       data?: { chapters?: BookmarkInput[] };
     };
     return json.data?.chapters ?? [];
-  }, [toast, t]);
+  }, []);
 
   // --- Geometric annotation creation (#94 Wave 2) ---------------------------
   // Add a circle / polygon / polyline / caret to the active page via
@@ -4864,30 +4882,35 @@ function EditorPageInner() {
           form.append("pageNumber", String(effectivePageIndex + 1));
           form.append("action", kind);
 
-          const res = await authFetch(`${PDF_SERVICE_URL}/pdf/annotations`, {
-            method: "POST",
-            body: form,
-          });
-          const blob = await res.blob();
-          adoptModifiedPdf(blob, { reparse: true });
-          toast({
-            title: t("annotations.addedTitle"),
-            description: t("annotations.addedDescription"),
-          });
-        } catch (err) {
-          clientLogger.error("[editor] add annotation failed:", err);
-          toast({
-            title: t("annotations.addErrorTitle"),
-            description: errorMessage(err, t("annotations.addErrorDescription")),
-            variant: "destructive",
-          });
+          const blob = await editorOp(
+            {
+              working: t("annotations.addWorking"),
+              done: t("annotations.addedTitle"),
+              doneDescription: t("annotations.addedDescription"),
+              failed: t("annotations.addErrorTitle"),
+              failedFallback: t("annotations.addErrorDescription"),
+            },
+            async (call) => {
+              const res = await authFetch(`${PDF_SERVICE_URL}/pdf/annotations`, {
+                method: "POST", pure: true,
+                body: form,
+                ...call,
+              });
+              return res.blob();
+            },
+            () => retryHandlersRef.current.handleAddAnnotation?.(kind),
+          );
+          if (blob) adoptModifiedPdf(blob, { reparse: true });
         } finally {
           setAnnotationAddBusy(false);
         }
       })();
     },
-    [effectivePageIndex, adoptModifiedPdf, toast, t],
+    [effectivePageIndex, adoptModifiedPdf, editorOp, t],
   );
+  useEffect(() => {
+    retryHandlersRef.current.handleAddAnnotation = handleAddAnnotation;
+  });
 
   // ── Word-like in-place text-run restyle (setTextRunStyle) ───────────────────
   // Vectorial restyle of an EXISTING parsed run: the original glyph codes are
@@ -4909,35 +4932,38 @@ function EditorPageInner() {
       const file = currentPdfFileRef.current;
       if (!file) return;
       void (async () => {
-        try {
-          const form = new FormData();
-          form.append("file", file, file.name);
-          form.append("page", String(page));
-          form.append("index", String(index));
-          form.append("spans", JSON.stringify(spans));
+        const form = new FormData();
+        form.append("file", file, file.name);
+        form.append("page", String(page));
+        form.append("index", String(index));
+        form.append("spans", JSON.stringify(spans));
 
-          const res = await authFetch(`${PDF_SERVICE_URL}/pdf/text-style`, {
-            method: "POST",
-            body: form,
-          });
-          const blob = await res.blob();
-          adoptModifiedPdf(blob, { reparse: true });
-          toast({
-            title: t("textStyle.appliedTitle"),
-            description: t("textStyle.appliedDescription"),
-          });
-        } catch (err) {
-          clientLogger.error("[editor] apply text style failed:", err);
-          toast({
-            title: t("textStyle.errorTitle"),
-            description: errorMessage(err, t("textStyle.errorDescription")),
-            variant: "destructive",
-          });
-        }
+        const blob = await editorOp(
+          {
+            working: t("textStyle.working"),
+            done: t("textStyle.appliedTitle"),
+            doneDescription: t("textStyle.appliedDescription"),
+            failed: t("textStyle.errorTitle"),
+            failedFallback: t("textStyle.errorDescription"),
+          },
+          async (call) => {
+            const res = await authFetch(`${PDF_SERVICE_URL}/pdf/text-style`, {
+              method: "POST", pure: true,
+              body: form,
+              ...call,
+            });
+            return res.blob();
+          },
+          () => retryHandlersRef.current.handleApplyTextStyle?.({ page, index, spans }),
+        );
+        if (blob) adoptModifiedPdf(blob, { reparse: true });
       })();
     },
-    [adoptModifiedPdf, toast, t],
+    [adoptModifiedPdf, editorOp, t],
   );
+  useEffect(() => {
+    retryHandlersRef.current.handleApplyTextStyle = handleApplyTextStyle;
+  });
 
   // ── Native annotation inventory + removal (annotations / removeAnnotation) ──
   // List walks every page server-side (action="list") and returns each existing
@@ -4953,7 +4979,7 @@ function EditorPageInner() {
       form.append("action", "list");
       // Errors propagate to the Annotations panel, which shows them.
       const res = await authFetch(`${PDF_SERVICE_URL}/pdf/annotations`, {
-        method: "POST",
+        method: "POST", pure: true,
         body: form,
       });
       const data = (await res.json()) as {
@@ -4971,33 +4997,36 @@ function EditorPageInner() {
     async (page: number, index: number): Promise<void> => {
       const file = currentPdfFileRef.current;
       if (!file) return;
-      try {
-        const form = new FormData();
-        form.append("file", file, file.name);
-        form.append("action", "remove");
-        form.append("page", String(page));
-        form.append("index", String(index));
-        const res = await authFetch(`${PDF_SERVICE_URL}/pdf/annotations`, {
-          method: "POST",
-          body: form,
-        });
-        const blob = await res.blob();
-        adoptModifiedPdf(blob, { reparse: true });
-        toast({
-          title: t("annotations.removedTitle"),
-          description: t("annotations.removedDescription"),
-        });
-      } catch (err) {
-        clientLogger.error("[editor] remove annotation failed:", err);
-        toast({
-          title: t("annotations.removeErrorTitle"),
-          description: errorMessage(err, t("annotations.removeErrorDescription")),
-          variant: "destructive",
-        });
-      }
+      const form = new FormData();
+      form.append("file", file, file.name);
+      form.append("action", "remove");
+      form.append("page", String(page));
+      form.append("index", String(index));
+      const blob = await editorOp(
+        {
+          working: t("annotations.removeWorking"),
+          done: t("annotations.removedTitle"),
+          doneDescription: t("annotations.removedDescription"),
+          failed: t("annotations.removeErrorTitle"),
+          failedFallback: t("annotations.removeErrorDescription"),
+        },
+        async (call) => {
+          const res = await authFetch(`${PDF_SERVICE_URL}/pdf/annotations`, {
+            method: "POST", pure: true,
+            body: form,
+            ...call,
+          });
+          return res.blob();
+        },
+        () => void retryHandlersRef.current.handleRemoveAnnotation?.(page, index),
+      );
+      if (blob) adoptModifiedPdf(blob, { reparse: true });
     },
-    [adoptModifiedPdf, toast, t],
+    [adoptModifiedPdf, editorOp, t],
   );
+  useEffect(() => {
+    retryHandlersRef.current.handleRemoveAnnotation = handleRemoveAnnotation;
+  });
 
   // --- PII auto-detect redaction --------------------------------------------
   const [showRedactPiiDialog, setShowRedactPiiDialog] = useState(false);
@@ -5406,32 +5435,45 @@ function EditorPageInner() {
       setAttachmentBusy(true);
       try {
         const docName = currentPdfFileRef.current?.name ?? "document.pdf";
-        let working: Blob = source;
-        const added: EmbeddedFileObject[] = [];
-        for (const f of newFiles) {
-          const fd = new FormData();
-          fd.append("file", new File([working], docName, { type: "application/pdf" }));
-          fd.append("action", "add");
-          fd.append("attachment", f);
-          const resp = await authFetch(`${PDF_SERVICE_URL}/pdf/attachments`, {
-            method: "POST",
-            body: fd,
-          });
-          working = await resp.blob();
-          added.push(toAttachmentView(f));
+        const result = await editorOp(
+          {
+            working: t("attachments.toasts.adding"),
+            done: t("attachments.toasts.added", { count: newFiles.length }),
+            failed: t("attachments.toasts.addFailed"),
+          },
+          async (call) => {
+            let working: Blob = source;
+            const added: EmbeddedFileObject[] = [];
+            for (const f of newFiles) {
+              const fd = new FormData();
+              fd.append("file", new File([working], docName, { type: "application/pdf" }));
+              fd.append("action", "add");
+              fd.append("attachment", f);
+              const resp = await authFetch(`${PDF_SERVICE_URL}/pdf/attachments`, {
+                method: "POST", pure: true,
+                body: fd,
+                ...call,
+              });
+              working = await resp.blob();
+              added.push(toAttachmentView(f));
+            }
+            return { working, added };
+          },
+          () => void retryHandlersRef.current.handleAddAttachments?.(newFiles),
+        );
+        if (result) {
+          adoptModifiedPdf(result.working, { reparse: false });
+          setAttachmentsOverride((prev) => [...(prev ?? embeddedFiles), ...result.added]);
         }
-        adoptModifiedPdf(working, { reparse: false });
-        setAttachmentsOverride((prev) => [...(prev ?? embeddedFiles), ...added]);
-        toast({ title: t("attachments.toasts.added", { count: newFiles.length }) });
-      } catch (err) {
-        clientLogger.error("[editor] add attachment failed", err);
-        toast({ variant: "destructive", title: t("attachments.toasts.addFailed"), description: errorMessage(err) });
       } finally {
         setAttachmentBusy(false);
       }
     },
-    [getPreparedBlob, adoptModifiedPdf, embeddedFiles, toAttachmentView, toast, t],
+    [getPreparedBlob, adoptModifiedPdf, embeddedFiles, toAttachmentView, editorOp, t],
   );
+  useEffect(() => {
+    retryHandlersRef.current.handleAddAttachments = handleAddAttachments;
+  });
 
   const handleRemoveAttachment = useCallback(
     async (file: EmbeddedFileObject) => {
@@ -5445,25 +5487,37 @@ function EditorPageInner() {
         fd.append("file", new File([source], docName, { type: "application/pdf" }));
         fd.append("action", "remove");
         fd.append("name", file.name);
-        const resp = await authFetch(`${PDF_SERVICE_URL}/pdf/attachments`, {
-          method: "POST",
-          body: fd,
-        });
-        const working = await resp.blob();
-        adoptModifiedPdf(working, { reparse: false });
-        setAttachmentsOverride((prev) =>
-          (prev ?? embeddedFiles).filter((f) => f.fileId !== file.fileId),
+        const working = await editorOp(
+          {
+            working: t("attachments.toasts.removing"),
+            done: t("attachments.toasts.removed"),
+            failed: t("attachments.toasts.removeFailed"),
+          },
+          async (call) => {
+            const resp = await authFetch(`${PDF_SERVICE_URL}/pdf/attachments`, {
+              method: "POST", pure: true,
+              body: fd,
+              ...call,
+            });
+            return resp.blob();
+          },
+          () => void retryHandlersRef.current.handleRemoveAttachment?.(file),
         );
-        toast({ title: t("attachments.toasts.removed") });
-      } catch (err) {
-        clientLogger.error("[editor] remove attachment failed", err);
-        toast({ variant: "destructive", title: t("attachments.toasts.removeFailed"), description: errorMessage(err) });
+        if (working) {
+          adoptModifiedPdf(working, { reparse: false });
+          setAttachmentsOverride((prev) =>
+            (prev ?? embeddedFiles).filter((f) => f.fileId !== file.fileId),
+          );
+        }
       } finally {
         setAttachmentBusy(false);
       }
     },
-    [getPreparedBlob, adoptModifiedPdf, embeddedFiles, toast, t],
+    [getPreparedBlob, adoptModifiedPdf, embeddedFiles, editorOp, t],
   );
+  useEffect(() => {
+    retryHandlersRef.current.handleRemoveAttachment = handleRemoveAttachment;
+  });
 
   // Handler pour les clics sur les liens hypertexte
   const handleHyperlinkClick = useCallback((linkUrl?: string | null, linkPage?: number | null) => {
@@ -6007,17 +6061,25 @@ function EditorPageInner() {
               </span>
             </Button>
           )}
-          <Button
+          <ActionButton
+            as={Button}
+            compact
+            action={exportAction}
             variant="outline"
             size="sm"
             className="shrink-0 gap-2"
-            onClick={handleExport}
+            onClick={() => void exportAction.run()}
+            loadingLabel="Exporting…"
+            successLabel="Exported"
+            errorPlacement="sr-only"
             aria-label={t("export")}
-            title={t("export")}
+            title={exportAction.errorText || t("export")}
           >
-            <Download className="h-4 w-4" />
-            <span className="hidden sm:inline">{t("export")}</span>
-          </Button>
+            <span className="inline-flex items-center gap-2">
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("export")}</span>
+            </span>
+          </ActionButton>
           <Button
             size="sm"
             className="shrink-0 gap-2"
@@ -6091,7 +6153,7 @@ function EditorPageInner() {
               {/* Mobile mirrors of the header actions (hidden from md up where
                   the dedicated buttons are visible). Same handlers/guards.
                   Share is omitted here too - see the header button's comment. */}
-              <DropdownMenuItem className="md:hidden" onClick={handleExport}>
+              <DropdownMenuItem className="md:hidden" onClick={() => void exportAction.run()} disabled={exportAction.busy}>
                 <Download className="mr-2 h-4 w-4" />
                 <span>{t("export")}</span>
               </DropdownMenuItem>

@@ -6,6 +6,8 @@ import { verifyEmail, resendCode, setToken } from '@/lib/api'
 import { setStoredUser } from '@/lib/auth-client'
 import { bindPushToAccount } from '@/lib/push'
 import { clearReferralCode } from '@/lib/referral'
+import { useAsyncAction } from '@/hooks/use-async-action'
+import { ActionButton } from '@/components/ui/action-button'
 
 function Inner() {
   const router = useRouter()
@@ -17,26 +19,29 @@ function Inner() {
   const email = (sp.get('email') || '').toLowerCase()
   const nextPath = sp.get('next') || '/'
   const [code, setCode] = useState('')
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [sent, setSent] = useState(false)
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setBusy(true)
-    setError('')
-    try {
-      const data = await verifyEmail(email, code)
+  // Verify returns login tokens, so it is never auto-retried (the server
+  // must not store that response for replay); a failure offers "Try again".
+  const activate = useAsyncAction((ctx, value: string) => verifyEmail(email, value, ctx), {
+    successMs: 60_000,
+    errorFallback: "Couldn't verify the code. Please try again.",
+    onSuccess: (data) => {
       if (data.access) setToken(data.access)
       setStoredUser({ email: data.user?.email || email, name: data.user?.name })
       window.dispatchEvent(new Event('auth-changed'))
       clearReferralCode()
       void bindPushToAccount()
       router.push(safeNext(sp.get('next') || '/'))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed')
-    }
-    setBusy(false)
+    },
+  })
+  // Sends an email: retried with one idempotency key, so never twice.
+  const resend = useAsyncAction((ctx) => resendCode(email, 'verify', ctx), {
+    successMs: 4000,
+    errorFallback: "Couldn't send a new code. Please try again.",
+  })
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    void activate.run(code)
   }
 
   return (
@@ -55,29 +60,27 @@ function Inner() {
           onChange={(e) => setCode(e.target.value)}
           className="rounded-lg border border-foreground/15 bg-transparent px-3 py-2 tracking-[0.4em]"
         />
-        {error && <p className="text-sm text-red-500">{error}</p>}
-        <button
+        <ActionButton
           type="submit"
-          disabled={busy}
-          className="rounded-full bg-foreground px-4 py-2 font-medium text-background disabled:opacity-50"
+          action={activate}
+          loadingLabel="Activating…"
+          successLabel="Activated"
+          errorClassName="text-sm text-red-500"
+          className="rounded-full bg-foreground px-4 py-2 font-medium text-background disabled:opacity-50 aria-busy:opacity-80"
         >
-          {busy ? '…' : 'Activate account'}
-        </button>
+          Activate account
+        </ActionButton>
       </form>
-      <button
-        type="button"
-        className="mt-4 text-sm underline"
-        onClick={async () => {
-          try {
-            await resendCode(email, 'verify')
-            setSent(true)
-          } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed')
-          }
-        }}
+      <ActionButton
+        action={resend}
+        onClick={() => resend.run()}
+        loadingLabel="Sending…"
+        successLabel="Code sent again"
+        errorClassName="mt-2 text-sm text-red-500"
+        className="mt-4 self-start text-sm underline"
       >
-        {sent ? 'Code sent again' : 'Resend code'}
-      </button>
+        Resend code
+      </ActionButton>
     </main>
   )
 }

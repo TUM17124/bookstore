@@ -17,6 +17,10 @@ import {
   updateMyBook,
 } from "@/lib/api";
 import { api as editorApi } from "@/lib/pdf-editor/api";
+import { useAsyncAction } from "@/hooks/use-async-action";
+import { ActionButton, ActionStatus } from "@/components/ui/action-button";
+import { errorMessage } from "@/lib/auth-fetch";
+import { UserError } from "@/lib/user-error";
 
 const PAYOUT_EVERY_DAYS = 30;
 
@@ -87,7 +91,6 @@ export default function DashboardPage() {
   const [authorTotal, setAuthorTotal] = useState<number>(0);
   const [available, setAvailable] = useState<number>(0);
   const [minPayout, setMinPayout] = useState<number>(0);
-  const [payoutBusy, setPayoutBusy] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [msg, setMsg] = useState("");
   const [msgOk, setMsgOk] = useState(true);
@@ -337,7 +340,10 @@ export default function DashboardPage() {
             )
           );
         }
-      );
+      ).catch((err) => {
+        setMsgOk(false);
+        setMsg(errorMessage(err, "Couldn't confirm the boost payment. Reload the page to check again."));
+      });
     }
   }, [token]);
 
@@ -385,137 +391,106 @@ export default function DashboardPage() {
       0
     );
 
-  async function onBoost(bookId: number) {
-    setMsg("");
-
-    const d = await initBoost(
-      token,
-      bookId
-    );
-
-    if (!d.ok) {
-      setMsgOk(false);
-      setMsg(
-        d.error ||
-          "Cannot boost yet"
-      );
-      return;
+  // Payout account save/delete and the payout request: idempotent
+  // server-side, so retried with ONE key per attempt (never a second payout).
+  const savePayout = useAsyncAction(
+    async (ctx, payload: typeof form) => {
+      const d = await savePayoutAccount(token, payload, ctx);
+      if (!d.ok) throw new UserError(d.error || "Could not save account");
+      return d;
+    },
+    {
+      onSuccess: (d) => {
+        setPayout((p: typeof payout) => ({
+          ...p,
+          account: d.account,
+          needs_account: false,
+          banks,
+        }));
+        setMsgOk(true);
+        setMsg(
+          hasAccount
+            ? "Payout account updated."
+            : "Payout account saved. Earnings are sent every 30 days."
+        );
+      },
     }
+  );
 
-    if (d.authorization_url) {
-      window.location.href =
-        d.authorization_url;
-    } else {
-      setMsgOk(false);
-      setMsg(
-        d.error ||
-          "Cannot start Paystack checkout"
-      );
-    }
-  }
-
-  async function onSavePayout(
-    e: FormEvent
-  ) {
+  function onSavePayout(e: FormEvent) {
     e.preventDefault();
-
-    if (
-      form.method === "card" &&
-      !form.extra
-    ) {
+    if (form.method === "card" && !form.extra) {
       setMsgOk(false);
       setMsg("Select your bank.");
       return;
     }
-
-    const payload = {
+    void savePayout.run({
       ...form,
-      method:
-        form.method === "bank"
-          ? "card"
-          : form.method,
-    };
-
-    const d =
-      await savePayoutAccount(
-        token,
-        payload
-      );
-
-    if (d.ok) {
-      setPayout((p: any) => ({
-        ...p,
-        account: d.account,
-        needs_account: false,
-        banks,
-      }));
-
-      setMsgOk(true);
-
-      setMsg(
-        hasAccount
-          ? "Payout account updated."
-          : "Payout account saved. Earnings are sent every 30 days."
-      );
-    } else {
-      setMsgOk(false);
-      setMsg(
-        d.error ||
-          "Could not save account"
-      );
-    }
+      method: form.method === "bank" ? "card" : form.method,
+    });
   }
 
-  async function onDeletePayout() {
-    if (
-      !window.confirm(
-        "Delete the saved payout account?"
-      )
-    ) {
-      return;
+  const deletePayout = useAsyncAction(
+    async (ctx) => {
+      const d = await deletePayoutAccount(token, ctx);
+      if (d.ok === false) throw new UserError(d.error || "Could not delete account");
+      return d;
+    },
+    {
+      onSuccess: () => {
+        setPayout((p: typeof payout) => ({
+          ...p,
+          account: null,
+          needs_account: true,
+        }));
+        setForm({
+          method: "mpesa",
+          account_name: "",
+          account_number: "",
+          extra: "",
+        });
+        setMsgOk(true);
+        setMsg("Payout account deleted.");
+      },
     }
+  );
 
-    const d =
-      await deletePayoutAccount(
-        token
-      );
-
-    if (d.ok !== false) {
-      setPayout((p: any) => ({
-        ...p,
-        account: null,
-        needs_account: true,
-      }));
-
-      setForm({
-        method: "mpesa",
-        account_name: "",
-        account_number: "",
-        extra: "",
-      });
-
-      setMsgOk(true);
-      setMsg(
-        "Payout account deleted."
-      );
-    } else {
-      setMsgOk(false);
-      setMsg(
-        d.error ||
-          "Could not delete account"
-      );
-    }
+  function onDeletePayout() {
+    if (!window.confirm("Delete the saved payout account?")) return;
+    void deletePayout.run();
   }
 
-  async function onRequestPayout() {
+  const payoutRequest = useAsyncAction(
+    async (ctx) => {
+      const d = await requestPayout(ctx);
+      // Refresh balances; the payout itself already succeeded.
+      try {
+        applySales(await getMySales());
+        const acc = await payoutAccount(token);
+        setPayout(acc);
+        setBanks(Array.isArray(acc?.banks) ? acc.banks : banks);
+      } catch {
+        // balances update on next load
+      }
+      return d;
+    },
+    {
+      onSuccess: (d) => {
+        setMsgOk(true);
+        setMsg(
+          d?.message ||
+            `Payout of KES ${Number(d?.amount || available).toLocaleString()} requested.`
+        );
+      },
+    }
+  );
+
+  function onRequestPayout() {
     if (!hasAccount) {
       setMsgOk(false);
-      setMsg(
-        "Add a payout account first."
-      );
+      setMsg("Add a payout account first.");
       return;
     }
-
     if (available < minPayout) {
       setMsgOk(false);
       setMsg(
@@ -523,64 +498,14 @@ export default function DashboardPage() {
       );
       return;
     }
-
-    if (
-      !window.confirm(
-        `Request payout of KES ${available.toLocaleString()}?`
-      )
-    ) {
-      return;
-    }
-
-    setPayoutBusy(true);
-
-    try {
-      const d =
-        await requestPayout();
-
-      setMsgOk(true);
-
-      setMsg(
-        d.message ||
-          `Payout of KES ${Number(
-            d.amount || available
-          ).toLocaleString()} requested.`
-      );
-
-      const salesData =
-        await getMySales();
-
-      applySales(salesData);
-
-      const acc =
-        await payoutAccount(
-          token
-        );
-
-      setPayout(acc);
-
-      setBanks(
-        Array.isArray(acc?.banks)
-          ? acc.banks
-          : banks
-      );
-    } catch (err) {
-      setMsgOk(false);
-      setMsg(
-        err instanceof Error
-          ? err.message
-          : "Could not request payout"
-      );
-    }
-
-    setPayoutBusy(false);
+    if (!window.confirm(`Request payout of KES ${available.toLocaleString()}?`)) return;
+    void payoutRequest.run();
   }
 
   const canRequest =
     hasAccount &&
     available >= minPayout &&
-    minPayout > 0 &&
-    !payoutBusy;
+    minPayout > 0;
 
   if (!authChecked) {
     return (
@@ -812,16 +737,17 @@ export default function DashboardPage() {
                 </ul>
               )}
 
-              <button
-                type="button"
+              <ActionButton
+                action={payoutRequest}
                 disabled={!canRequest}
                 onClick={onRequestPayout}
+                loadingLabel="Requesting…"
+                successLabel="Requested"
+                errorClassName="text-sm text-red-600"
                 className="w-full rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-400"
               >
-                {payoutBusy
-                  ? "Requesting…"
-                  : `Request payout · KES ${available.toLocaleString()}`}
-              </button>
+                {`Request payout · KES ${available.toLocaleString()}`}
+              </ActionButton>
 
               <p className="text-xs text-neutral-500">
                 {!hasAccount
@@ -1066,23 +992,33 @@ export default function DashboardPage() {
                   </label>
                 )}
 
-                <button className="sm:col-span-2 bg-black text-white rounded-lg py-2">
-                  {hasAccount
-                    ? "Update payout account"
-                    : "Save payout account"}
-                </button>
+                <div className="sm:col-span-2">
+                  <ActionButton
+                    type="submit"
+                    action={savePayout}
+                    loadingLabel="Saving…"
+                    successLabel="Saved"
+                    errorClassName="mt-2 text-sm text-red-600"
+                    className="w-full bg-black text-white rounded-lg py-2 aria-busy:opacity-80"
+                  >
+                    {hasAccount
+                      ? "Update payout account"
+                      : "Save payout account"}
+                  </ActionButton>
+                </div>
               </form>
 
               {hasAccount && (
-                <button
-                  type="button"
-                  onClick={
-                    onDeletePayout
-                  }
+                <ActionButton
+                  action={deletePayout}
+                  onClick={onDeletePayout}
+                  loadingLabel="Deleting…"
+                  successLabel="Deleted"
+                  errorClassName="text-sm text-red-600"
                   className="w-full rounded-lg border border-red-600 px-4 py-2 text-sm font-semibold text-red-700"
                 >
                   Delete payout account
-                </button>
+                </ActionButton>
               )}
 
               <button
@@ -1190,7 +1126,6 @@ export default function DashboardPage() {
                       ? deepLinkEditorDocId
                       : ""
                   }
-                  onBoost={onBoost}
                   onUpdated={(next) =>
                     setBooks((list) =>
                       list.map((b) =>
@@ -1235,7 +1170,6 @@ function BookBoostRow({
   boost,
   autoOpen,
   attachEditorDocumentId,
-  onBoost,
   onUpdated,
   onRemoved,
   onFlash,
@@ -1244,7 +1178,6 @@ function BookBoostRow({
   boost?: any;
   autoOpen?: boolean;
   attachEditorDocumentId?: string;
-  onBoost: (id: number) => void;
   onUpdated: (book: any) => void;
   onRemoved: (
     id: string | number
@@ -1266,8 +1199,6 @@ function BookBoostRow({
   const [editing, setEditing] =
     useState(false);
 
-  const [busy, setBusy] =
-    useState(false);
 
   // Attached from the PDF editor's "Edit published book" deep link - the
   // PDF is copied server-side from the saved document, browser never
@@ -1313,133 +1244,73 @@ function BookBoostRow({
     setAudiobookDownloadable(book.audiobookDownloadable !== false);
   }, [book]);
 
-  async function onSave(
-    e: FormEvent<HTMLFormElement>
-  ) {
-    e.preventDefault();
-
-    setBusy(true);
-
-    try {
-      const fd =
-        new FormData(
-          e.currentTarget
-        );
-
-      fd.set(
-        "is_free",
-        isFree
-          ? "true"
-          : "false"
-      );
-
-      fd.set(
-        "ebook_downloadable",
-        ebookDownloadable
-          ? "true"
-          : "false"
-      );
-
-      fd.set(
-        "audiobook_downloadable",
-        audiobookDownloadable
-          ? "true"
-          : "false"
-      );
-
-      if (hasAttachment) {
-        fd.delete("pdf");
-        fd.set("editor_document_id", attachEditorDocumentId as string);
-      }
-
-      if (isFree) {
-        fd.set(
-          "ebook_price",
-          "0"
-        );
-
-        fd.set(
-          "audiobook_price",
-          "0"
-        );
-      }
-
-      const data =
-        await updateMyBook(
-          book.id,
-          fd
-        );
-
-      if (data.book) {
-        onUpdated(
-          data.book
-        );
-      }
-
-      setEditing(false);
-
-      onFlash(
-        data.message ||
-          "Book updated.",
-        true
-      );
-    } catch (err) {
-      onFlash(
-        err instanceof Error
-          ? err.message
-          : "Could not update book",
-        false
-      );
+  // Boost = Paystack initialisation: retried only with ONE idempotency key.
+  const boostAction = useAsyncAction(
+    async (ctx, bookId: number) => {
+      const d = await initBoost("", bookId, 7, ctx);
+      if (!d.ok) throw new UserError(d.error || "Cannot boost yet");
+      if (!d.authorization_url) throw new UserError(d.error || "Cannot start Paystack checkout");
+      return d;
+    },
+    {
+      successMs: 60_000, // "Redirecting…" while leaving for Paystack
+      onSuccess: (d) => {
+        window.location.href = d.authorization_url;
+      },
     }
+  );
 
-    setBusy(false);
+  const save = useAsyncAction(
+    (ctx, fd: FormData) => updateMyBook(book.id, fd, ctx),
+    {
+      onSuccess: (data) => {
+        if (data.book) onUpdated(data.book);
+        setEditing(false);
+        onFlash(data.message || "Book updated.", true);
+      },
+    }
+  );
+
+  function onSave(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    fd.set("is_free", isFree ? "true" : "false");
+    fd.set("ebook_downloadable", ebookDownloadable ? "true" : "false");
+    fd.set("audiobook_downloadable", audiobookDownloadable ? "true" : "false");
+    if (hasAttachment) {
+      fd.delete("pdf");
+      fd.set("editor_document_id", attachEditorDocumentId as string);
+    }
+    if (isFree) {
+      fd.set("ebook_price", "0");
+      fd.set("audiobook_price", "0");
+    }
+    void save.run(fd);
   }
 
-  async function onDelete() {
-    if (
-      !window.confirm(
-        `Delete “${book.title}”? This cannot be undone if it has no sales.`
-      )
-    ) {
-      return;
+  const remove = useAsyncAction(
+    (ctx) => deleteMyBook(book.id, ctx),
+    {
+      onSuccess: (data) => {
+        if (data.deleted) {
+          onRemoved(book.id);
+        } else if (data.book) {
+          onUpdated({
+            ...book,
+            ...data.book,
+            is_available: false,
+          });
+        } else {
+          onRemoved(book.id);
+        }
+        onFlash(data.message || "Book deleted.", true);
+      },
     }
+  );
 
-    setBusy(true);
-
-    try {
-      const data =
-        await deleteMyBook(
-          book.id
-        );
-
-      if (data.deleted) {
-        onRemoved(book.id);
-      } else if (data.book) {
-        onUpdated({
-          ...book,
-          ...data.book,
-          is_available:
-            false,
-        });
-      } else {
-        onRemoved(book.id);
-      }
-
-      onFlash(
-        data.message ||
-          "Book deleted.",
-        true
-      );
-    } catch (err) {
-      onFlash(
-        err instanceof Error
-          ? err.message
-          : "Could not delete book",
-        false
-      );
-    }
-
-    setBusy(false);
+  function onDelete() {
+    if (!window.confirm(`Delete “${book.title}”? This cannot be undone if it has no sales.`)) return;
+    void remove.run();
   }
 
   return (
@@ -1502,20 +1373,26 @@ function BookBoostRow({
               : "Edit"}
           </button>
 
-          <button
-            type="button"
-            disabled={busy}
+          <ActionButton
+            action={remove}
             onClick={onDelete}
+            disabled={save.busy}
+            loadingLabel="Deleting…"
+            errorPlacement="none"
+            retryPlacement="none"
             className="px-4 py-2 rounded-lg bg-red-600 text-white disabled:opacity-50"
           >
             Delete
-          </button>
+          </ActionButton>
 
-          <button
+          <ActionButton
+            action={boostAction}
             disabled={active}
-            onClick={() =>
-              onBoost(book.id)
-            }
+            onClick={() => void boostAction.run(book.id)}
+            loadingLabel="Starting checkout…"
+            successLabel="Redirecting…"
+            errorPlacement="none"
+            retryPlacement="none"
             className={`px-4 py-2 rounded-lg text-white ${
               active
                 ? "bg-neutral-400 cursor-not-allowed"
@@ -1525,9 +1402,15 @@ function BookBoostRow({
             {active
               ? `Boosted · ${label}`
               : "Boost now"}
-          </button>
+          </ActionButton>
         </div>
       </div>
+      <ActionStatus action={remove.state === "retrying" ? remove : boostAction} className="text-sm text-neutral-600" />
+      {remove.errorText || boostAction.errorText ? (
+        <p role="alert" className="text-sm text-red-600">
+          {remove.errorText || boostAction.errorText}
+        </p>
+      ) : null}
 
       {editing && (
         <form
@@ -1758,15 +1641,19 @@ function BookBoostRow({
             />
           </label>
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="sm:col-span-2 bg-black text-white rounded-lg py-2 disabled:opacity-50"
-          >
-            {busy
-              ? "Saving…"
-              : "Save changes"}
-          </button>
+          <div className="sm:col-span-2">
+            <ActionButton
+              type="submit"
+              action={save}
+              disabled={remove.busy}
+              loadingLabel="Saving…"
+              successLabel="Saved"
+              errorClassName="mt-2 text-sm text-red-600"
+              className="w-full bg-black text-white rounded-lg py-2 disabled:opacity-50 aria-busy:opacity-80"
+            >
+              Save changes
+            </ActionButton>
+          </div>
         </form>
       )}
     </div>
