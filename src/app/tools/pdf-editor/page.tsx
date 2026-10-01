@@ -101,6 +101,7 @@ import {
   useCollaborationStore,
 } from "@/lib/pdf-editor/collab-shim";
 import { getAuthToken, ensureFreshAuthToken } from "@/lib/pdf-editor/api";
+import { authFetch, errorMessage } from "@/lib/auth-fetch";
 import { api, type ElementCreateRequest } from "@/lib/pdf-editor/api";
 import {
   EditorCanvas,
@@ -4569,8 +4570,7 @@ function EditorPageInner() {
           fd.append("name", value.name);
         }
 
-        const resp = await fetch(`${PDF_SERVICE_URL}/pdf/links`, { method: "POST", body: fd });
-        if (!resp.ok) throw new Error(`links action failed: ${resp.status}`);
+        const resp = await authFetch(`${PDF_SERVICE_URL}/pdf/links`, { method: "POST", body: fd });
         const blob = await resp.blob();
         // namedCreate moves nothing; namedLink adds an annotation we re-parse so
         // the scene graph reflects it.
@@ -4592,6 +4592,7 @@ function EditorPageInner() {
             value.kind === "namedCreate"
               ? t("links.toasts.namedDestFailed")
               : t("links.toasts.namedLinkFailed"),
+          description: errorMessage(err),
         });
       }
     },
@@ -4642,14 +4643,13 @@ function EditorPageInner() {
         fd.append("y", String(placement.y));
         fd.append("w", String(placement.w));
         fd.append("h", String(placement.h));
-        const resp = await fetch(`${PDF_SERVICE_URL}/pdf/insert-svg`, { method: "POST", body: fd });
-        if (!resp.ok) throw new Error(`insert svg failed: ${resp.status}`);
+        const resp = await authFetch(`${PDF_SERVICE_URL}/pdf/insert-svg`, { method: "POST", body: fd });
         const blob = await resp.blob();
         adoptModifiedPdf(blob, { reparse: true });
         toast({ title: t("svg.toasts.inserted") });
       } catch (err) {
         clientLogger.error("[editor] insert svg failed", err);
-        toast({ variant: "destructive", title: t("svg.toasts.failed") });
+        toast({ variant: "destructive", title: t("svg.toasts.failed"), description: errorMessage(err) });
       }
     },
     [getPreparedBlob, adoptModifiedPdf, effectivePage, effectivePageIndex, toast, t],
@@ -4829,14 +4829,15 @@ function EditorPageInner() {
     form.append("file", file, file.name);
     form.append("action", "detect");
 
-    const res = await fetch(`${PDF_SERVICE_URL}/pdf/structure`, {
-      method: "POST",
-      credentials: "include",
-      body: form,
-    });
-    if (!res.ok) {
-      toast({ title: t("toc.detectError"), variant: "destructive" });
-      throw new Error(`Structure route returned ${res.status}`);
+    let res: Response;
+    try {
+      res = await authFetch(`${PDF_SERVICE_URL}/pdf/structure`, {
+        method: "POST",
+        body: form,
+      });
+    } catch (err) {
+      toast({ title: t("toc.detectError"), description: errorMessage(err), variant: "destructive" });
+      throw err;
     }
     const json = (await res.json()) as {
       success: boolean;
@@ -4863,14 +4864,10 @@ function EditorPageInner() {
           form.append("pageNumber", String(effectivePageIndex + 1));
           form.append("action", kind);
 
-          const res = await fetch(`${PDF_SERVICE_URL}/pdf/annotations`, {
+          const res = await authFetch(`${PDF_SERVICE_URL}/pdf/annotations`, {
             method: "POST",
-            credentials: "include",
             body: form,
           });
-          if (!res.ok) {
-            throw new Error(`Annotations route returned ${res.status}`);
-          }
           const blob = await res.blob();
           adoptModifiedPdf(blob, { reparse: true });
           toast({
@@ -4881,7 +4878,7 @@ function EditorPageInner() {
           clientLogger.error("[editor] add annotation failed:", err);
           toast({
             title: t("annotations.addErrorTitle"),
-            description: t("annotations.addErrorDescription"),
+            description: errorMessage(err, t("annotations.addErrorDescription")),
             variant: "destructive",
           });
         } finally {
@@ -4919,14 +4916,10 @@ function EditorPageInner() {
           form.append("index", String(index));
           form.append("spans", JSON.stringify(spans));
 
-          const res = await fetch(`${PDF_SERVICE_URL}/pdf/text-style`, {
+          const res = await authFetch(`${PDF_SERVICE_URL}/pdf/text-style`, {
             method: "POST",
-            credentials: "include",
             body: form,
           });
-          if (!res.ok) {
-            throw new Error(`text-style route returned ${res.status}`);
-          }
           const blob = await res.blob();
           adoptModifiedPdf(blob, { reparse: true });
           toast({
@@ -4937,7 +4930,7 @@ function EditorPageInner() {
           clientLogger.error("[editor] apply text style failed:", err);
           toast({
             title: t("textStyle.errorTitle"),
-            description: t("textStyle.errorDescription"),
+            description: errorMessage(err, t("textStyle.errorDescription")),
             variant: "destructive",
           });
         }
@@ -4958,20 +4951,21 @@ function EditorPageInner() {
       const form = new FormData();
       form.append("file", file, file.name);
       form.append("action", "list");
-      const res = await fetch(`${PDF_SERVICE_URL}/pdf/annotations`, {
+      // Errors propagate to the Annotations panel, which shows them.
+      const res = await authFetch(`${PDF_SERVICE_URL}/pdf/annotations`, {
         method: "POST",
-        credentials: "include",
         body: form,
       });
-      if (!res.ok) {
-        throw new Error(`annotations list returned ${res.status}`);
-      }
       const data = (await res.json()) as {
         success?: boolean;
         annotations?: NativeAnnotationItem[];
       };
       return Array.isArray(data.annotations) ? data.annotations : [];
-    }, []);
+      // Re-created whenever the document binary changes, so the Annotations
+      // panel (which reloads when its fetcher changes) shows newly added or
+      // removed annotations without a manual Refresh.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentPdfFile]);
 
   const handleRemoveAnnotation = useCallback(
     async (page: number, index: number): Promise<void> => {
@@ -4983,14 +4977,10 @@ function EditorPageInner() {
         form.append("action", "remove");
         form.append("page", String(page));
         form.append("index", String(index));
-        const res = await fetch(`${PDF_SERVICE_URL}/pdf/annotations`, {
+        const res = await authFetch(`${PDF_SERVICE_URL}/pdf/annotations`, {
           method: "POST",
-          credentials: "include",
           body: form,
         });
-        if (!res.ok) {
-          throw new Error(`annotations remove returned ${res.status}`);
-        }
         const blob = await res.blob();
         adoptModifiedPdf(blob, { reparse: true });
         toast({
@@ -5001,7 +4991,7 @@ function EditorPageInner() {
         clientLogger.error("[editor] remove annotation failed:", err);
         toast({
           title: t("annotations.removeErrorTitle"),
-          description: t("annotations.removeErrorDescription"),
+          description: errorMessage(err, t("annotations.removeErrorDescription")),
           variant: "destructive",
         });
       }
@@ -5423,11 +5413,10 @@ function EditorPageInner() {
           fd.append("file", new File([working], docName, { type: "application/pdf" }));
           fd.append("action", "add");
           fd.append("attachment", f);
-          const resp = await fetch(`${PDF_SERVICE_URL}/pdf/attachments`, {
+          const resp = await authFetch(`${PDF_SERVICE_URL}/pdf/attachments`, {
             method: "POST",
             body: fd,
           });
-          if (!resp.ok) throw new Error(`add attachment failed: ${resp.status}`);
           working = await resp.blob();
           added.push(toAttachmentView(f));
         }
@@ -5436,7 +5425,7 @@ function EditorPageInner() {
         toast({ title: t("attachments.toasts.added", { count: newFiles.length }) });
       } catch (err) {
         clientLogger.error("[editor] add attachment failed", err);
-        toast({ variant: "destructive", title: t("attachments.toasts.addFailed") });
+        toast({ variant: "destructive", title: t("attachments.toasts.addFailed"), description: errorMessage(err) });
       } finally {
         setAttachmentBusy(false);
       }
@@ -5456,11 +5445,10 @@ function EditorPageInner() {
         fd.append("file", new File([source], docName, { type: "application/pdf" }));
         fd.append("action", "remove");
         fd.append("name", file.name);
-        const resp = await fetch(`${PDF_SERVICE_URL}/pdf/attachments`, {
+        const resp = await authFetch(`${PDF_SERVICE_URL}/pdf/attachments`, {
           method: "POST",
           body: fd,
         });
-        if (!resp.ok) throw new Error(`remove attachment failed: ${resp.status}`);
         const working = await resp.blob();
         adoptModifiedPdf(working, { reparse: false });
         setAttachmentsOverride((prev) =>
@@ -5469,7 +5457,7 @@ function EditorPageInner() {
         toast({ title: t("attachments.toasts.removed") });
       } catch (err) {
         clientLogger.error("[editor] remove attachment failed", err);
-        toast({ variant: "destructive", title: t("attachments.toasts.removeFailed") });
+        toast({ variant: "destructive", title: t("attachments.toasts.removeFailed"), description: errorMessage(err) });
       } finally {
         setAttachmentBusy(false);
       }

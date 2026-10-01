@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "@/lib/pdf-editor/use-translations";
+import { authFetch } from "@/lib/auth-fetch";
 import {
   X,
   Loader2,
@@ -64,13 +65,6 @@ export interface ImpositionDialogProps {
 
 // ─── Network helpers ──────────────────────────────────────────────────────────
 
-/** Best-effort bearer header (the cookie session still authenticates same-origin). */
-function getAuthHeader(): HeadersInit {
-  if (typeof window === "undefined") return {};
-  const token = localStorage.getItem("access_token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 async function readError(response: Response): Promise<string> {
   let message = `HTTP ${response.status}`;
   try {
@@ -82,12 +76,14 @@ async function readError(response: Response): Promise<string> {
   return message;
 }
 
-/** POST `fields` to the imposition endpoint, returning the raw Response. */
+/** POST `fields` to the imposition endpoint. authFetch attaches the Bearer
+ * token, refreshes once on 401, and throws (with the server's message) on any
+ * failure, so callers' catch blocks show the reason. */
 function postImposition(file: File, fields: Record<string, string>): Promise<Response> {
   const form = new FormData();
   form.append("file", file);
   for (const [key, value] of Object.entries(fields)) form.append(key, value);
-  return fetch(ENDPOINT, { method: "POST", headers: getAuthHeader(), body: form });
+  return authFetch(ENDPOINT, { method: "POST", body: form });
 }
 
 // ─── Small UI atoms ─────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations } from "@/lib/pdf-editor/use-translations";
+import { authFetch } from "@/lib/auth-fetch";
 import { useGetPdfMetadata, downloadBlob } from "@giga-pdf/api";
 import type { DocumentMetadata } from "@giga-pdf/types";
 
@@ -58,13 +59,6 @@ interface SetMetadataPayload {
 
 // ─── Network helper ───────────────────────────────────────────────────────────
 
-/** Best-effort bearer header (cookie session still authenticates same-origin). */
-function getAuthHeader(): HeadersInit {
-  if (typeof window === "undefined") return {};
-  const token = localStorage.getItem("access_token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 /**
  * POST a `set` operation to /api/pdf/metadata and return the modified PDF as a
  * Blob. Sends only the fields present in `payload`; the route applies Info →
@@ -85,22 +79,12 @@ async function postMetadataSet(
   if (payload.pageMode) form.append("pageMode", payload.pageMode);
 
   const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
-  const response = await fetch(`${PDF_SERVICE_URL}/pdf/metadata`, {
+  // authFetch: Bearer token, one shared refresh on 401, and a user-facing
+  // error message (server `error` text) on failure.
+  const response = await authFetch(`${PDF_SERVICE_URL}/pdf/metadata`, {
     method: "POST",
-    headers: getAuthHeader(),
     body: form,
   });
-
-  if (!response.ok) {
-    let message = `HTTP ${response.status}`;
-    try {
-      const json = (await response.json()) as { error?: string };
-      if (json.error) message = json.error;
-    } catch {
-      // Non-JSON error body — keep the status-based message.
-    }
-    throw new Error(message);
-  }
   return response.blob();
 }
 

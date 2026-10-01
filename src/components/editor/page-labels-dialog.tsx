@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useId } from "react";
 import { useTranslations } from "@/lib/pdf-editor/use-translations";
+import { authFetch } from "@/lib/auth-fetch";
 import { downloadBlob } from "@giga-pdf/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -47,24 +48,6 @@ const PREVIEW_MAX_PAGES = 24;
 
 // ─── Network helpers ──────────────────────────────────────────────────────────
 
-/** Best-effort bearer header (cookie session still authenticates same-origin). */
-function getAuthHeader(): HeadersInit {
-  if (typeof window === "undefined") return {};
-  const token = localStorage.getItem("access_token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-async function readError(response: Response): Promise<string> {
-  let message = `HTTP ${response.status}`;
-  try {
-    const json = (await response.json()) as { error?: string };
-    if (json.error) message = json.error;
-  } catch {
-    // Non-JSON error body — keep the status-based message.
-  }
-  return message;
-}
-
 /** GET the current page labels for `file`. */
 async function fetchPageLabels(file: File): Promise<PageLabelsGetResult> {
   const form = new FormData();
@@ -72,12 +55,10 @@ async function fetchPageLabels(file: File): Promise<PageLabelsGetResult> {
   form.append("action", "get");
 
   const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
-  const response = await fetch(`${PDF_SERVICE_URL}/pdf/page-labels`, {
+  const response = await authFetch(`${PDF_SERVICE_URL}/pdf/page-labels`, {
     method: "POST",
-    headers: getAuthHeader(),
     body: form,
   });
-  if (!response.ok) throw new Error(await readError(response));
 
   const json = (await response.json()) as {
     success: boolean;
@@ -97,12 +78,10 @@ async function postPageLabelsSet(
   form.append("ranges", JSON.stringify(ranges));
 
   const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
-  const response = await fetch(`${PDF_SERVICE_URL}/pdf/page-labels`, {
+  const response = await authFetch(`${PDF_SERVICE_URL}/pdf/page-labels`, {
     method: "POST",
-    headers: getAuthHeader(),
     body: form,
   });
-  if (!response.ok) throw new Error(await readError(response));
   return response.blob();
 }
 

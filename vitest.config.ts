@@ -13,6 +13,11 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: /^@giga-pdf\/logger$/, replacement: `${src}/vendor/giga-pdf/logger/src/index.ts` },
+      { find: /^@giga-pdf\/types$/, replacement: `${src}/vendor/giga-pdf/types/src/index.ts` },
+      { find: /^@giga-pdf\/ui$/, replacement: `${src}/vendor/giga-pdf/ui/src/index.ts` },
+      { find: /^@giga-pdf\/editor$/, replacement: `${src}/vendor/giga-pdf/editor/src/index.ts` },
+      { find: /^@giga-pdf\/api$/, replacement: `${src}/vendor/giga-pdf/api/src/index.ts` },
+      { find: /^@giga-pdf\/pdf-engine$/, replacement: `${src}/vendor/giga-pdf/pdf-engine/src/index.ts` },
       { find: /^@giga-pdf\/canvas$/, replacement: `${src}/vendor/giga-pdf/canvas/src/index.ts` },
       { find: /^@giga-pdf\/ui\/lib\/utils$/, replacement: `${src}/vendor/giga-pdf/ui/src/lib/utils.ts` },
       { find: /^@giga-pdf\/pdf-engine\/engine$/, replacement: `${src}/vendor/giga-pdf/pdf-engine/src/engine/index.ts` },
