@@ -980,8 +980,16 @@ export const changeUsername = (username: string, call?: CallOptions) =>
 export async function changeName(first_name: string, last_name: string, call?: CallOptions) {
   return apiAction("/settings/name/", { method: "POST", body: JSON.stringify({ first_name, last_name }) }, call)
 }
-export const startEmailChange = (email: string, current_password: string, call?: CallOptions) =>
-  apiAction("/me/settings/email/", { method: "POST", body: JSON.stringify({ email, current_password }) }, call)
+/** Password accounts send `current_password`; Google-only accounts send
+ * `current_email_code` (from requestEmailReauth). */
+export const startEmailChange = (
+  email: string,
+  proof: { current_password?: string; current_email_code?: string },
+  call?: CallOptions,
+) => apiAction("/me/settings/email/", { method: "POST", body: JSON.stringify({ email, ...proof }) }, call)
+/** Google-only accounts: send a code to the CURRENT email to confirm it's them. */
+export const requestEmailReauth = (call?: CallOptions) =>
+  apiAction<{ ok: boolean }>("/me/settings/email/reauth/", { method: "POST" }, call)
 export const confirmEmailChange = (code: string, call?: CallOptions) =>
   apiAction("/me/settings/email/confirm/", { method: "POST", body: JSON.stringify({ code }) }, call)
 export const requestAffiliateWithdrawal = (amount: string, call?: CallOptions) =>

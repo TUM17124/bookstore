@@ -13,6 +13,7 @@ import {
   getSettings,
   requestAffiliateWithdrawal,
   startEmailChange,
+  requestEmailReauth,
   updateNotificationPrefs,
   type NotificationPrefs,
   type ProStatus,
@@ -439,8 +440,34 @@ export default function SettingsPage() {
                     <strong>{data.user.email}</strong> until you enter that code below.
                   </p>
                 ) : null}
+                {data.user.password_auth ? null : (
+                  <div className="space-y-1">
+                    <p className="text-sm text-foreground/70">
+                      You sign in with Google, so first confirm it&apos;s you: we&apos;ll send a code to{" "}
+                      <strong>{data.user.email}</strong>.
+                    </p>
+                    <ActionForm
+                      run={(ctx) => requestEmailReauth(ctx)}
+                      label="Send a code to my current email"
+                      loadingLabel="Sending…"
+                      successLabel="Code sent"
+                      className="flex"
+                      buttonClassName="w-full rounded border px-4 py-2 sm:w-auto"
+                    >
+                      {null}
+                    </ActionForm>
+                  </div>
+                )}
                 <ActionForm
-                  run={(ctx, f) => startEmailChange(String(f.get("email")), String(f.get("password")), ctx)}
+                  run={(ctx, f) =>
+                    startEmailChange(
+                      String(f.get("email")),
+                      data.user.password_auth
+                        ? { current_password: String(f.get("password")) }
+                        : { current_email_code: String(f.get("current_email_code")) },
+                      ctx,
+                    )
+                  }
                   onDone={publishUser}
                   label="Verify new email"
                   loadingLabel="Sending code…"
@@ -449,7 +476,17 @@ export default function SettingsPage() {
                   buttonClassName="w-full rounded bg-black px-4 py-2 text-white sm:w-auto"
                 >
                   <input name="email" type="email" placeholder="New email" className="min-w-0 w-full rounded border p-2 sm:flex-1" />
-                  <input name="password" type="password" placeholder="Current password" className="min-w-0 w-full rounded border p-2 sm:flex-1" />
+                  {data.user.password_auth ? (
+                    <input name="password" type="password" placeholder="Current password" className="min-w-0 w-full rounded border p-2 sm:flex-1" />
+                  ) : (
+                    <input
+                      name="current_email_code"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="Code from your current email"
+                      className="min-w-0 w-full rounded border p-2 sm:flex-1"
+                    />
+                  )}
                 </ActionForm>
                 <ActionForm
                   run={(ctx, f) => confirmEmailChange(String(f.get("code")), ctx)}
