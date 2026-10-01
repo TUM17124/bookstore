@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils"
  * highlighted and so is the item inside it.
  */
 
-const GAP = 16 // px between items (gap-4)
+const GAP = 4 // px between items (gap-1); pills add px-1.5 each side, so labels sit 16px apart
 
 function Item({ c, active, tabIndex }: { c: CategoryInfo; active: boolean; tabIndex?: number }) {
   return (
@@ -30,7 +30,7 @@ function Item({ c, active, tabIndex }: { c: CategoryInfo; active: boolean; tabIn
       tabIndex={tabIndex}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "group inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 text-sm font-medium outline-none motion-safe:transition-colors",
+        "group inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-1.5 text-sm font-medium outline-none motion-safe:transition-colors",
         "focus-visible:ring-2 focus-visible:ring-foreground/30",
         active ? "bg-foreground/10 text-foreground" : "text-foreground/70 hover:text-foreground",
       )}
@@ -160,20 +160,20 @@ export function CategoryBar({ categories, activeSlug }: { categories: CategoryIn
   return (
     <div ref={wrapRef} className="relative flex h-9 min-w-0 flex-1 items-center">
       {/* Invisible copy of every item, for measuring widths. */}
-      <div ref={measureRef} aria-hidden className="pointer-events-none invisible absolute left-0 top-0 flex gap-4 whitespace-nowrap">
+      <div ref={measureRef} aria-hidden className="pointer-events-none invisible absolute left-0 top-0 flex gap-1 whitespace-nowrap">
         {categories.map((c) => (
           <span key={c.slug} data-slug={c.slug}>
             <Item c={c} active={false} tabIndex={-1} />
           </span>
         ))}
-        <button ref={moreMeasureRef} type="button" tabIndex={-1} className="inline-flex h-9 items-center gap-1 px-2 text-sm font-medium">
+        <button ref={moreMeasureRef} type="button" tabIndex={-1} className="inline-flex h-9 items-center gap-1 px-1.5 text-sm font-medium">
           More <ChevronDown className="h-4 w-4" />
         </button>
       </div>
 
       <nav
         aria-label="Categories"
-        className={cn("flex min-w-0 items-center gap-4 motion-safe:transition-opacity", visible ? "opacity-100" : "invisible opacity-0")}
+        className={cn("flex min-w-0 items-center gap-1 motion-safe:transition-opacity", visible ? "opacity-100" : "invisible opacity-0")}
       >
         {inBar.map((c) => (
           <Item key={c.slug} c={c} active={c.slug.toLowerCase() === active} />
@@ -187,7 +187,7 @@ export function CategoryBar({ categories, activeSlug }: { categories: CategoryIn
               aria-expanded={open}
               onClick={() => setOpen((v) => !v)}
               className={cn(
-                "inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-foreground/30 motion-safe:transition-colors",
+                "inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-1.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-foreground/30 motion-safe:transition-colors",
                 activeInMore || open ? "bg-foreground/10 text-foreground" : "text-foreground/70 hover:text-foreground",
               )}
             >
