@@ -83,6 +83,8 @@ async function postMetadataSet(
   // error message (server `error` text) on failure.
   const response = await authFetch(`${PDF_SERVICE_URL}/pdf/metadata`, {
     method: "POST",
+    // Stateless PDF service: safe to retry on connection problems.
+    pure: true,
     body: form,
   });
   return response.blob();

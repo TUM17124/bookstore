@@ -1,5 +1,6 @@
 "use client";
 
+import { pdfServiceFetch } from "@/lib/pdf-editor/pdf-service-fetch";
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslations } from "@/lib/pdf-editor/use-translations";
 import {
@@ -262,7 +263,7 @@ export function PresentationDialog({
         form.append("action", "transition");
         form.append("op", "get");
         const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
-        const res = await fetch(`${PDF_SERVICE_URL}/pdf/presentation`, {
+        const res = await pdfServiceFetch(`${PDF_SERVICE_URL}/pdf/presentation`, {
           method: "POST",
           headers: authHeaders(),
           body: form,
@@ -333,7 +334,7 @@ export function PresentationDialog({
       for (const [key, value] of Object.entries(fields)) form.append(key, value);
 
       const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
-      const response = await fetch(`${PDF_SERVICE_URL}/pdf/presentation`, {
+      const response = await pdfServiceFetch(`${PDF_SERVICE_URL}/pdf/presentation`, {
         method: "POST",
         headers: authHeaders(),
         body: form,

@@ -57,6 +57,8 @@ async function fetchPageLabels(file: File): Promise<PageLabelsGetResult> {
   const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
   const response = await authFetch(`${PDF_SERVICE_URL}/pdf/page-labels`, {
     method: "POST",
+    // Stateless PDF service: safe to retry on connection problems.
+    pure: true,
     body: form,
   });
 
@@ -80,6 +82,8 @@ async function postPageLabelsSet(
   const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
   const response = await authFetch(`${PDF_SERVICE_URL}/pdf/page-labels`, {
     method: "POST",
+    // Stateless PDF service: safe to retry on connection problems.
+    pure: true,
     body: form,
   });
   return response.blob();

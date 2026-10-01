@@ -1,5 +1,6 @@
 "use client";
 
+import { pdfServiceFetch } from "@/lib/pdf-editor/pdf-service-fetch";
 import React, { useEffect, useState } from "react";
 import { useTranslations } from "@/lib/pdf-editor/use-translations";
 import { X, Loader2, FileCheck2, AlertCircle, Accessibility } from "lucide-react";
@@ -96,7 +97,7 @@ export function PdfADialog({
       }
 
       const { PDF_SERVICE_URL } = await import("@/lib/pdf-editor/pdf-service");
-      const response = await fetch(`${PDF_SERVICE_URL}/pdf/pdfa`, {
+      const response = await pdfServiceFetch(`${PDF_SERVICE_URL}/pdf/pdfa`, {
         method: "POST",
         headers: authHeaders(),
         body: form,

@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useEffect, useState, type ReactNode } from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { isLoggedIn } from "@/lib/auth-client"
+import { Toaster } from "@giga-pdf/ui"
 
 // Scoped to this route rather than the app root - the vendored @giga-pdf/api
 // hooks (use-documents, use-elements, use-auth, etc.) call useQueryClient()
@@ -59,6 +60,12 @@ export function PdfEditorShell({ children }: { children?: ReactNode }) {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      {children}
+      {/* The editor reports every operation's progress and failures as a
+          toast (useToast); without a mounted Toaster none of them ever
+          showed — errors were invisible (found in the Part A live check). */}
+      <Toaster />
+    </QueryClientProvider>
   )
 }

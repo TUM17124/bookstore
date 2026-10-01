@@ -4,6 +4,8 @@ import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { resetPassword, setToken } from '@/lib/api'
+import { useAsyncAction } from '@/hooks/use-async-action'
+import { ActionButton } from '@/components/ui/action-button'
 import { setStoredUser } from '@/lib/auth-client'
 
 function safeNext(path: string) {
@@ -21,30 +23,34 @@ function Inner() {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
 
-  async function onSubmit(e: React.FormEvent) {
+  // Returns login tokens: never auto-retried; a failure offers "Try again".
+  const save = useAsyncAction(
+    (ctx, c: string, pw: string, cf: string) => resetPassword(email, c, pw, cf, ctx),
+    {
+      successMs: 60_000,
+      errorFallback: "Couldn't save the new password. Please try again.",
+      onSuccess: (data) => {
+        if (data.access) setToken(data.access)
+        setStoredUser({
+          email: data.user?.email || email,
+          name: data.user?.name,
+        })
+        window.dispatchEvent(new Event('auth-changed'))
+        router.push(nextPath)
+        router.refresh()
+      },
+    },
+  )
+
+  function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (password !== confirm) {
       setError('Passwords do not match')
       return
     }
-    setBusy(true)
     setError('')
-    try {
-      const data = await resetPassword(email, code, password, confirm)
-      if (data.access) setToken(data.access)
-      setStoredUser({
-        email: data.user?.email || email,
-        name: data.user?.name,
-      })
-      window.dispatchEvent(new Event('auth-changed'))
-      router.push(nextPath)
-      router.refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed')
-    }
-    setBusy(false)
+    void save.run(code, password, confirm)
   }
 
   return (
@@ -78,14 +84,21 @@ function Inner() {
           onChange={(e) => setConfirm(e.target.value)}
           className="rounded-lg border border-foreground/15 bg-transparent px-3 py-2"
         />
-        {error && <p className="text-sm text-red-500">{error}</p>}
-        <button
+        {error && (
+          <p className="text-sm text-red-500" role="alert">
+            {error}
+          </p>
+        )}
+        <ActionButton
           type="submit"
-          disabled={busy}
-          className="rounded-full bg-foreground px-4 py-2 font-medium text-background disabled:opacity-50"
+          action={save}
+          loadingLabel="Saving…"
+          successLabel="Password saved"
+          errorClassName="text-sm text-red-500"
+          className="rounded-full bg-foreground px-4 py-2 font-medium text-background disabled:opacity-50 aria-busy:opacity-80"
         >
-          {busy ? '…' : 'Save password'}
-        </button>
+          Save password
+        </ActionButton>
       </form>
       <p className="mt-4 text-sm text-foreground/60">
         Back to{' '}

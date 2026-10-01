@@ -7,6 +7,8 @@ import { getOrder, confirmOrderPayment, getToken, getBookAccess, downloadBook, r
 import { getStoredUser } from '@/lib/auth-client'
 import { useLoggedIn } from '@/lib/use-logged-in'
 import { PdfReader } from '@/components/pdf-reader'
+import { useAsyncAction } from '@/hooks/use-async-action'
+import { ActionButton, retryLabel } from '@/components/ui/action-button'
 
 function readStoredBook() {
   if (typeof window === 'undefined') return { id: '', title: '' }
@@ -33,16 +35,13 @@ function SuccessInner() {
   const [status, setStatus] = useState('loading')
   const [email, setEmail] = useState('')
   const [emailInput, setEmailInput] = useState('')
-  const [error, setError] = useState('')
   const [readerOpen, setReaderOpen] = useState(false)
-  const [downloading, setDownloading] = useState(false)
   const [productType, setProductType] = useState('')
   const [bookId, setBookId] = useState(bookFromQuery)
   const [bookTitle, setBookTitle] = useState('')
   const [access, setAccess] = useState<BookAccess | null>(null)
   const loggedIn = useLoggedIn()
   const [linkMsg, setLinkMsg] = useState('')
-  const [linkBusy, setLinkBusy] = useState(false)
 
 
   useEffect(() => {
@@ -65,64 +64,74 @@ function SuccessInner() {
     setBookTitle((prev) => prev || stored.title)
   }, [sp, bookFromQuery])
 
+  // Confirming the payment with the server: retried on connection problems
+  // with ONE idempotency key (the confirm endpoint replays its first answer),
+  // and the user gets "Try again" if it still fails.
+  const verify = useAsyncAction(
+    async (ctx, oid: string, em: string, ref: string) => {
+      if (ref) await confirmOrderPayment(oid, { reference: ref, email: em }, ctx)
+      const o = (await getOrder(oid, em)) as {
+        status: string
+        product_type?: string
+        book_id?: string | number
+        title?: string
+        book_title?: string
+        book?: { id?: string | number; title?: string }
+      }
+      // Account holders: ask the server what this order unlocks. Guests
+      // (no account) get their access link by email instead.
+      const stored = readStoredBook()
+      const bid = String(o.book?.id || o.book_id || bookFromQuery || stored.id || '')
+      let a: BookAccess | null = null
+      if (getToken() && bid && o.status === 'paid') {
+        // Optional extra: without it the read/download buttons stay hidden.
+        a = await getBookAccess(bid).catch(() => null)
+      }
+      return { o, bid, access: a }
+    },
+    {
+      successMs: 0,
+      errorFallback: 'Could not verify this order with that email.',
+      onSuccess: (r) => {
+        if (!r) return
+        const stored = readStoredBook()
+        setStatus(r.o.status)
+        setProductType(String(r.o.product_type || ''))
+        setBookId(r.bid)
+        setBookTitle(String(r.o.book?.title || r.o.book_title || r.o.title || stored.title || ''))
+        setAccess(r.access)
+      },
+      onError: () => {
+        const stored = readStoredBook()
+        setBookId((prev) => prev || bookFromQuery || stored.id)
+        setStatus('error')
+      },
+    },
+  )
+  const runVerify = verify.run
+
   useEffect(() => {
     if (!orderId || !email) {
       if (orderId && !email) setStatus('need_email')
       return
     }
-
-    let cancelled = false
     setStatus('loading')
-    setError('')
+    void runVerify(orderId, email, reference)
+  }, [orderId, email, reference, runVerify])
 
-    ;(async () => {
-      try {
-        if (reference) {
-          await confirmOrderPayment(orderId, { reference, email })
-        }
-        const o = (await getOrder(orderId, email)) as {
-          status: string
-          product_type?: string
-          book_id?: string | number
-          title?: string
-          book_title?: string
-          book?: { id?: string | number; title?: string }
-        }
-        if (cancelled) return
-        setStatus(o.status)
-        setProductType(String(o.product_type || ''))
-        const stored = readStoredBook()
-        setBookId(
-          String(o.book?.id || o.book_id || bookFromQuery || stored.id || ''),
-        )
-        setBookTitle(
-          String(o.book?.title || o.book_title || o.title || stored.title || ''),
-        )
-        // Account holders: ask the server what this order unlocks. Guests
-        // (no account) get their access link by email instead.
-        const bid = String(o.book?.id || o.book_id || bookFromQuery || stored.id || '')
-        if (getToken() && bid && o.status === 'paid') {
-          try {
-            const a = await getBookAccess(bid)
-            if (!cancelled) setAccess(a)
-          } catch {
-            // buttons stay hidden
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          const stored = readStoredBook()
-          setBookId((prev) => prev || bookFromQuery || stored.id)
-          setStatus('error')
-          setError('Could not verify this order with that email.')
-        }
-      }
-    })()
+  const download = useAsyncAction(
+    // Never auto-retried: each completed download counts toward the limit.
+    (_ctx, bid: string, k: 'ebook' | 'audiobook') =>
+      downloadBook(bid, k, `book-${bid}.${k === 'audiobook' ? 'mp3' : 'pdf'}`),
+    { errorFallback: 'Download failed. Please try again.' },
+  )
 
-    return () => {
-      cancelled = true
-    }
-  }, [orderId, email, reference, bookFromQuery])
+  // Sends an email: retried with ONE idempotency key, so never twice.
+  const sendLink = useAsyncAction((ctx, em: string) => requestGuestLink(em, ctx), {
+    successMs: 3000,
+    errorFallback: 'Could not send a new link. Try again.',
+    onSuccess: (m) => setLinkMsg(m ?? ''),
+  })
 
   function applyEmail(e: React.FormEvent) {
     e.preventDefault()
@@ -139,18 +148,6 @@ function SuccessInner() {
   const canDownload = status === 'paid' && !!entry?.can_download
   const backHref = bookId ? `/?book=${encodeURIComponent(bookId)}` : '/'
 
-  async function sendLink() {
-    if (!email || linkBusy) return
-    setLinkBusy(true)
-    try {
-      setLinkMsg(await requestGuestLink(email))
-    } catch (err) {
-      setLinkMsg(err instanceof Error ? err.message : 'Could not send a new link.')
-    } finally {
-      setLinkBusy(false)
-    }
-  }
-
   return (
     <main className="mx-auto max-w-md px-4 py-16 text-center">
       <h1 className="text-2xl font-bold">Thank you</h1>
@@ -163,7 +160,9 @@ function SuccessInner() {
       ) : null}
 
       {status === 'loading' && (
-        <p className="mt-6 text-sm text-foreground/50">Confirming your order…</p>
+        <p className="mt-6 text-sm text-foreground/50" role="status" aria-live="polite">
+          {verify.state === 'retrying' ? retryLabel(verify.retry) : 'Confirming your order…'}
+        </p>
       )}
 
       {status === 'need_email' && (
@@ -188,7 +187,20 @@ function SuccessInner() {
         </form>
       )}
 
-      {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
+      {status === 'error' && (
+        <div className="mt-4 flex flex-col items-center gap-2">
+          <ActionButton
+            action={verify}
+            onClick={() => void verify.run(orderId, email, reference)}
+            loadingLabel="Checking…"
+            errorLabel="Try again"
+            errorClassName="text-sm text-red-500"
+            className="rounded-full border border-foreground/20 px-5 py-2 text-sm font-semibold"
+          >
+            Try again
+          </ActionButton>
+        </div>
+      )}
 
       {status === 'paid' && !loggedIn && (
         <section className="mt-6 rounded-2xl border border-foreground/10 p-4 text-left text-sm">
@@ -198,15 +210,20 @@ function SuccessInner() {
             or download (as the author allows). Your purchase never expires — only the link does,
             and you can always get a new one.
           </p>
-          <button
-            type="button"
-            disabled={linkBusy}
-            onClick={() => void sendLink()}
+          <ActionButton
+            action={sendLink}
+            onClick={() => email && void sendLink.run(email)}
+            disabled={!email}
+            loadingLabel="Sending…"
+            successLabel="Sent"
+            errorClassName="mt-2 text-xs text-red-500"
             className="mt-3 rounded-full border border-foreground/20 px-4 py-2 text-xs font-semibold disabled:opacity-50"
           >
-            {linkBusy ? 'Sending…' : "Didn't get it? Send a new access link"}
-          </button>
-          {linkMsg ? <p className="mt-2 text-xs text-foreground/60" role="status">{linkMsg}</p> : null}
+            Didn&apos;t get it? Send a new access link
+          </ActionButton>
+          {linkMsg && sendLink.state !== 'error' ? (
+            <p className="mt-2 text-xs text-foreground/60" role="status">{linkMsg}</p>
+          ) : null}
           <p className="mt-3 text-xs text-foreground/55">
             <Link href="/signup" className="underline">Create an account</Link> or{' '}
             <Link href="/login" className="underline">log in</Link> with this email to keep your books in your library.
@@ -226,25 +243,16 @@ function SuccessInner() {
             </button>
           )}
           {canDownload && (
-            <button
-              type="button"
-              disabled={downloading}
-              onClick={async () => {
-                if (downloading || !bookId) return
-                setDownloading(true)
-                setError('')
-                try {
-                  await downloadBook(bookId, kind, `book-${bookId}.${kind === 'audiobook' ? 'mp3' : 'pdf'}`)
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Download failed.')
-                } finally {
-                  setDownloading(false)
-                }
-              }}
+            <ActionButton
+              action={download}
+              onClick={() => bookId && void download.run(bookId, kind)}
+              loadingLabel="Downloading…"
+              successLabel="Downloaded"
+              errorClassName="text-sm text-red-500"
               className="inline-flex rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background disabled:opacity-50"
             >
-              {downloading ? 'Downloading…' : 'Download this file'}
-            </button>
+              Download this file
+            </ActionButton>
           )}
           <Link href="/purchases" className="text-xs underline text-foreground/55">Open your purchases</Link>
         </div>

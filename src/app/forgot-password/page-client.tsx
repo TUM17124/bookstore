@@ -4,6 +4,8 @@ import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { forgotPassword } from '@/lib/api'
+import { useAsyncAction } from '@/hooks/use-async-action'
+import { ActionButton } from '@/components/ui/action-button'
 
 function safeNext(path: string) {
   if (path.startsWith('/') && !path.startsWith('//')) return path
@@ -15,24 +17,22 @@ function Inner() {
   const sp = useSearchParams()
   const nextPath = safeNext(sp.get('next') || '/')
   const [email, setEmail] = useState(sp.get('email') || '')
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setBusy(true)
-    setError('')
-    try {
-      await forgotPassword(email)
+  // Sends an email: retried with one idempotency key, so never twice.
+  const send = useAsyncAction((ctx, value: string) => forgotPassword(value, ctx), {
+    successMs: 60_000,
+    errorFallback: "Couldn't send the reset code. Please try again.",
+    onSuccess: () => {
       const q = new URLSearchParams({
         email,
         next: nextPath,
       })
       router.push(`/reset-password?${q.toString()}`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed')
-    }
-    setBusy(false)
+    },
+  })
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    void send.run(email)
   }
 
   return (
@@ -47,14 +47,16 @@ function Inner() {
           onChange={(e) => setEmail(e.target.value)}
           className="rounded-lg border border-foreground/15 bg-transparent px-3 py-2"
         />
-        {error && <p className="text-sm text-red-500">{error}</p>}
-        <button
+        <ActionButton
           type="submit"
-          disabled={busy}
-          className="rounded-full bg-foreground px-4 py-2 font-medium text-background disabled:opacity-50"
+          action={send}
+          loadingLabel="Sending…"
+          successLabel="Code sent"
+          errorClassName="text-sm text-red-500"
+          className="rounded-full bg-foreground px-4 py-2 font-medium text-background disabled:opacity-50 aria-busy:opacity-80"
         >
-          {busy ? '…' : 'Send reset code'}
-        </button>
+          Send reset code
+        </ActionButton>
       </form>
       <p className="mt-4 text-sm text-foreground/60">
         Remembered it?{' '}

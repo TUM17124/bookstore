@@ -10,6 +10,8 @@ import {
   PushSubscribeError,
   savePushSubscription,
 } from "@/lib/push"
+import { useAsyncAction } from "@/hooks/use-async-action"
+import { ActionButton } from "@/components/ui/action-button"
 import { getStoredUser, isLoggedIn } from "@/lib/auth-client"
 import { withReferralQuery } from "@/lib/referral"
 import { getPromptContent, personalize, type PromptCopy } from "@/lib/prompts"
@@ -65,7 +67,6 @@ export function PushPrompt() {
   const [show, setShow] = useState(false)
   const [msg, setMsg] = useState("")
   const [msgIsSoft, setMsgIsSoft] = useState(false)
-  const [busy, setBusy] = useState(false)
   const [hasAccount, setHasAccount] = useState(false)
   const [name, setName] = useState("")
   const [guestCopy, setGuestCopy] = useState<PromptCopy>(FALLBACK_GUEST)
@@ -184,6 +185,26 @@ export function PushPrompt() {
     }
   }, [])
 
+  const enable = useAsyncAction(
+    // Browser permission + push subscription; not an API retry candidate.
+    async () => {
+      await enablePushNotifications()
+      await postPromptEvent("installed")
+    },
+    {
+      successMs: 0,
+      onSuccess: () => setShow(false),
+      onError: (error) => {
+        // A failed push subscription (e.g. Brave blocking it by default) is
+        // routine, not a blocking error — surface it as a quiet note and
+        // leave Create account / Later fully usable.
+        setMsgIsSoft(error instanceof PushSubscribeError)
+        setMsg(error instanceof Error ? error.message : "Could not enable notifications on this device.")
+      },
+    },
+  )
+  const busy = enable.busy
+
   if (!show) return null
 
   const copy = hasAccount ? accountCopy : guestCopy
@@ -196,41 +217,27 @@ export function PushPrompt() {
       <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{body}</p>
       {msg ? (
         <p
+          role={msgIsSoft ? "status" : "alert"}
           className={`mt-2 text-sm ${msgIsSoft ? "text-neutral-500 dark:text-neutral-400" : "text-red-600"}`}
         >
           {msg}
         </p>
       ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          disabled={busy}
-          className="flex-1 rounded-lg bg-black py-2 text-sm text-white disabled:opacity-50"
-          onClick={async () => {
-            setBusy(true)
+        <ActionButton
+          action={enable}
+          onClick={() => {
             setMsg("")
             setMsgIsSoft(false)
-            try {
-              await enablePushNotifications()
-              await postPromptEvent("installed")
-              setShow(false)
-            } catch (error) {
-              // A failed push subscription (e.g. Brave blocking it by
-              // default) is routine, not a blocking error — surface it as
-              // a quiet note and leave Create account / Later fully usable.
-              const soft = error instanceof PushSubscribeError
-              setMsgIsSoft(soft)
-              setMsg(
-                error instanceof Error
-                  ? error.message
-                  : "Could not enable notifications on this device.",
-              )
-            } finally {
-              setBusy(false)
-            }
+            void enable.run()
           }}
+          loadingLabel="Enabling…"
+          errorLabel="Allow personal alerts"
+          errorPlacement="none"
+          className="flex-1 rounded-lg bg-black py-2 text-sm text-white disabled:opacity-50"
         >
-          {busy ? "Enabling…" : "Allow personal alerts"}
-        </button>
+          Allow personal alerts
+        </ActionButton>
         {!hasAccount && (
           <Link
             href={withReferralQuery("/signup")}

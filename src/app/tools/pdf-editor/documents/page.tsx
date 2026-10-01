@@ -15,7 +15,9 @@ import {
 } from "lucide-react";
 import { Button } from "@giga-pdf/ui";
 import { api, type StoredDocument, type StorageInfo } from "@/lib/pdf-editor/api";
-import { ensureFreshAuthToken } from "@/lib/pdf-editor/auth-token";
+import { authFetch } from "@/lib/auth-fetch";
+import { useAsyncAction } from "@/hooks/use-async-action";
+import { ActionButton } from "@/components/ui/action-button";
 import { PDF_SERVICE_URL } from "@/lib/pdf-editor/pdf-service";
 
 /** e.g. 1536000 -> "1.46 MB". Admin-configured cap, so no fixed unit assumed. */
@@ -45,7 +47,6 @@ export default function EditorDocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [busy, setBusy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -72,43 +73,40 @@ export default function EditorDocumentsPage() {
     return () => clearTimeout(handle);
   }, [search, load]);
 
-  async function handleFile(file: File | undefined | null) {
-    if (!file) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await api.saveDocument({ file, name: file.name });
-      router.push(`/tools/pdf-editor?id=${result.stored_document_id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed.");
-      setBusy(false);
-    }
-  }
+  const openDocument = (result: { stored_document_id: string } | undefined) => {
+    if (result) router.push(`/tools/pdf-editor?id=${result.stored_document_id}`);
+  };
 
-  async function handleBlank() {
-    setBusy(true);
-    setError(null);
-    try {
-      const token = await ensureFreshAuthToken();
-      const blankResp = await fetch(`${PDF_SERVICE_URL}/pdf/blank`, {
+  // The upload streams with progress over XHR, which authFetch doesn't
+  // cover, so it isn't auto-retried; a failure shows the reason and the
+  // button becomes "Try again" (pick the file again).
+  const upload = useAsyncAction(
+    (_ctx, file: File) => api.saveDocument({ file, name: file.name }),
+    { successMs: 60_000, errorFallback: "Upload failed. Please try again.", onSuccess: openDocument },
+  );
+
+  const blank = useAsyncAction(
+    async (ctx) => {
+      // Stateless PDF service: retried on connection problems.
+      const blankResp = await authFetch(`${PDF_SERVICE_URL}/pdf/blank`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        pure: true,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ size: "a4", orientation: "portrait" }),
+        signal: ctx.signal,
+        onRetry: ctx.onRetry,
       });
-      if (!blankResp.ok) {
-        throw new Error(`Could not create a blank document (${blankResp.status}).`);
-      }
       const blob = await blankResp.blob();
       const file = new File([blob], "Untitled.pdf", { type: "application/pdf" });
-      const result = await api.saveDocument({ file, name: "Untitled" });
-      router.push(`/tools/pdf-editor?id=${result.stored_document_id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start a blank document.");
-      setBusy(false);
-    }
+      return api.saveDocument({ file, name: "Untitled" });
+    },
+    { successMs: 60_000, errorFallback: "Could not start a blank document. Please try again.", onSuccess: openDocument },
+  );
+
+  function handleFile(file: File | undefined | null) {
+    if (!file) return;
+    setError(null);
+    void upload.run(file);
   }
 
   async function handleDelete(doc: StoredDocument, e: React.MouseEvent) {
@@ -160,14 +158,36 @@ export default function EditorDocumentsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => inputRef.current?.click()} disabled={busy} className="gap-2">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          <ActionButton
+            as={Button}
+            action={upload}
+            onClick={() => inputRef.current?.click()}
+            disabled={blank.busy}
+            loadingLabel="Uploading…"
+            successLabel="Opening…"
+            errorPlacement="none"
+            className="gap-2"
+          >
+            <Upload className="h-4 w-4" />
             Choose PDF
-          </Button>
-          <Button variant="outline" onClick={() => void handleBlank()} disabled={busy} className="gap-2">
+          </ActionButton>
+          <ActionButton
+            as={Button}
+            variant="outline"
+            action={blank}
+            onClick={() => {
+              setError(null);
+              void blank.run();
+            }}
+            disabled={upload.busy}
+            loadingLabel="Creating…"
+            successLabel="Opening…"
+            errorPlacement="none"
+            className="gap-2"
+          >
             <Plus className="h-4 w-4" />
             Start blank
-          </Button>
+          </ActionButton>
         </div>
       </div>
 
@@ -222,9 +242,9 @@ export default function EditorDocumentsPage() {
         />
       </div>
 
-      {error && (
-        <div className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          {error}
+      {(error || upload.errorText || blank.errorText) && (
+        <div role="alert" className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          {error || upload.errorText || blank.errorText}
         </div>
       )}
 

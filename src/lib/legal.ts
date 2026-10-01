@@ -1,3 +1,5 @@
+import { authFetch, errorMessage, type CallOptions } from '@/lib/auth-fetch'
+
 export async function getLegalPages(slug?: string) {
   const q = slug ? `?slug=${encodeURIComponent(slug)}` : ""
   const r = await fetch(`${API}/legal/${q}`, { cache: "no-store" })
@@ -30,41 +32,26 @@ export function needsLegalAccept(data: LegalStatus | null | undefined) {
   return false
 }
 
-export async function getLegalStatus(token: string): Promise<LegalStatus> {
-  const response = await fetch(`${API}/legal/status/`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}` },
-    cache: 'no-store',
-  })
-
-  const data = await response.json().catch(() => ({}))
-
-  if (!response.ok) {
-    throw new Error(data?.error || 'Unable to check legal status.')
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature kept for existing callers; the token now comes from authFetch
+export async function getLegalStatus(_token: string): Promise<LegalStatus> {
+  try {
+    const response = await authFetch(`${API}/legal/status/`, { cache: 'no-store' })
+    return await response.json()
+  } catch (err) {
+    throw new Error(errorMessage(err, 'Unable to check legal status.'))
   }
-
-  return data
 }
 
-export async function acceptLegal(token: string) {
-  const response = await fetch(`${API}/legal/accept/`, {
+/** Idempotent server-side (shop/idempotency.py): retried with `call`'s key. */
+export async function acceptLegal(_token: string, call?: CallOptions) {
+  const response = await authFetch(`${API}/legal/accept/`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       accepted: true,
       terms_accepted: true,
     }),
+    ...call,
   })
-
-  const data = await response.json().catch(() => ({}))
-
-  if (!response.ok) {
-    throw new Error(data?.error || 'Unable to accept the legal terms.')
-  }
-
-  return data
+  return response.json().catch(() => ({}))
 }
-

@@ -13,6 +13,9 @@ import {
   X,
 } from "lucide-react"
 import { getToken } from "@/lib/api"
+import { authFetch } from "@/lib/auth-fetch"
+import { useAsyncAction } from "@/hooks/use-async-action"
+import { ActionButton } from "@/components/ui/action-button"
 
 const API = process.env.NEXT_PUBLIC_API_URL!
 
@@ -115,21 +118,21 @@ export function NotificationBell() {
     }
   }
 
-  const markAllAsRead = async () => {
-    const token = getToken()
-    if (!token || unread === 0) return
-    try {
-      const response = await fetch(`${API}/notifications/read-all/`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (!response.ok) return
-      setItems((current) => current.map((item) => ({ ...item, read: true })))
-      setUnread(0)
-    } catch {
-      // Ignore read errors.
-    }
-  }
+  // Marking read twice is harmless, but the endpoint isn't on the backend's
+  // idempotent list, so it isn't auto-retried; a failure shows on the icon
+  // (and to screen readers) and the user can click again.
+  const markAll = useAsyncAction(
+    async (ctx) => {
+      await authFetch(`${API}/notifications/read-all/`, { method: "POST", signal: ctx.signal })
+    },
+    {
+      errorFallback: "Couldn't mark notifications as read. Please try again.",
+      onSuccess: () => {
+        setItems((current) => current.map((item) => ({ ...item, read: true })))
+        setUnread(0)
+      },
+    },
+  )
 
   const handleNotificationClick = async (item: Notice) => {
     if (!item.read) await markAsRead(item.id)
@@ -185,16 +188,20 @@ export function NotificationBell() {
               </div>
 
               <div className="flex items-center gap-1">
-                {unread > 0 && (
-                  <button
-                    type="button"
-                    onClick={markAllAsRead}
+                {(unread > 0 || markAll.state !== "idle") && (
+                  <ActionButton
+                    compact
+                    action={markAll}
+                    onClick={() => getToken() && void markAll.run()}
+                    errorPlacement="sr-only"
+                    loadingLabel="Marking all as read…"
+                    successLabel="All marked as read"
                     className="rounded-lg p-2 text-neutral-500 transition hover:bg-black/5 hover:text-black dark:hover:bg-white/10 dark:hover:text-white"
                     aria-label="Mark all notifications as read"
-                    title="Mark all as read"
+                    title={markAll.errorText || "Mark all as read"}
                   >
                     <CheckCheck className="h-4 w-4" />
-                  </button>
+                  </ActionButton>
                 )}
                 <button
                   type="button"

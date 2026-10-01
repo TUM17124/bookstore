@@ -83,7 +83,8 @@ function postImposition(file: File, fields: Record<string, string>): Promise<Res
   const form = new FormData();
   form.append("file", file);
   for (const [key, value] of Object.entries(fields)) form.append(key, value);
-  return authFetch(ENDPOINT, { method: "POST", body: form });
+  // Stateless PDF service: safe to retry on connection problems.
+  return authFetch(ENDPOINT, { method: "POST", pure: true, body: form });
 }
 
 // ─── Small UI atoms ─────────────────────────────────────────────────────────────

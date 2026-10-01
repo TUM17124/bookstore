@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import Link from "next/link"
-import { FormEvent, useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import {
   cancelProSubscription,
   changeName,
@@ -13,11 +13,12 @@ import {
   getSettings,
   requestAffiliateWithdrawal,
   startEmailChange,
+  requestEmailReauth,
   updateNotificationPrefs,
   type NotificationPrefs,
   type ProStatus,
 } from "@/lib/api"
-import { clientLogout, isLoggedIn } from "@/lib/auth-client"
+import { broadcastAccountChange, clientLogout, isLoggedIn, setStoredUser, type AuthUser } from "@/lib/auth-client"
 import { splitName } from "@/lib/name"
 import { AffiliateInvite } from "@/components/affiliate-invite"
 import {
@@ -25,6 +26,114 @@ import {
   enablePushNotifications,
   getPushSubscription,
 } from "@/lib/push"
+import { useAsyncAction, type ActionContext } from "@/hooks/use-async-action"
+import { ActionButton, ActionStatus } from "@/components/ui/action-button"
+
+/**
+ * A settings form whose submit button runs one request with the shared
+ * button states (Part A): "Saving…", retry countdown, "Saved", or the
+ * error + "Try again" right under the form. Writes are retried with one
+ * idempotency key (the endpoints are idempotent server-side).
+ */
+function ActionForm({
+  run,
+  onDone,
+  label,
+  loadingLabel = "Saving…",
+  successLabel = "Saved",
+  buttonClassName,
+  className,
+  disabled,
+  confirmText,
+  children,
+}: {
+  run: (ctx: ActionContext, form: FormData) => Promise<unknown>
+  onDone?: (result: unknown) => void
+  label: ReactNode
+  loadingLabel?: string
+  successLabel?: string
+  buttonClassName: string
+  className: string
+  disabled?: boolean
+  /** Ask before sending (destructive actions). */
+  confirmText?: string
+  children: ReactNode
+}) {
+  const action = useAsyncAction(run, { onSuccess: onDone })
+  return (
+    <div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (confirmText && !confirm(confirmText)) return
+          void action.run(new FormData(e.currentTarget))
+        }}
+        className={className}
+      >
+        {children}
+        <ActionButton
+          type="submit"
+          action={action}
+          disabled={disabled}
+          loadingLabel={loadingLabel}
+          successLabel={successLabel}
+          errorPlacement="none"
+          retryPlacement="none"
+          className={`${buttonClassName} aria-busy:opacity-80`}
+        >
+          {label}
+        </ActionButton>
+      </form>
+      <ActionStatus action={action} className="mt-2 text-sm text-foreground/60" />
+      {action.errorText ? (
+        <p role="alert" className="mt-2 text-sm text-red-600">
+          {action.errorText}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+/** A notification-preference checkbox that saves on change: busy while
+ * saving, reverts and explains if saving fails. */
+function PrefToggle({
+  checked,
+  disabled,
+  save,
+}: {
+  checked: boolean
+  disabled: boolean
+  save: (ctx: ActionContext, next: boolean) => Promise<unknown>
+}) {
+  const [optimistic, setOptimistic] = useState<boolean | null>(null)
+  const action = useAsyncAction(save, {
+    successMs: 0,
+    onSuccess: () => setOptimistic(null),
+    onError: () => setOptimistic(null),
+  })
+  return (
+    <span className="flex shrink-0 flex-col items-end">
+      <input
+        type="checkbox"
+        className="h-5 w-5 shrink-0"
+        checked={optimistic ?? checked}
+        disabled={disabled}
+        aria-busy={action.busy || undefined}
+        onChange={(e) => {
+          if (action.busy) return
+          setOptimistic(e.target.checked)
+          void action.run(e.target.checked)
+        }}
+      />
+      {action.busy ? <span className="mt-1 text-xs text-foreground/50" role="status">Saving…</span> : null}
+      {action.errorText ? (
+        <span className="mt-1 max-w-[12rem] text-right text-xs text-red-600" role="alert">
+          {action.errorText}
+        </span>
+      ) : null}
+    </span>
+  )
+}
 
 function ProSection({
   proStatus,
@@ -33,24 +142,29 @@ function ProSection({
   proStatus: ProStatus | null
   onCancelled: (updated: ProStatus) => void
 }) {
-  const [cancelling, setCancelling] = useState(false)
-  const [cancelError, setCancelError] = useState("")
   const [confirmed, setConfirmed] = useState(false)
 
-  async function handleCancel() {
+  const cancel = useAsyncAction(
+    (ctx, subscriptionId: number) => cancelProSubscription(subscriptionId, ctx),
+    {
+      errorFallback: "Could not cancel. Please try again.",
+      onSuccess: () => {
+        setConfirmed(false)
+        if (proStatus?.subscription) {
+          onCancelled({ is_pro: false, subscription: { ...proStatus.subscription, status: "cancelled" } })
+        }
+        broadcastAccountChange()
+      },
+    },
+  )
+
+  function handleCancel() {
     if (!proStatus?.subscription?.id) return
-    if (!confirmed) { setConfirmed(true); return }
-    setCancelling(true)
-    setCancelError("")
-    try {
-      await cancelProSubscription(proStatus.subscription.id)
-      onCancelled({ is_pro: false, subscription: { ...proStatus.subscription!, status: "cancelled" } })
-    } catch (e) {
-      setCancelError(e instanceof Error ? e.message : "Could not cancel")
-    } finally {
-      setCancelling(false)
-      setConfirmed(false)
+    if (!confirmed) {
+      setConfirmed(true)
+      return
     }
+    void cancel.run(proStatus.subscription.id)
   }
 
   return (
@@ -72,21 +186,16 @@ function ProSection({
                 })}.`
               : "Your subscription is active."}
           </p>
-          {cancelError && (
-            <p className="text-sm text-red-600">{cancelError}</p>
-          )}
-          <button
-            type="button"
-            disabled={cancelling}
-            onClick={() => void handleCancel()}
+          <ActionButton
+            action={cancel}
+            onClick={handleCancel}
+            loadingLabel="Cancelling…"
+            successLabel="Cancelled"
+            errorClassName="text-sm text-red-600"
             className="rounded-lg border border-red-400 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
           >
-            {cancelling
-              ? "Cancelling…"
-              : confirmed
-                ? "Tap again to confirm cancel"
-                : "Cancel subscription"}
-          </button>
+            {confirmed ? "Tap again to confirm cancel" : "Cancel subscription"}
+          </ActionButton>
           {confirmed && (
             <p className="text-xs text-foreground/50">
               Your Pro access continues until {proStatus.subscription?.expires_at
@@ -135,7 +244,6 @@ export default function SettingsPage() {
   const [active, setActive] = useState<SectionId>("profile")
   const [prefs, setPrefs] = useState<NotificationPrefs | null>(null)
   const [deviceSubscribed, setDeviceSubscribed] = useState(false)
-  const [pushBusy, setPushBusy] = useState(false)
   const [proStatus, setProStatus] = useState<ProStatus | null>(null)
 
   const reload = () => getSettings().then(setData).catch((e) => setError(e.message))
@@ -156,7 +264,40 @@ export default function SettingsPage() {
       reloadNotificationPrefs()
       getProStatus().then(setProStatus).catch(() => {})
     }
+    // A profile change here or in another tab: show the server's values.
+    const onUserChanged = () => {
+      if (!isLoggedIn()) return
+      reload()
+      reloadNotificationPrefs()
+      getProStatus().then(setProStatus).catch(() => {})
+    }
+    window.addEventListener("auth-changed", onUserChanged)
+    return () => window.removeEventListener("auth-changed", onUserChanged)
   }, [])
+
+  const pushToggle = useAsyncAction(
+    // Browser permission + subscription; not an API retry candidate.
+    async (_ctx, subscribed: boolean) => {
+      if (subscribed) await disablePushNotifications()
+      else await enablePushNotifications()
+      return !subscribed
+    },
+    {
+      errorFallback: "Couldn't change push notifications on this device. Please try again.",
+      onSuccess: (next) => {
+        setDeviceSubscribed(!!next)
+        setNotice(next ? "Push notifications enabled on this device." : "Push notifications turned off on this device.")
+      },
+    },
+  )
+
+  /** A profile save succeeded: publish the user the server returned to every
+   * part of the UI, in this tab and in other open tabs. */
+  const publishUser = (res: unknown) => {
+    const user = (res as { user?: AuthUser } | null)?.user
+    if (user?.email) setStoredUser(user)
+    else reload()
+  }
 
   if (!ready) {
     return (
@@ -186,17 +327,6 @@ export default function SettingsPage() {
     )
   }
 
-  const submit = async (fn: () => Promise<any>) => {
-    setError("")
-    setNotice("")
-    try {
-      await fn()
-      setNotice("Saved.")
-      reload()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Request failed")
-    }
-  }
 
   const a = data?.affiliate
   const payoutReady = Boolean(data?.payout_account?.ready)
@@ -267,66 +397,108 @@ export default function SettingsPage() {
                 <p className="break-words">
                   {data.user.name || data.user.username} · {data.user.email}
                 </p>
-                <form
-                  onSubmit={(e: FormEvent<HTMLFormElement>) => {
-                    e.preventDefault()
-                    const f = new FormData(e.currentTarget)
+                <ActionForm
+                  run={(ctx, f) => {
                     const [first, last] = splitName(String(f.get("name")))
-                    submit(() => changeName(first, last))
+                    return changeName(first, last, ctx)
                   }}
+                  onDone={publishUser}
+                  label="Save name"
                   className="flex flex-col gap-2 sm:flex-row"
+                  buttonClassName="w-full rounded bg-black px-4 py-2 text-white sm:w-auto"
                 >
                   <input
+                    key={`name-${data.user.first_name}-${data.user.last_name}`}
                     name="name"
                     defaultValue={[data.user.first_name, data.user.last_name].filter(Boolean).join(" ") || data.user.name || ""}
                     placeholder="Full name"
                     autoComplete="name"
                     className="min-w-0 w-full rounded border p-2 sm:flex-1"
                   />
-                  <button className="w-full rounded bg-black px-4 py-2 text-white sm:w-auto">Save name</button>
-                </form>
-                <form
-                  onSubmit={(e: FormEvent<HTMLFormElement>) => {
-                    e.preventDefault()
-                    const f = new FormData(e.currentTarget)
-                    submit(() => changeUsername(String(f.get("username"))))
-                  }}
+                </ActionForm>
+                <ActionForm
+                  run={(ctx, f) => changeUsername(String(f.get("username")), ctx)}
+                  onDone={publishUser}
+                  label="Change username"
                   className="flex flex-col gap-2 sm:flex-row"
+                  buttonClassName="w-full rounded bg-black px-4 py-2 text-white sm:w-auto"
                 >
-                  <input name="username" defaultValue={data.user.username} className="min-w-0 w-full rounded border p-2 sm:flex-1" />
-                  <button className="w-full rounded bg-black px-4 py-2 text-white sm:w-auto">Change username</button>
-                </form>
+                  <input key={`username-${data.user.username}`} name="username" defaultValue={data.user.username} className="min-w-0 w-full rounded border p-2 sm:flex-1" />
+                </ActionForm>
               </section>
             )}
 
             {active === "email" && (
               <section className="min-w-0 space-y-3 rounded-xl border p-5">
                 <h2 className="text-xl font-semibold">Email</h2>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    const f = new FormData(e.currentTarget)
-                    submit(() =>
-                      startEmailChange(String(f.get("email")), String(f.get("password"))),
+                <p className="break-words text-sm text-foreground/70">
+                  Current email: <strong>{data.user.email}</strong>
+                </p>
+                {data.user.pending_email ? (
+                  <p role="status" className="break-words rounded border border-amber-400/50 bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                    We sent a code to <strong>{data.user.pending_email}</strong>. Your email stays{" "}
+                    <strong>{data.user.email}</strong> until you enter that code below.
+                  </p>
+                ) : null}
+                {data.user.password_auth ? null : (
+                  <div className="space-y-1">
+                    <p className="text-sm text-foreground/70">
+                      You sign in with Google, so first confirm it&apos;s you: we&apos;ll send a code to{" "}
+                      <strong>{data.user.email}</strong>.
+                    </p>
+                    <ActionForm
+                      run={(ctx) => requestEmailReauth(ctx)}
+                      label="Send a code to my current email"
+                      loadingLabel="Sending…"
+                      successLabel="Code sent"
+                      className="flex"
+                      buttonClassName="w-full rounded border px-4 py-2 sm:w-auto"
+                    >
+                      {null}
+                    </ActionForm>
+                  </div>
+                )}
+                <ActionForm
+                  run={(ctx, f) =>
+                    startEmailChange(
+                      String(f.get("email")),
+                      data.user.password_auth
+                        ? { current_password: String(f.get("password")) }
+                        : { current_email_code: String(f.get("current_email_code")) },
+                      ctx,
                     )
-                  }}
+                  }
+                  onDone={publishUser}
+                  label="Verify new email"
+                  loadingLabel="Sending code…"
+                  successLabel="Code sent"
                   className="flex flex-col gap-2 sm:flex-row"
+                  buttonClassName="w-full rounded bg-black px-4 py-2 text-white sm:w-auto"
                 >
                   <input name="email" type="email" placeholder="New email" className="min-w-0 w-full rounded border p-2 sm:flex-1" />
-                  <input name="password" type="password" placeholder="Current password" className="min-w-0 w-full rounded border p-2 sm:flex-1" />
-                  <button className="w-full rounded bg-black px-4 py-2 text-white sm:w-auto">Verify new email</button>
-                </form>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    const f = new FormData(e.currentTarget)
-                    submit(() => confirmEmailChange(String(f.get("code"))))
-                  }}
+                  {data.user.password_auth ? (
+                    <input name="password" type="password" placeholder="Current password" className="min-w-0 w-full rounded border p-2 sm:flex-1" />
+                  ) : (
+                    <input
+                      name="current_email_code"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="Code from your current email"
+                      className="min-w-0 w-full rounded border p-2 sm:flex-1"
+                    />
+                  )}
+                </ActionForm>
+                <ActionForm
+                  run={(ctx, f) => confirmEmailChange(String(f.get("code")), ctx)}
+                  onDone={publishUser}
+                  label="Confirm"
+                  loadingLabel="Confirming…"
+                  successLabel="Email changed"
                   className="flex flex-col gap-2 sm:flex-row"
+                  buttonClassName="w-full rounded border px-4 py-2 sm:w-auto"
                 >
                   <input name="code" placeholder="Verification code" className="min-w-0 w-full rounded border p-2 sm:flex-1" />
-                  <button className="w-full rounded border px-4 py-2 sm:w-auto">Confirm</button>
-                </form>
+                </ActionForm>
               </section>
             )}
 
@@ -347,19 +519,12 @@ export default function SettingsPage() {
                         Reminders and alerts sent to {data.user.email}
                       </span>
                     </span>
-                    <input
-                      type="checkbox"
-                      className="h-5 w-5 shrink-0"
+                    <PrefToggle
                       checked={prefs?.email_enabled ?? true}
                       disabled={!prefs}
-                      onChange={(e) => {
-                        const email_enabled = e.target.checked
-                        setPrefs((p) => (p ? { ...p, email_enabled } : p))
-                        submit(async () => {
-                          const next = await updateNotificationPrefs({ email_enabled })
-                          setPrefs(next)
-                          return next
-                        })
+                      save={async (ctx, email_enabled) => {
+                        setPrefs(await updateNotificationPrefs({ email_enabled }, ctx))
+                        broadcastAccountChange()
                       }}
                     />
                   </label>
@@ -372,19 +537,12 @@ export default function SettingsPage() {
                         {prefs ? ` · ${prefs.active_devices} device(s) active` : ""}
                       </span>
                     </span>
-                    <input
-                      type="checkbox"
-                      className="h-5 w-5 shrink-0"
+                    <PrefToggle
                       checked={prefs?.push_enabled ?? true}
                       disabled={!prefs}
-                      onChange={(e) => {
-                        const push_enabled = e.target.checked
-                        setPrefs((p) => (p ? { ...p, push_enabled } : p))
-                        submit(async () => {
-                          const next = await updateNotificationPrefs({ push_enabled })
-                          setPrefs(next)
-                          return next
-                        })
+                      save={async (ctx, push_enabled) => {
+                        setPrefs(await updateNotificationPrefs({ push_enabled }, ctx))
+                        broadcastAccountChange()
                       }}
                     />
                   </label>
@@ -397,37 +555,19 @@ export default function SettingsPage() {
                       ? "This browser is subscribed to push notifications."
                       : "This browser is not currently subscribed to push notifications."}
                   </p>
-                  <button
-                    type="button"
-                    disabled={pushBusy}
-                    className="mt-3 rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50"
-                    onClick={async () => {
-                      setPushBusy(true)
-                      setError("")
+                  <ActionButton
+                    action={pushToggle}
+                    onClick={() => {
                       setNotice("")
-                      try {
-                        if (deviceSubscribed) {
-                          await disablePushNotifications()
-                          setDeviceSubscribed(false)
-                          setNotice("Push notifications turned off on this device.")
-                        } else {
-                          await enablePushNotifications()
-                          setDeviceSubscribed(true)
-                          setNotice("Push notifications enabled on this device.")
-                        }
-                      } catch (e) {
-                        setError(e instanceof Error ? e.message : "Request failed")
-                      } finally {
-                        setPushBusy(false)
-                      }
+                      void pushToggle.run(deviceSubscribed)
                     }}
+                    loadingLabel={deviceSubscribed ? "Turning off…" : "Turning on…"}
+                    successLabel="Done"
+                    errorClassName="mt-2 text-sm text-red-600"
+                    className="mt-3 rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50"
                   >
-                    {pushBusy
-                      ? "Working…"
-                      : deviceSubscribed
-                        ? "Turn off push on this device"
-                        : "Turn on push on this device"}
-                  </button>
+                    {deviceSubscribed ? "Turn off push on this device" : "Turn on push on this device"}
+                  </ActionButton>
                 </div>
               </section>
             )}
@@ -460,13 +600,15 @@ export default function SettingsPage() {
                   <Stat label="Book reward" value={`KES ${a.book_reward}`} />
                   <Stat label="Minimum withdrawal" value={`KES ${a.minimum_withdrawal}`} />
                 </div>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    const f = new FormData(e.currentTarget)
-                    submit(() => requestAffiliateWithdrawal(String(f.get("amount"))))
-                  }}
+                <ActionForm
+                  run={(ctx, f) => requestAffiliateWithdrawal(String(f.get("amount")), ctx)}
+                  onDone={broadcastAccountChange}
+                  disabled={!payoutReady}
+                  label="Request withdrawal"
+                  loadingLabel="Requesting…"
+                  successLabel="Requested"
                   className="flex flex-col gap-2 sm:flex-row"
+                  buttonClassName="w-full rounded bg-black px-4 py-2 text-white disabled:opacity-50 sm:w-auto"
                 >
                   <input
                     required
@@ -477,10 +619,7 @@ export default function SettingsPage() {
                     placeholder="Withdrawal amount"
                     className="min-w-0 w-full rounded border p-2 sm:flex-1"
                   />
-                  <button className="w-full rounded bg-black px-4 py-2 text-white disabled:opacity-50 sm:w-auto" disabled={!payoutReady}>
-                    Request withdrawal
-                  </button>
-                </form>
+                </ActionForm>
               </section>
             )}
 
@@ -565,22 +704,28 @@ export default function SettingsPage() {
                   This is consequential. Your public books remain in the library without ownership;
                   financial audit records are retained.
                 </p>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    if (!confirm("Permanently delete your account?")) return
-                    const f = new FormData(e.currentTarget)
-                    submit(async () => {
-                      const r = await deleteAccount({
+                <ActionForm
+                  confirmText="Permanently delete your account?"
+                  run={(ctx, f) =>
+                    deleteAccount(
+                      {
                         current_password: String(f.get("password")),
                         reason: String(f.get("reason")),
-                      })
-                      clientLogout()
-                      location.href = "/"
-                      return r
-                    })
+                      },
+                      ctx,
+                    )
+                  }
+                  onDone={() => {
+                    clientLogout()
+                    // Full reload on purpose: drop every bit of signed-in state.
+                    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+                    location.href = "/"
                   }}
+                  label="Delete my account"
+                  loadingLabel="Deleting…"
+                  successLabel="Deleted"
                   className="flex flex-col gap-2"
+                  buttonClassName="w-fit rounded bg-red-700 px-4 py-2 text-white"
                 >
                   <input
                     name="password"
@@ -593,8 +738,7 @@ export default function SettingsPage() {
                     className="min-w-0 w-full rounded border p-2"
                   />
                   <textarea name="reason" placeholder="Reason (optional)" className="min-w-0 w-full rounded border p-2" />
-                  <button className="w-fit rounded bg-red-700 px-4 py-2 text-white">Delete my account</button>
-                </form>
+                </ActionForm>
               </section>
             )}
           </div>

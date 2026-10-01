@@ -225,16 +225,12 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      try {
-        await addBookmarkApi(book.id);
-        setBookmarks((prev) => {
-          if (prev.some((b) => b.id === clean.id)) return prev;
-          return [...prev, clean];
-        });
-      } catch (e) {
-        console.error(e);
-        alert(e instanceof Error ? e.message : 'Could not save bookmark');
-      }
+      // Errors propagate: the bookmark button shows them with "Try again".
+      await addBookmarkApi(book.id);
+      setBookmarks((prev) => {
+        if (prev.some((b) => b.id === clean.id)) return prev;
+        return [...prev, clean];
+      });
     },
     [],
   );
@@ -244,12 +240,8 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
       setBookmarks((prev) => prev.filter((b) => b.id !== id));
       return;
     }
-    try {
-      await removeBookmarkApi(id);
-      setBookmarks((prev) => prev.filter((b) => b.id !== id));
-    } catch (e) {
-      console.error(e);
-    }
+    await removeBookmarkApi(id);
+    setBookmarks((prev) => prev.filter((b) => b.id !== id));
   }, []);
 
   const toggleBookmark = useCallback(

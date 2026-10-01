@@ -1,3 +1,5 @@
+import { AuthFetchError } from "@/lib/auth-fetch";
+
 /**
  * Retry an async operation with exponential backoff.
  *
@@ -23,6 +25,11 @@ const NON_RETRYABLE_STATUSES = new Set([400, 401, 403, 404, 422]);
 
 function isRetryable(err: unknown): boolean {
   if (err instanceof DOMException && err.name === "AbortError") return false;
+  // Part A: requests made through authFetch (the editor API client) were
+  // already retried there, with one idempotency key, for every transient
+  // failure. Retrying again here would multiply attempts and — for a create —
+  // send it under a NEW key, which could duplicate the element.
+  if (err instanceof AuthFetchError) return false;
   // Some clients attach `status` directly, others use `response.status`
   const e = err as { status?: number; response?: { status?: number } };
   const status = e?.status ?? e?.response?.status;

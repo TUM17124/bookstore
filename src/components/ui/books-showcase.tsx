@@ -5,6 +5,8 @@ import * as THREE from 'three';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useBookmarks } from '@/components/bookmarks-context';
+import { useAsyncAction } from '@/hooks/use-async-action';
+import { ActionButton, ActionStatus } from '@/components/ui/action-button';
 import { BookReviews } from '@/components/book-reviews';
 import { createPortal } from 'react-dom';
 import { searchTrack, getRatings, getRelatedBooks, getBookAccess, downloadBook, type ApiBook, type BookAccess } from '@/lib/api';
@@ -380,9 +382,13 @@ export function BooksShowcase({
   const [ratingCount, setRatingCount] = useState(0);
   const [myRating, setMyRating] = useState<number | null>(null);
   const bookmarked = selectedCfg != null ? isBookmarked(selectedCfg.id) : false;
+  const bookmarkAction = useAsyncAction(
+    (_ctx, cfg: NonNullable<typeof selectedCfg>) => toggleBookmark(cfg),
+    { successMs: 0, errorFallback: "Couldn't update your bookmarks. Please try again." },
+  );
   const handleSave = () => {
     if (!selectedCfg) return;
-    toggleBookmark(selectedCfg);
+    void bookmarkAction.run(selectedCfg);
   };
   const [downloadMenu, setDownloadMenu] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -449,16 +455,25 @@ export function BooksShowcase({
     };
   }, [selectedCfg]);
 
-  async function startDownload(kind: 'ebook' | 'audiobook') {
+  // Never auto-retried: each completed download counts toward the limit.
+  const downloadAction = useAsyncAction(
+    async (_ctx, id: string, kind: 'ebook' | 'audiobook', title: string) => {
+      await downloadBook(id, kind, `${title || 'book'}.${kind === 'ebook' ? 'pdf' : 'mp3'}`);
+      return id;
+    },
+    {
+      errorFallback: 'Download failed. Please try again.',
+      onSuccess: (id) => {
+        // Refresh "downloads left"; the download itself already succeeded.
+        if (id) getBookAccess(id).then(setAccess).catch(() => {});
+      },
+    },
+  );
+
+  function startDownload(kind: 'ebook' | 'audiobook') {
     if (!selectedCfg) return;
-    setContentMsg('Preparing download…');
-    try {
-      await downloadBook(selectedCfg.id, kind, `${selectedCfg.title || 'book'}.${kind === 'ebook' ? 'pdf' : 'mp3'}`);
-      setContentMsg('');
-      getBookAccess(selectedCfg.id).then(setAccess).catch(() => {});
-    } catch (err) {
-      setContentMsg(err instanceof Error ? err.message : 'Download failed.');
-    }
+    setContentMsg('');
+    void downloadAction.run(selectedCfg.id, kind, selectedCfg.title || '');
   }
 
   useEffect(() => {
@@ -2065,14 +2080,21 @@ export function BooksShowcase({
                     {!canReadEbook && <span className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500" />}
                   </button>
                   <div className="relative shrink-0">
-                    <button
-                      type="button"
+                    <ActionButton
+                      action={downloadAction}
                       disabled={!!buyLoading || (!hasEbook && !hasAudio)}
                       onClick={() => setDownloadMenu((v) => !v)}
+                      loadingLabel="Downloading…"
+                      successLabel="Downloaded"
+                      errorLabel="Download"
+                      errorPlacement="none"
+                      retryPlacement="none"
+                      aria-haspopup="menu"
+                      aria-expanded={downloadMenu}
                       className="inline-flex h-[54px] items-center justify-center rounded-full bg-[var(--bs-pink)] px-5 text-[16.5px] font-semibold text-[var(--bs-navy)] hover:scale-[1.04] disabled:opacity-60 @max-[760px]:h-12"
                     >
                       {buyLoading ? '…' : 'Download'}
-                    </button>
+                    </ActionButton>
                     {downloadMenu && (
                       <div className="absolute bottom-[110%] left-0 z-30 min-w-[200px] rounded-2xl bg-[#141a32] p-2 text-left text-sm text-white shadow-xl ring-1 ring-white/10">
                         <p className="px-2 pb-1 text-[11px] uppercase tracking-wider text-white/40">Choose a file</p>
@@ -2168,14 +2190,31 @@ export function BooksShowcase({
                   {contentMsg && (
                     <p className="basis-full px-2 text-[13px] font-semibold text-[var(--bs-pink)]" role="status">{contentMsg}</p>
                   )}
+                  <ActionStatus action={bookmarkAction.state === 'retrying' ? bookmarkAction : downloadAction} className="basis-full px-2 text-[13px] font-semibold text-[var(--bs-lav)]" />
+                  {downloadAction.errorText && (
+                    <p className="basis-full px-2 text-[13px] font-semibold text-[var(--bs-pink)]" role="alert">
+                      {downloadAction.errorText}{' '}
+                      <button type="button" className="underline" onClick={() => setDownloadMenu(true)}>
+                        Try again
+                      </button>
+                    </p>
+                  )}
+                  {bookmarkAction.errorText && (
+                    <p className="basis-full px-2 text-[13px] font-semibold text-[var(--bs-pink)]" role="alert">
+                      {bookmarkAction.errorText}
+                    </p>
+                  )}
                 </>
               );
             })()}
-            <button
-              type="button"
+            <ActionButton
+              compact
+              action={bookmarkAction}
               aria-label={bookmarked ? 'Remove from bookmarks' : 'Save to bookmarks'}
               aria-pressed={bookmarked}
               onClick={handleSave}
+              errorPlacement="none"
+              loadingLabel={bookmarked ? 'Removing bookmark…' : 'Saving bookmark…'}
               className={`inline-flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-full ${
                 bookmarked ? 'bg-[var(--bs-pink)] text-[var(--bs-navy)]' : 'bg-[#242c50] text-[var(--bs-lav)]'
               }`}
@@ -2183,7 +2222,7 @@ export function BooksShowcase({
               <svg viewBox="0 0 24 24" fill={bookmarked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.7} className="h-5 w-5">
                 <path d="M7 3h10v18l-5-4-5 4z" />
               </svg>
-            </button>
+            </ActionButton>
           </div>
         </div>
         </div>

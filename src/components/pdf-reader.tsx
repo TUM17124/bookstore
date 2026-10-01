@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { getToken, getReaderManifest, getReaderPageText, ContentError, type ReaderManifest } from '@/lib/api'
 import { getPdfProgress, savePdfProgress, getPdfNotes, addPdfNote, updatePdfNote, deletePdfNote, type PdfNoteRow } from '@/lib/api'
+import { useAsyncAction } from '@/hooks/use-async-action'
+import { ActionButton } from '@/components/ui/action-button'
+import { newIdempotencyKey } from '@/lib/auth-fetch'
 import {
   notesStorageKey,
   normalizeNoteText,
@@ -350,7 +353,6 @@ export function PdfReader({
   const [creditsOpen, setCreditsOpen] = useState(false)
   const [creditQuote, setCreditQuote] = useState<TtsCreditQuote | null>(null)
   const [creditAmount, setCreditAmount] = useState('')
-  const [creditBusy, setCreditBusy] = useState(false)
   const [creditError, setCreditError] = useState('')
   const creditQuoteTimerRef = useRef<number | null>(null)
   const [usageNotice, setUsageNotice] = useState('')
@@ -955,15 +957,17 @@ export function PdfReader({
     }
     try {
       let saved: PdfNoteRow | null = null
+      const call = { idempotencyKey: newIdempotencyKey() }
       if (existing && /^\d+$/.test(existing.id)) {
         try {
-          saved = await updatePdfNote(existing.id, row.page, row.quote, row.thought)
-        } catch {
-          await deletePdfNote(existing.id).catch(() => {})
-          saved = await addPdfNote(bookId, row.page, row.quote, row.thought)
+          saved = await updatePdfNote(existing.id, row.page, row.quote, row.thought, call)
+        } catch (err) {
+          if ((err as { status?: number }).status !== 404) throw err
+          // Gone server-side: save it again as a new note.
+          saved = await addPdfNote(bookId, row.page, row.quote, row.thought, { idempotencyKey: newIdempotencyKey() })
         }
       } else {
-        saved = await addPdfNote(bookId, row.page, row.quote, row.thought)
+        saved = await addPdfNote(bookId, row.page, row.quote, row.thought, call)
       }
       const id = String(saved?.id || row.id)
       const swapped = next.map((item) => (item.id === row.id ? { ...item, id } : item))
@@ -971,7 +975,7 @@ export function PdfReader({
       writeStoredThoughts(bookId, url, swapped)
       setNoteMsg('')
     } catch {
-      setNoteMsg('Saved on this device.')
+      setNoteMsg("Saved on this device only — couldn't reach PlugYard, so it isn't on your account yet. Open the note and save it again to retry.")
     }
     setSavingNote(false)
   }
@@ -1004,7 +1008,17 @@ export function PdfReader({
     setThoughts(next)
     writeStoredThoughts(bookId, url, next)
     if (draft?.id === row.id) setDraft(null)
-    if (/^\d+$/.test(row.id)) void deletePdfNote(row.id).catch(() => {})
+    if (/^\d+$/.test(row.id)) {
+      deletePdfNote(row.id, { idempotencyKey: newIdempotencyKey() }).catch(() => {
+        // Put it back: it still exists on the server and would reappear.
+        setThoughts((cur) => {
+          const restored = cur.some((item) => item.id === row.id) ? cur : [...cur, row]
+          writeStoredThoughts(bookId, url, restored)
+          return restored
+        })
+        setNoteMsg("Couldn't delete that note. Check your connection and try again.")
+      })
+    }
   }
 
   useEffect(() => {
@@ -1841,7 +1855,23 @@ export function PdfReader({
     }, 250)
   }
 
-  async function startCreditCheckout() {
+  const creditCheckout = useAsyncAction(
+    async (ctx, amount: string) => {
+      const q = await quoteTtsCredits(amount)
+      if (q) setCreditQuote(q)
+      try { sessionStorage.setItem('plugyard-return', nextPath) } catch {}
+      return buyTtsCredits(amount, nextPath, ctx)
+    },
+    {
+      successMs: 60_000, // "Redirecting…" while leaving for Paystack
+      errorFallback: 'Could not start checkout. Please try again.',
+      onSuccess: (res) => {
+        if (res?.checkout_url) window.location.href = res.checkout_url
+      },
+    },
+  )
+
+  function startCreditCheckout() {
     setCreditError('')
     if (!loggedIn) {
       setCreditError('Log in to buy credits.')
@@ -1852,17 +1882,7 @@ export function PdfReader({
       setCreditError('Enter an amount.')
       return
     }
-    setCreditBusy(true)
-    try {
-      const q = await quoteTtsCredits(amount)
-      if (q) setCreditQuote(q)
-      try { sessionStorage.setItem('plugyard-return', nextPath) } catch {}
-      const res = await buyTtsCredits(amount, nextPath)
-      window.location.href = res.checkout_url
-    } catch (err: unknown) {
-      setCreditError(err instanceof Error ? err.message : 'Could not start checkout.')
-      setCreditBusy(false)
-    }
+    void creditCheckout.run(String(amount))
   }
 
   function renderClickablePage(pageNum: number, text: string) {
@@ -2342,12 +2362,21 @@ export function PdfReader({
               className="mt-1 h-10 w-full rounded-lg border border-black/15 bg-white px-3 text-sm text-black"
             />
             <p className="mt-2 text-sm font-semibold text-black">Your purchased robot-reader credit balance will update automatically after payment.</p>
-            {creditError ? <p className="mt-2 text-[12px] font-semibold text-red-600">{creditError}</p> : null}
+            {creditError || creditCheckout.errorText ? (
+              <p role="alert" className="mt-2 text-[12px] font-semibold text-red-600">{creditError || creditCheckout.errorText}</p>
+            ) : null}
             <div className="mt-4 flex gap-2">
               <button type="button" onClick={() => setCreditsOpen(false)} className="h-10 flex-1 rounded-full bg-black/10 text-sm font-bold text-black">Close</button>
-              <button type="button" onClick={() => void startCreditCheckout()} disabled={creditBusy} className="h-10 flex-1 rounded-full bg-[#f591ac] text-sm font-bold text-[#141a32] disabled:opacity-50">
-                {creditBusy ? 'Opening pay…' : 'Pay now'}
-              </button>
+              <ActionButton
+                action={creditCheckout}
+                onClick={startCreditCheckout}
+                loadingLabel="Opening pay…"
+                successLabel="Redirecting…"
+                errorPlacement="none"
+                className="h-10 flex-1 rounded-full bg-[#f591ac] text-sm font-bold text-[#141a32] disabled:opacity-50"
+              >
+                Pay now
+              </ActionButton>
             </div>
           </div>
         </div>

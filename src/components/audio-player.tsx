@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { getToken, getAudioStreamUrl, fetchBookDownload, ContentError } from '@/lib/api'
+import { useAsyncAction, type ActionContext } from '@/hooks/use-async-action'
+import { ActionButton } from '@/components/ui/action-button'
 import {
   getAudioProgress,
   saveAudioProgress,
@@ -243,12 +245,10 @@ export function AudioPlayer({
   const [resumeAt, setResumeAt] = useState(0)
    const [noteText, setNoteText] = useState('')
   const [notes, setNotes] = useState<Array<{ id: number; position: number; note: string }>>([])
-  const [savingNote, setSavingNote] = useState(false)
   const [editingNote, setEditingNote] = useState<{
     id: number
     position: number
   } | null>(null)
-  const [offlineBusy, setOfflineBusy] = useState(false)
   const [offlineMsg, setOfflineMsg] = useState('')
   const [shakeMsg, setShakeMsg] = useState('')
 
@@ -532,45 +532,46 @@ export function AudioPlayer({
     else a.pause()
   }
 
-    async function markMoment() {
+  type NoteRow = { id: number; position: number; note: string }
+
+  // Add/update note: idempotent server-side, retried with ONE key.
+  const noteSave = useAsyncAction(
+    async (
+      ctx: ActionContext,
+      text: string,
+      editing: { id: number; position: number } | null,
+      position: number,
+    ): Promise<{ row: NoteRow; replaces: number | null }> => {
+      if (editing) {
+        try {
+          return { row: (await updateAudioNote(editing.id, text, editing.position, ctx)) as NoteRow, replaces: editing.id }
+        } catch (err) {
+          if ((err as { status?: number }).status !== 404) throw err
+          // The note vanished server-side: save it again as a new one.
+          return { row: (await addAudioNote(bookId, editing.position, text, ctx)) as NoteRow, replaces: editing.id }
+        }
+      }
+      return { row: (await addAudioNote(bookId, position, text, ctx)) as NoteRow, replaces: null }
+    },
+    {
+      errorFallback: 'Could not save note. Try again.',
+      onSuccess: (res) => {
+        if (!res) return
+        setNotes((prev) =>
+          res.replaces != null ? prev.map((n) => (n.id === res.replaces ? res.row : n)) : [...prev, res.row],
+        )
+        if (res.replaces != null) setEditingNote(null)
+        setNoteText('')
+      },
+    },
+  )
+  const savingNote = noteSave.busy
+
+  function markMoment() {
     const a = audioRef.current
     if (!a || !loggedIn || savingNote) return
-    const text = noteText.trim()
-    setSavingNote(true)
-    try {
-      if (editingNote) {
-        let row: { id: number; position: number; note: string }
-        try {
-          row = await updateAudioNote(editingNote.id, text, editingNote.position)
-        } catch {
-          await deleteAudioNote(editingNote.id)
-          row = (await addAudioNote(
-            bookId,
-            editingNote.position,
-            text,
-          )) as { id: number; position: number; note: string }
-        }
-        setNotes((prev) =>
-          prev.map((n) => (n.id === editingNote.id ? row : n)),
-        )
-        setEditingNote(null)
-        setNoteText('')
-      } else {
-        const row = await addAudioNote(bookId, a.currentTime, text)
-        setNotes((prev) => [
-          ...prev,
-          row as { id: number; position: number; note: string },
-        ])
-        setNoteText('')
-      }
-    } catch {
-      setShakeMsg(
-        editingNote
-          ? 'Could not update note. Try again.'
-          : 'Could not save note. Try again.',
-      )
-    }
-    setSavingNote(false)
+    setShakeMsg('')
+    void noteSave.run(noteText.trim(), editingNote, a.currentTime)
   }
 
   function startEditAudioNote(n: { id: number; position: number; note: string }) {
@@ -584,27 +585,32 @@ export function AudioPlayer({
     setNoteText('')
   }
 
-  async function removeAudioNote(id: number) {
+  // Delete: removed from the list right away; put back with a message if
+  // the server says no (it used to just vanish locally on failure).
+  const noteRemove = useAsyncAction(
+    (ctx: ActionContext, n: NoteRow) => deleteAudioNote(n.id, ctx),
+    { successMs: 0, errorFallback: 'Could not delete note. Try again.' },
+  )
+
+  async function removeAudioNote(n: NoteRow) {
     if (!loggedIn) return
-    setNotes((prev) => prev.filter((x) => x.id !== id))
-    if (editingNote?.id === id) {
+    setNotes((prev) => prev.filter((x) => x.id !== n.id))
+    if (editingNote?.id === n.id) {
       setEditingNote(null)
       setNoteText('')
     }
-    try {
-      await deleteAudioNote(id)
-    } catch {
-      setShakeMsg('Could not delete note. Try again.')
+    const ok = await noteRemove.run(n)
+    if (ok === undefined) {
+      // failed (or the player closed mid-request): put the note back
+      setNotes((prev) => (prev.some((x) => x.id === n.id) ? prev : [...prev, n].sort((x, y) => x.position - y.position)))
     }
   }
 
-  async function saveOffline() {
-    if (offlineBusy) return
-    setOfflineBusy(true)
-    setOfflineMsg('Saving offline…')
-    try {
-      // Saving offline is a download: it goes through the download endpoint,
-      // which re-checks the downloadable flag and counts against the limit.
+  // Saving offline is a download: it goes through the download endpoint,
+  // which re-checks the downloadable flag and counts against the limit, so
+  // it is never auto-retried.
+  const offline = useAsyncAction(
+    async () => {
       const { blob } = await fetchBookDownload(bookId, 'audiobook', guestToken)
       const buf = await blob.arrayBuffer()
       const db = await openDb()
@@ -614,16 +620,13 @@ export function AudioPlayer({
         req.onsuccess = () => resolve()
         req.onerror = () => reject(req.error)
       })
-      setOfflineMsg('Saved on this device.')
-    } catch (err) {
-      setOfflineMsg(
-        err instanceof Error
-          ? `Could not save offline (${err.message}).`
-          : 'Could not save offline.',
-      )
-    }
-    setOfflineBusy(false)
-  }
+    },
+    {
+      successMs: 4000,
+      errorFallback: 'Could not save offline. Please try again.',
+      onSuccess: () => setOfflineMsg('Saved on this device.'),
+    },
+  )
 
   const span = dur || Math.max(t + 30, 30)
   const bufPct = Math.min(100, (buffered / span) * 100)
@@ -966,20 +969,16 @@ export function AudioPlayer({
                       disabled={savingNote}
                       className="min-w-0 flex-1 rounded-full bg-white/10 px-3 py-2 text-sm outline-none disabled:opacity-50"
                     />
-                    <button
-                      type="button"
-                      disabled={savingNote}
-                      onClick={() => void markMoment()}
+                    <ActionButton
+                      action={noteSave}
+                      onClick={markMoment}
+                      loadingLabel={editingNote ? 'Updating…' : 'Saving…'}
+                      successLabel="Saved"
+                      errorPlacement="none"
                       className="rounded-full bg-[#f591ac] px-3 py-2 text-sm font-bold text-[#141a32] disabled:opacity-60"
                     >
-                      {savingNote
-                        ? editingNote
-                          ? 'Updating…'
-                          : 'Saving…'
-                        : editingNote
-                          ? 'Update'
-                          : 'Save'}
-                    </button>
+                      {editingNote ? 'Update' : 'Save'}
+                    </ActionButton>
                     {editingNote ? (
                       <button
                         type="button"
@@ -994,6 +993,11 @@ export function AudioPlayer({
                   {editingNote ? (
                     <p className="mt-2 text-center text-[11px] text-[#f591ac]">
                       Editing note at {fmt(editingNote.position)}
+                    </p>
+                  ) : null}
+                  {noteSave.errorText || noteRemove.errorText ? (
+                    <p role="alert" className="mt-2 text-center text-[12px] text-[#f591ac]">
+                      {noteSave.errorText || noteRemove.errorText}
                     </p>
                   ) : null}
                   {/*
@@ -1034,8 +1038,9 @@ export function AudioPlayer({
                           </button>
                           <button
                             type="button"
-                            onClick={() => void removeAudioNote(n.id)}
-                            className="text-white/40"
+                            onClick={() => void removeAudioNote(n)}
+                            disabled={noteRemove.busy}
+                            className="text-white/40 disabled:opacity-40"
                             aria-label="Delete note"
                           >
                             ×
@@ -1060,14 +1065,19 @@ export function AudioPlayer({
             </div>
 
             {downloadable ? (
-              <button
-                type="button"
-                disabled={offlineBusy}
-                onClick={() => void saveOffline()}
+              <ActionButton
+                action={offline}
+                onClick={() => {
+                  setOfflineMsg('')
+                  void offline.run()
+                }}
+                loadingLabel="Saving offline…"
+                successLabel="Saved offline"
+                errorClassName="text-center text-[12px] text-[#f591ac]"
                 className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold disabled:opacity-60"
               >
-                {offlineBusy ? 'Saving offline…' : 'Save offline on this device'}
-              </button>
+                Save offline on this device
+              </ActionButton>
             ) : (
               <p className="text-center text-[12px] text-white/40">
                 Offline saving is off for this audiobook.

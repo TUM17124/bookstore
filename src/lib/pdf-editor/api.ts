@@ -9,6 +9,7 @@ import { bakedElements, type BakedElement } from "./document-persistence";
 
 import type { DocumentObject } from "@giga-pdf/types";
 import { getAuthToken, invalidateAuthToken, ensureFreshAuthToken } from "./auth-token";
+import { authFetch, newIdempotencyKey } from "@/lib/auth-fetch";
 import {
   uploadWithProgress,
   type UploadProgressEvent,
@@ -195,59 +196,29 @@ class APIClient {
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
 
-    const headers: HeadersInit = {
-      ...options.headers,
-    };
-
+    const headers = new Headers(options.headers || {});
     // Don't set Content-Type for FormData (browser will set it with boundary)
-    if (!(options.body instanceof FormData)) {
-      (headers as Record<string, string>)["Content-Type"] = "application/json";
+    if (!(options.body instanceof FormData) && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
     }
 
-    // Fetch JWT from the app's auth store (in-memory cache, no sessionStorage).
-    // The Python/Django backends require Authorization: Bearer <jwt>.
-    // `ensureFreshAuthToken` (not the bare getToken) so an expired 1h access
-    // token is refreshed from the refresh token BEFORE the request goes out -
-    // previously a stale token just produced a 401 round-trip on every call.
-    const token = await ensureFreshAuthToken();
-    if (token) {
-      (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
-    }
-
-    let response = await fetch(url, {
+    // Part A: through authFetch — Bearer token (refreshed first when expired,
+    // ONE shared refresh on 401), automatic retry of transient failures
+    // (network, 429/502/503/504). Writes carry an Idempotency-Key, the same
+    // on every retry of this call; the backend lists these editor endpoints
+    // in shop/idempotency.py, so a retried create can't duplicate an element.
+    // No timeout: document downloads and large saves can legitimately take
+    // longer than any fixed limit.
+    const method = (options.method || "GET").toUpperCase();
+    const isWrite = method !== "GET" && method !== "HEAD";
+    // Failures throw AuthFetchError, which carries the HTTP `status` that
+    // withRetry and callers branch on (404 on parsed-only elements, etc.).
+    const response = await authFetch(url, {
       ...options,
       headers,
-      credentials: "include",
+      timeoutMs: 0,
+      idempotencyKey: isWrite ? newIdempotencyKey() : undefined,
     });
-
-    // On 401, invalidate the stale access token and retry once (it may have
-    // expired mid-flight, or the refresh may have been skipped above).
-    if (response.status === 401 && token) {
-      invalidateAuthToken();
-      const freshToken = await ensureFreshAuthToken();
-      if (freshToken && freshToken !== token) {
-        (headers as Record<string, string>)["Authorization"] = `Bearer ${freshToken}`;
-        response = await fetch(url, {
-          ...options,
-          headers,
-          credentials: "include",
-        });
-      }
-    }
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      // Attach status to the Error so withRetry's NON_RETRYABLE_STATUSES
-      // check can short-circuit 4xx (especially 404 spam from updateElement
-      // on parsed-only elements that have no Redis row). Without this, the
-      // retry helper falls back to "treat as transient" and triples the
-      // console noise on every text edit.
-      const err = new Error(
-        error.detail || error.message || `HTTP ${response.status}`,
-      ) as Error & { status: number };
-      err.status = response.status;
-      throw err;
-    }
 
     // Handle empty responses (204 No Content)
     if (response.status === 204) {

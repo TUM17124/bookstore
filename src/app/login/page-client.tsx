@@ -4,6 +4,10 @@ import { Suspense, useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { login } from '@/lib/api'
+import { useAsyncAction } from '@/hooks/use-async-action'
+import { ActionButton } from '@/components/ui/action-button'
+import { errorMessage } from '@/lib/auth-fetch'
+import { UserError } from '@/lib/user-error'
 import { setStoredUser } from '@/lib/auth-client'
 import { GoogleLoginButton } from '@/components/google-login-button'
 import { LegalAcceptTick } from '@/components/legal-accept'
@@ -35,7 +39,6 @@ function LoginInner() {
   const [accepted, setAccepted] = useState(false)
   const [legalRequired, setLegalRequired] = useState(false)
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
 
   const [referralCode, setReferralCodeState] = useState('')
 
@@ -63,35 +66,37 @@ function LoginInner() {
     router.refresh()
   }
 
-  async function onSubmit(e: React.FormEvent) {
+  // Login is never auto-retried (its response carries tokens, which the
+  // server must not store for replay); a failure shows the reason and the
+  // button becomes "Try again".
+  const signIn = useAsyncAction(
+    async (ctx, em: string, pw: string, acc: boolean) => {
+      const data = await login(em, pw, acc, ctx)
+      if (!data.access) throw new UserError('Login failed.')
+      return data
+    },
+    {
+      successMs: 60_000, // stays "Signed in" while we navigate away
+      onSuccess: (data) => {
+        setLegalRequired(false)
+        finishLogin(data.user?.email || email, data.user?.name || data.user?.email)
+      },
+      onError: (err) => {
+        const message = errorMessage(err, 'Login failed. Please try again.')
+        if (isLegalError(message)) {
+          setLegalRequired(true)
+          setError(accepted ? message : 'You cannot continue until you accept the current legal terms.')
+        } else {
+          setError(message)
+        }
+      },
+    },
+  )
+
+  function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    setBusy(true)
-
-    try {
-      const data = await login(email, password, accepted)
-      if (!data.access) throw new Error('Login failed.')
-
-      setLegalRequired(false)
-      finishLogin(
-        data.user?.email || email,
-        data.user?.name || data.user?.email,
-      )
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Login failed'
-      if (isLegalError(message)) {
-        setLegalRequired(true)
-        setError(
-          accepted
-            ? message
-            : 'You cannot continue until you accept the current legal terms.',
-        )
-      } else {
-        setError(message)
-      }
-    } finally {
-      setBusy(false)
-    }
+    void signIn.run(email, password, accepted)
   }
 
   return (
@@ -171,14 +176,21 @@ function LoginInner() {
           onChange={(e) => setPassword(e.target.value)}
           className="rounded-lg border border-foreground/15 bg-transparent px-3 py-2"
         />
-        {error && <p className="text-sm text-red-500">{error}</p>}
-        <button
+        {error && (
+          <p className="text-sm text-red-500" role="alert">
+            {error}
+          </p>
+        )}
+        <ActionButton
           type="submit"
-          disabled={busy}
-          className="rounded-full bg-foreground px-4 py-2 font-medium text-background disabled:opacity-50"
+          action={signIn}
+          loadingLabel="Logging in…"
+          successLabel="Signed in"
+          errorPlacement="none"
+          className="rounded-full bg-foreground px-4 py-2 font-medium text-background disabled:opacity-50 aria-busy:opacity-80"
         >
-          {busy ? '…' : 'Log in'}
-        </button>
+          Log in
+        </ActionButton>
       </form>
 
       <p className="mt-4 text-sm text-foreground/60">

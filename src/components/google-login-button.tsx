@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Loader2 } from 'lucide-react'
 import { googleLogin, setTokens, clearTokens } from '@/lib/api'
 import { setStoredUser } from '@/lib/auth-client'
 import { bindPushToAccount } from '@/lib/push'
 import { clearReferralCode } from '@/lib/referral'
+import { errorMessage } from '@/lib/auth-fetch'
 
 declare global {
   interface Window {
@@ -55,6 +57,10 @@ export function GoogleLoginButton({
   onErrorRef.current = onError
   referralRef.current = referralCode
 
+  // Google draws the button itself (in its own iframe), so we can't put a
+  // spinner in it; show the in-flight sign-in next to it instead.
+  const [signingIn, setSigningIn] = useState(false)
+
   useEffect(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
 
@@ -78,6 +84,7 @@ export function GoogleLoginButton({
         client_id: clientId,
 
         callback: async (resp: { credential: string }) => {
+          setSigningIn(true)
           try {
             /*
              * First try WITHOUT sending legal acceptance.
@@ -117,10 +124,8 @@ export function GoogleLoginButton({
 
             onDoneRef.current()
           } catch (err) {
-            const message =
-              err instanceof Error
-                ? err.message
-                : 'Google login failed.'
+            setSigningIn(false)
+            const message = errorMessage(err, 'Google login failed. Please try again.')
 
             /*
              * Do not leave a partially authenticated session behind
@@ -168,11 +173,19 @@ export function GoogleLoginButton({
   }, [])
 
   return (
-    <div className="flex w-full justify-center overflow-hidden bg-transparent">
+    <div className="flex w-full flex-col items-center overflow-hidden bg-transparent" aria-busy={signingIn || undefined}>
       <div
         id="google-btn"
-        className="flex min-h-[44px] w-full justify-center bg-transparent"
+        className={`flex min-h-[44px] w-full justify-center bg-transparent ${signingIn ? 'pointer-events-none opacity-60' : ''}`}
       />
+      <p role="status" aria-live="polite" className={signingIn ? 'mt-2 inline-flex items-center gap-1.5 text-sm text-foreground/60' : 'sr-only'}>
+        {signingIn ? (
+          <>
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+            Signing you in with Google…
+          </>
+        ) : null}
+      </p>
     </div>
   )
 }

@@ -8,6 +8,8 @@ import { PdfReader } from '@/components/pdf-reader'
 import { AudioPlayer } from '@/components/audio-player'
 import { GuestLinkRequestForm } from '@/components/guest-link-request-form'
 import { useLoggedIn } from '@/lib/use-logged-in'
+import { useAsyncAction } from '@/hooks/use-async-action'
+import { ActionButton } from '@/components/ui/action-button'
 
 function Row({
   p,
@@ -19,23 +21,12 @@ function Row({
   onListen?: () => void
 }) {
   const isAudio = p.product_type === 'audiobook'
-  const [downloading, setDownloading] = useState(false)
-  const [msg, setMsg] = useState('')
-
-  async function handleDownload() {
-    if (downloading) return
-    setDownloading(true)
-    setMsg('')
-    try {
-      const ext = isAudio ? 'mp3' : 'pdf'
-      // Server re-checks purchase, downloadable flag and download limit.
-      await downloadBook(p.book_id, isAudio ? 'audiobook' : 'ebook', `book-${p.book_id}.${ext}`)
-    } catch (err) {
-      setMsg(err instanceof Error ? err.message : 'Download failed.')
-    } finally {
-      setDownloading(false)
-    }
-  }
+  // Server re-checks purchase, downloadable flag and download limit. Never
+  // auto-retried: each completed download counts toward the limit.
+  const download = useAsyncAction(
+    () => downloadBook(p.book_id, isAudio ? 'audiobook' : 'ebook', `book-${p.book_id}.${isAudio ? 'mp3' : 'pdf'}`),
+    { errorFallback: 'Download failed. Please try again.' },
+  )
 
   return (
     <li className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-foreground/10 px-3 py-2 text-sm">
@@ -66,17 +57,19 @@ function Row({
         {p.downloadable === false ? (
           <span className="text-xs font-semibold text-foreground/40">Download off</span>
         ) : (
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled={downloading}
+          <ActionButton
+            action={download}
+            onClick={() => void download.run()}
+            loadingLabel="Downloading…"
+            successLabel="Downloaded"
+            errorPlacement="none"
             className="text-xs font-semibold underline disabled:opacity-50"
           >
-            {downloading ? 'Downloading…' : 'Download'}
-          </button>
+            Download
+          </ActionButton>
         )}
       </span>
-      {msg ? <p className="basis-full text-xs text-red-500" role="alert">{msg}</p> : null}
+      {download.errorText ? <p className="basis-full text-xs text-red-500" role="alert">{download.errorText}</p> : null}
     </li>
   )
 }

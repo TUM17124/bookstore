@@ -9,6 +9,8 @@ import {
   getComments,
   postComment,
 } from '@/lib/api';
+import { useAsyncAction } from '@/hooks/use-async-action';
+import { ActionButton, ActionStatus, retryLabel } from '@/components/ui/action-button';
 
 type User = {
   id: string;
@@ -113,7 +115,6 @@ export function BookReviews({
   const [comments, setComments] = useState<Comment[]>([]);
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [auth, setAuth] = useState(false);
 
@@ -172,36 +173,44 @@ export function BookReviews({
     return { roots, byParent };
   }, [comments]);
 
-  async function rate(value: number) {
-    if (!getToken()) {
-  window.location.href = authHref('login', bookId)
-  return
-}
-    setBusy(true);
-    setError('');
-    try {
-      await postRating(bookId, value);
+  // Both are idempotent server-side: retried with ONE key, so a dropped
+  // connection can't post the same comment twice.
+  const rateAction = useAsyncAction(
+    async (ctx, value: number) => {
+      await postRating(bookId, value, ctx);
       await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save rating');
+    },
+    { errorFallback: 'Failed to save rating. Please try again.' },
+  );
+  const commentAction = useAsyncAction(
+    async (ctx, body: string, parentId: string | null) => {
+      await postComment(bookId, body, parentId, ctx);
+      await load();
+    },
+    {
+      errorFallback: 'Failed to post. Please try again.',
+      onSuccess: () => {
+        setText('');
+        setReplyTo(null);
+      },
+    },
+  );
+  const busy = rateAction.busy || commentAction.busy;
+
+  function rate(value: number) {
+    if (!getToken()) {
+      window.location.href = authHref('login', bookId);
+      return;
     }
-    setBusy(false);
+    setError('');
+    void rateAction.run(value);
   }
 
-  async function submitComment(e: React.FormEvent) {
+  function submitComment(e: React.FormEvent) {
     e.preventDefault();
     if (!canComment || !text.trim()) return;
-    setBusy(true);
     setError('');
-    try {
-      await postComment(bookId, text, replyTo?.id ?? null);
-      setText('');
-      setReplyTo(null);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to post');
-    }
-    setBusy(false);
+    void commentAction.run(text, replyTo?.id ?? null);
   }
 
   function CommentCard({ c, depth = 0 }: { c: Comment; depth?: number }) {
@@ -277,12 +286,36 @@ export function BookReviews({
             </p>
             <div className="mt-4 flex flex-col items-center gap-2">
               <p className="text-[13px] text-[#c9d0ee]/70">Your rating</p>
-              <Stars
-                value={myRating ?? 0}
-                interactive={auth}
-                disabled={busy}
-                onPick={rate}
-              />
+              <div aria-busy={rateAction.busy || undefined}>
+                <Stars
+                  value={myRating ?? 0}
+                  interactive={auth}
+                  disabled={busy}
+                  onPick={rate}
+                />
+              </div>
+              <p role="status" aria-live="polite" className="min-h-[1.25rem] text-[12px] text-[#c9d0ee]/70">
+                {rateAction.state === 'loading'
+                  ? 'Saving your rating…'
+                  : rateAction.state === 'retrying'
+                    ? retryLabel(rateAction.retry)
+                    : rateAction.state === 'success'
+                      ? 'Rating saved'
+                      : ''}
+              </p>
+              {rateAction.errorText ? (
+                <p role="alert" className="text-center text-[13px] text-red-500">
+                  {rateAction.errorText}{' '}
+                  <button
+                    type="button"
+                    className="font-semibold underline"
+                    onClick={() => myRating != null && rate(myRating)}
+                    hidden={myRating == null}
+                  >
+                    Try again
+                  </button>
+                </p>
+              ) : null}
               {!auth && (
                 <p className="text-[13px] text-[#c9d0ee]/70">
                   <Link
@@ -375,6 +408,7 @@ export function BookReviews({
               Select a star rating above to comment
             </p>
           ) : (
+            <>
             <form onSubmit={submitComment} className="flex items-end gap-2">
               <Avatar user={{ name: 'You', email: null }} />
               <div className="min-w-0 flex-1 rounded-2xl border border-foreground/10 bg-foreground/[0.04] px-3 py-2 focus-within:ring-2 focus-within:ring-[#f591ac]/30">
@@ -392,14 +426,26 @@ export function BookReviews({
                   }}
                 />
               </div>
-              <button
+              <ActionButton
                 type="submit"
-                disabled={busy || !text.trim()}
+                action={commentAction}
+                disabled={rateAction.busy || !text.trim()}
+                loadingLabel="Posting…"
+                successLabel="Posted"
+                errorPlacement="none"
+                retryPlacement="none"
                 className="mb-0.5 shrink-0 rounded-full bg-[#141a32] px-4 py-2 text-[14px] font-bold text-[#fdfbf4] shadow-sm hover:brightness-110 disabled:opacity-40 dark:bg-[#f591ac] dark:text-[#141a32]"
               >
                 {replyTo ? 'Reply' : 'Post'}
-              </button>
+              </ActionButton>
             </form>
+            <ActionStatus action={commentAction} className="mt-2 text-center text-[13px] text-foreground/60" />
+            {commentAction.errorText ? (
+              <p role="alert" className="mt-2 text-center text-[13px] text-red-500">
+                {commentAction.errorText}
+              </p>
+            ) : null}
+            </>
           )}
         </div>
       </div>
