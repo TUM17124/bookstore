@@ -2,8 +2,13 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { BooksShowcase, type BookCfg } from "@/components/ui/books-showcase"
-import { getBooks, getBook, asBookList, type Paginated, type ApiBook } from "@/lib/api"
+import Link from "next/link"
+import { BooksShowcase, type BookCfg, type ShowcaseSection } from "@/components/ui/books-showcase"
+import { getBooks, getBook, asBookList, getHomeSections, type Paginated, type ApiBook, type CategoryInfo, type SectionBook } from "@/lib/api"
+import { useCategories } from "@/lib/categories"
+import { CategoryChips } from "@/components/category-nav/category-chips"
+import { CategoryBar } from "@/components/category-nav/category-bar"
+import { errorMessage } from "@/lib/auth-fetch"
 import { OfferMarquee } from "@/components/offer-marquee"
 import { searchTrack } from '@/lib/api'
 
@@ -42,6 +47,83 @@ function toCfg(b: ApiBook): BookCfg {
     previewPages: b.previewPages != null ? Number(b.previewPages) : 4,
     audioUrl: b.audioUrl || undefined,
     pdfUrl: b.pdfUrl || undefined,
+    ratingAvg: (b as SectionBook).rating_avg,
+    ratingCount: (b as SectionBook).rating_count,
+  }
+}
+
+/** Part B: the personalised sections for this page (home or a category).
+ * Refetched when the user logs in/out or changes their profile, so the
+ * personal sections match who is looking. */
+type SectionsResult = {
+  /** Which request this answers (category + reload count). */
+  key: string
+  sections: ShowcaseSection[]
+  info: CategoryInfo | null
+  error: string
+  notFound: boolean
+}
+
+function useHomeSections(category: string, enabled: boolean) {
+  const [result, setResult] = useState<SectionsResult | null>(null)
+  const [nonce, setNonce] = useState(0)
+  const key = `${category}|${nonce}`
+
+  useEffect(() => {
+    if (!enabled) return
+    const ctrl = new AbortController()
+    getHomeSections(category || undefined, { signal: ctrl.signal })
+      .then((page) => {
+        setResult({
+          key,
+          info: page.category,
+          sections: page.sections.map((sec) => ({
+            id: sec.id,
+            title: sec.title,
+            description: sec.description,
+            personal: sec.personal,
+            why: sec.why,
+            books: sec.books.map(toCfg),
+          })),
+          error: "",
+          notFound: false,
+        })
+      })
+      .catch((err) => {
+        if (ctrl.signal.aborted) return
+        if ((err as { status?: number }).status === 404) {
+          setResult({ key, sections: [], info: null, error: "", notFound: true })
+          return
+        }
+        // Keep what's on screen; say it failed.
+        setResult((prev) => ({
+          key,
+          sections: prev?.sections ?? [],
+          info: prev?.info ?? null,
+          error: errorMessage(err, "Couldn't load the sections."),
+          notFound: false,
+        }))
+      })
+    return () => ctrl.abort()
+  }, [category, enabled, key])
+
+  useEffect(() => {
+    const again = () => setNonce((n) => n + 1)
+    window.addEventListener("auth-changed", again)
+    return () => window.removeEventListener("auth-changed", again)
+  }, [])
+
+  const retry = () => setNonce((n) => n + 1)
+  if (!enabled) return { sections: [], info: null, error: "", notFound: false, retry }
+  // While a new request is in flight the last sections stay (no flash),
+  // but an old error / not-found doesn't.
+  const current = result?.key === key
+  return {
+    sections: result?.sections ?? [],
+    info: result?.info ?? null,
+    error: current ? result.error : "",
+    notFound: current ? result.notFound : false,
+    retry,
   }
 }
 
@@ -75,6 +157,8 @@ function HomeInner() {
   const view = (sp.get('view') || '').trim() // read | listen | reviews
 
   const [books, setBooks] = useState<BookCfg[]>([])
+  const home = useHomeSections(category, !q)
+  const { navbar: navCats } = useCategories()
   const [error, setError] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -166,6 +250,52 @@ function HomeInner() {
     router.replace(qs ? `/?${qs}` : "/", { scroll: false })
   }, [router])
 
+  const onSectionBookOpen = useCallback(
+    (book: BookCfg) => {
+      setBooks((prev) => (prev.some((b) => b.id === book.id) ? prev : [...prev, book]))
+      const params = new URLSearchParams(window.location.search)
+      params.set("book", book.id)
+      router.replace(`/?${params.toString()}`, { scroll: false })
+    },
+    [router],
+  )
+
+  const topSlot = q ? null : (
+    <>
+      {/* Phones: swipeable chips (+ "All" sheet). Tablets: the same
+          "Priority + More" bar as the desktop navbar, full width. Sticky
+          under the navbar while the page scrolls. */}
+      <div className="sticky top-0 z-20 -mx-[clamp(16px,4cqw,36px)] mb-5 bg-[var(--bs-bg-light)] px-[clamp(16px,4cqw,36px)] py-1.5 dark:bg-[var(--bs-bg-dark)] lg:hidden">
+        <CategoryChips activeSlug={category} />
+        <div className="hidden md:block">
+          <CategoryBar categories={navCats} activeSlug={category} />
+        </div>
+      </div>
+      {home.info ? (
+        <header className="mb-6">
+          <h1 className="text-[clamp(22px,2.6cqw,32px)] font-extrabold tracking-[-0.01em]">{home.info.label}</h1>
+          {home.info.description ? <p className="mt-1 text-sm opacity-70">{home.info.description}</p> : null}
+        </header>
+      ) : null}
+      {home.notFound ? (
+        <p role="status" className="mb-6 rounded-xl border border-current/15 px-3 py-2 text-sm">
+          This category isn&apos;t available right now.{" "}
+          <Link href="/" className="font-semibold underline">
+            See all books
+          </Link>
+        </p>
+      ) : null}
+      {home.error ? (
+        <p role="alert" className="mb-6 rounded-xl border border-current/15 px-3 py-2 text-sm">
+          {home.error}{" "}
+          <button type="button" className="font-semibold underline" onClick={home.retry}>
+            Try again
+          </button>
+        </p>
+      ) : null}
+    </>
+  )
+
   useEffect(() => {
     if (!selectedBookId || loading) return
     if (books.some((b) => b.id === selectedBookId)) return
@@ -199,6 +329,9 @@ function HomeInner() {
     return (
       <main className="flex min-h-[calc(100dvh-4rem)] flex-col">
         <OfferMarquee />
+        {/* Same category row + header as a full page, so an empty category
+            is never a dead end on phones. */}
+        {topSlot ? <div className="px-[clamp(16px,4vw,36px)] pt-3">{topSlot}</div> : null}
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
           <p>
             {error
@@ -206,7 +339,7 @@ function HomeInner() {
               : q
                 ? `No books found for “${q}”.`
                 : category
-                  ? `No books in “${category}”.`
+                  ? `No books in ${home.info?.label || category} yet.`
                   : "No books yet. Add featured books in Django admin."}
           </p>
           {q || category ? (
@@ -225,6 +358,9 @@ function HomeInner() {
       <div className="home-shelf-stage">
         <BooksShowcase
           books={books}
+          sections={home.sections}
+          onSectionBookOpen={onSectionBookOpen}
+          topSlot={topSlot}
           openBookId={selectedBookId}
           openView={view}
           onNearEnd={onNearEnd}
@@ -236,8 +372,10 @@ function HomeInner() {
               : q
                 ? `Search: ${q}`
                 : category
-                  ? category
-                  : "Bestsellers"
+                  ? `All ${home.info?.label ?? category} books`
+                  : home.sections.length
+                    ? "All books"
+                    : "Bestsellers"
           }
           className="h-full min-h-0 w-full"
         />

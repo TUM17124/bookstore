@@ -9,20 +9,16 @@ import { useAsyncAction } from '@/hooks/use-async-action'
 import { ActionButton } from '@/components/ui/action-button'
 import { AuthFetchError } from '@/lib/auth-fetch'
 import { UserError } from '@/lib/user-error'
+import { useCategories } from '@/lib/categories'
 
-const CATEGORIES = [
-  { value: 'business-compliance', label: 'Business & Compliance' },
-  { value: 'career', label: 'Career' },
-  { value: 'academic', label: 'Academic' },
-  { value: 'personal-finance', label: 'Personal Finance' },
-  { value: 'lifestyle', label: 'Lifestyle' },
-]
 
 function PublishPageInner() {
   const searchParams = useSearchParams()
   const editorDocumentId = searchParams.get('editor_document_id') || ''
 
   const [loggedIn, setLoggedIn] = useState(false)
+  // Admin-defined categories (Django admin → Categories), not a fixed list.
+  const { all: categories } = useCategories()
   const [error, setError] = useState('')
   const [ok, setOk] = useState('')
   const [isFree, setIsFree] = useState(false)
@@ -163,8 +159,8 @@ function PublishPageInner() {
           <option value="" disabled>
             Select a category
           </option>
-          {CATEGORIES.map((c) => (
-            <option key={c.value} value={c.value}>
+          {categories.map((c) => (
+            <option key={c.slug} value={c.slug}>
               {c.label}
             </option>
           ))}

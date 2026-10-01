@@ -14,6 +14,8 @@ import {
   requestAffiliateWithdrawal,
   startEmailChange,
   requestEmailReauth,
+  getPersonalisation,
+  setPersonalisation,
   updateNotificationPrefs,
   type NotificationPrefs,
   type ProStatus,
@@ -227,6 +229,7 @@ const SECTIONS = [
   { id: "profile", label: "Profile" },
   { id: "email", label: "Email" },
   { id: "notifications", label: "Notifications" },
+  { id: "personalisation", label: "Personalisation" },
   { id: "pro", label: "Pro" },
   { id: "affiliate", label: "Affiliate & rewards" },
   { id: "history", label: "History" },
@@ -242,6 +245,7 @@ export default function SettingsPage() {
   const [loggedIn, setLoggedIn] = useState(false)
   const [ready, setReady] = useState(false)
   const [active, setActive] = useState<SectionId>("profile")
+  const [personalise, setPersonaliseState] = useState<boolean | null>(null)
   const [prefs, setPrefs] = useState<NotificationPrefs | null>(null)
   const [deviceSubscribed, setDeviceSubscribed] = useState(false)
   const [proStatus, setProStatus] = useState<ProStatus | null>(null)
@@ -263,13 +267,21 @@ export default function SettingsPage() {
       reload()
       reloadNotificationPrefs()
       getProStatus().then(setProStatus).catch(() => {})
+      getPersonalisation()
+        .then((p) => setPersonaliseState(p.enabled))
+        .catch(() => setPersonaliseState(true))
     }
+    const wanted = new URLSearchParams(window.location.search).get("section")
+    if (wanted && SECTIONS.some((s) => s.id === wanted)) setActive(wanted as SectionId)
     // A profile change here or in another tab: show the server's values.
     const onUserChanged = () => {
       if (!isLoggedIn()) return
       reload()
       reloadNotificationPrefs()
       getProStatus().then(setProStatus).catch(() => {})
+      getPersonalisation()
+        .then((p) => setPersonaliseState(p.enabled))
+        .catch(() => {})
     }
     window.addEventListener("auth-changed", onUserChanged)
     return () => window.removeEventListener("auth-changed", onUserChanged)
@@ -569,6 +581,35 @@ export default function SettingsPage() {
                     {deviceSubscribed ? "Turn off push on this device" : "Turn on push on this device"}
                   </ActionButton>
                 </div>
+              </section>
+            )}
+
+            {active === "personalisation" && (
+              <section className="min-w-0 space-y-4 rounded-xl border p-5">
+                <h2 className="text-xl font-semibold">Personalisation</h2>
+                <p className="text-sm text-foreground/70">
+                  When this is on, the home and category pages include sections picked for you (Continue
+                  reading, Recommended for you, Because you read…, You may want to read this sometime). They
+                  use only what you do on PlugYard: books you open, preview, read, listen to, buy, rate or
+                  bookmark. Nothing from other sites.
+                </p>
+                <label className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">Personalised sections</span>
+                    <span className="block text-xs text-foreground/60">
+                      Off: everyone&apos;s default sections (Trending, New releases, Free books, Offers).
+                    </span>
+                  </span>
+                  <PrefToggle
+                    checked={personalise ?? true}
+                    disabled={personalise === null}
+                    save={async (ctx, enabled) => {
+                      const res = await setPersonalisation(enabled, ctx)
+                      setPersonaliseState(res.enabled)
+                      broadcastAccountChange()
+                    }}
+                  />
+                </label>
               </section>
             )}
 

@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom';
 import { searchTrack, getRatings, getRelatedBooks, getBookAccess, downloadBook, type ApiBook, type BookAccess } from '@/lib/api';
 import { PdfReader } from '@/components/pdf-reader';
 import { AudioPlayer } from '@/components/audio-player';
+import { edgeMask, useScrollEdges } from '@/components/category-nav/use-scroll-edges';
 
 export interface BookCfg {
   id: string;
@@ -45,6 +46,20 @@ export interface BookCfg {
   spineInk?: string;
   spineFont?: string;
   chapters?: string[];
+  /** Part B: rating sent with the section payload, so the card doesn't
+   * fetch it separately (one request per card). */
+  ratingAvg?: number;
+  ratingCount?: number;
+}
+
+/** Part B: one personalised/category section row. */
+export interface ShowcaseSection {
+  id: number;
+  title: string;
+  description: string;
+  personal: boolean;
+  why: string;
+  books: BookCfg[];
 }
 
 export interface BooksShowcaseProps {
@@ -67,6 +82,14 @@ export interface BooksShowcaseProps {
     foregroundDark?: string;
   };
   className?: string;
+  /** Part B: rows above the grid (home: personalised sections; category
+   * page: that category's sections). */
+  sections?: ShowcaseSection[];
+  /** Part B: opened from a section — the page makes sure the book is in
+   * `books` and selects it (?book=id), which opens the 3D view. */
+  onSectionBookOpen?: (book: BookCfg) => void;
+  /** Part B: shown at the top of the grid view (category header, chips). */
+  topSlot?: React.ReactNode;
   onBookSelect?: (book: BookCfg | null) => void;
   onNearEnd?: () => void;
   openBookId?: string;
@@ -112,12 +135,14 @@ function GridBookCard({
 }) {
   const src = coverSrc(book);
   const [broken, setBroken] = useState(false);
-  const [avg, setAvg] = useState(book.stars || 0);
-  const [count, setCount] = useState(0);
+  const hasPayloadRating = book.ratingCount != null;
+  const [avg, setAvg] = useState(hasPayloadRating && book.ratingCount ? Number(book.ratingAvg) || 0 : book.stars || 0);
+  const [count, setCount] = useState(book.ratingCount || 0);
   const spineColor = book.spineBg || book.backBg || '#1c1f26';
   const pageColor = book.edge || '#eee4cf';
 
   useEffect(() => {
+    if (hasPayloadRating) return; // came with the section payload
     let cancelled = false;
     getRatings(book.id)
       .then((r) => {
@@ -134,7 +159,7 @@ function GridBookCard({
     return () => {
       cancelled = true;
     };
-  }, [book.id, book.stars]);
+  }, [book.id, book.stars, hasPayloadRating]);
 
   return (
     <button
@@ -154,7 +179,7 @@ function GridBookCard({
             <div className="bs-book-front" style={{ background: spineColor }}>
               {src && !broken ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={src} alt={book.title} className="h-full w-full object-cover" onError={() => setBroken(true)} />
+                <img src={src} alt={book.title} className="block h-full w-full object-cover" onError={() => setBroken(true)} />
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center px-3 text-center">
                   <span className="line-clamp-4 text-[13px] font-bold leading-snug text-white">{book.title}</span>
@@ -172,7 +197,6 @@ function GridBookCard({
               }}
             />
             <div className="bs-book-top" style={{ background: pageColor }} />
-            <div className="bs-book-bottom" style={{ background: '#d8cdb6' }} />
           </div>
         </div>
 
@@ -220,6 +244,68 @@ function GridBookCard({
 </div>
       </div>
     </button>
+  );
+}
+
+/** Part B: a section row — header, optional "Why am I seeing this?", and a
+ * horizontally scrolling, snap-aligned list of the same book cards. */
+function SectionRow({
+  section,
+  onOpen,
+  spinningId,
+}: {
+  section: ShowcaseSection;
+  onOpen: (book: BookCfg) => void;
+  spinningId?: string | null;
+}) {
+  const [whyOpen, setWhyOpen] = useState(false);
+  const headingId = `bs-section-${section.id}`;
+  // No visible scrollbar; a soft fade on the edge that has more books.
+  const rowRef = useRef<HTMLUListElement | null>(null);
+  const edges = useScrollEdges(rowRef);
+  return (
+    <section aria-labelledby={headingId} className="mb-8">
+      <div className="mb-3 flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id={headingId} className="text-[clamp(17px,1.8cqw,22px)] font-extrabold tracking-[-0.01em] text-current">
+            {section.title}
+          </h2>
+          {section.description ? (
+            <p className="mt-0.5 text-[13px] text-current/60">{section.description}</p>
+          ) : null}
+        </div>
+        {section.personal && section.why ? (
+          <button
+            type="button"
+            onClick={() => setWhyOpen((v) => !v)}
+            aria-expanded={whyOpen}
+            aria-controls={`${headingId}-why`}
+            className="shrink-0 rounded-full px-2.5 py-1 text-[12px] font-semibold text-current/65 underline-offset-2 hover:underline"
+          >
+            Why am I seeing this?
+          </button>
+        ) : null}
+      </div>
+      {section.personal && whyOpen ? (
+        <p id={`${headingId}-why`} className="mb-3 rounded-xl bg-current/[0.06] px-3 py-2 text-[13px] text-current/75">
+          {section.why}{' '}
+          <a href="/settings/?section=personalisation" className="font-semibold underline">
+            Turn off personalisation
+          </a>
+        </p>
+      ) : null}
+      <ul
+        ref={rowRef}
+        style={edgeMask(edges.start, edges.end)}
+        className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain px-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {section.books.map((book) => (
+          <li key={book.id} className="w-[44%] shrink-0 snap-start @min-[520px]:w-[30%] @min-[768px]:w-[200px]">
+            <GridBookCard book={book} spinning={spinningId === book.id} onOpen={() => onOpen(book)} />
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -339,6 +425,9 @@ export function BooksShowcase({
   showDetailPanel = true,
   themeColors,
   className,
+  sections = [],
+  onSectionBookOpen,
+  topSlot,
   onBookSelect,
   onNearEnd,
   openBookId,
@@ -1783,21 +1872,25 @@ export function BooksShowcase({
           perspective: 980px;
           perspective-origin: 50% 42%;
         }
+        /* No vertical tilt (rotateX): it exposed the book's bottom face as a
+           1-2px cream sliver under the cover - on phone-sized cards it read
+           as a thin white line, worst in dark mode / 3x screens (Part B,
+           bug 1). The sideways turn (rotateY) keeps the 3D spine + pages. */
         .bs-book {
           position: relative;
           width: 100%;
           height: 100%;
           transform-style: preserve-3d;
-          transform: rotateX(10deg) rotateY(-26deg);
+          transform: rotateY(-26deg);
           transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
           will-change: transform;
         }
         .group:hover .bs-book,
         .group:focus-visible .bs-book {
-          transform: rotateX(7deg) rotateY(-16deg) translateZ(10px);
+          transform: rotateY(-16deg) translateZ(10px);
         }
         .bs-book-loading {
-          transform: rotateX(10deg) rotateY(-26deg) !important;
+          transform: rotateY(-26deg) !important;
         }
         .bs-book-front,
         .bs-book-spine,
@@ -1815,7 +1908,7 @@ export function BooksShowcase({
             0 14px 28px rgba(0,0,0,0.22),
             6px 10px 18px rgba(0,0,0,0.12),
             inset -10px 0 16px rgba(0,0,0,0.18),
-            inset 0 0 0 1px rgba(255,255,255,0.08);
+            inset 0 0 0 1px rgba(0,0,0,0.12);
         }
         .bs-book-spine {
           top: 0;
@@ -1888,7 +1981,7 @@ export function BooksShowcase({
           .group:hover .bs-book,
           .group:focus-visible .bs-book {
             transition: none;
-            transform: rotateX(10deg) rotateY(-26deg);
+            transform: rotateY(-26deg);
           }
         }
       `}</style>
@@ -1901,6 +1994,15 @@ export function BooksShowcase({
             uiMode === 'opening' && 'pointer-events-none',
           )}
         >
+          {topSlot}
+          {sections.map((section) => (
+            <SectionRow
+              key={section.id}
+              section={section}
+              spinningId={uiMode === 'opening' ? selectedCfg?.id ?? null : null}
+              onOpen={(book) => (onSectionBookOpen ? onSectionBookOpen(book) : openFromGrid(book))}
+            />
+          ))}
           {showNav && (
             <nav className="mb-5 flex items-center justify-between">
               <div className="text-[clamp(20px,2.2cqw,29px)] font-extrabold tracking-[-0.01em] text-current">{navTitle}</div>
@@ -2250,7 +2352,7 @@ export function BooksShowcase({
       )}
 
       {readerOpen && selectedCfg && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
+        <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020] [color-scheme:only_light]">
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
             <button type="button" onClick={() => setReaderOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10">×</button>
             <h2 className="min-w-0 flex-1 truncate text-[16px] font-bold text-white">{selectedCfg.title}</h2>
@@ -2261,7 +2363,7 @@ export function BooksShowcase({
       )}
 
       {previewOpen && selectedCfg && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
+        <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020] [color-scheme:only_light]">
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
             <button type="button" onClick={() => setPreviewOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10">×</button>
             <div className="min-w-0 flex-1">

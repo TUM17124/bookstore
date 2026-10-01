@@ -148,7 +148,7 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem enableColorScheme={false}>
           <BookmarksProvider>
             <PwaRegister />
             <ReferralCapture />
