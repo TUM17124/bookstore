@@ -7,10 +7,6 @@ import { useIsEditorFocusedRoute } from "@/lib/pdf-editor/use-is-editor-focused-
 import {
   Home,
   BookOpen,
-  GraduationCap,
-  Briefcase,
-  Wallet,
-  Heart,
   Search,
   Menu,
   X,
@@ -25,6 +21,7 @@ import {
   User,
   Crown,
   FileEdit,
+  LayoutGrid,
 } from "lucide-react"
 import { BookSearchModal } from "@/components/book-search-modal"
 import { cn } from "@/lib/utils"
@@ -42,7 +39,25 @@ import {
   type AuthUser,
 } from "@/lib/auth-client"
 import { getReferralCode } from "@/lib/referral"
+import { useCategories } from "@/lib/categories"
+import { CategoryBar } from "@/components/category-nav/category-bar"
+import { CategorySheet, openCategorySheet } from "@/components/category-nav/category-sheet"
+import { useSearchParams } from "next/navigation"
 import { getProStatus, getToken, refreshAccessToken, SessionEvictedError, tokenExpiresInMs } from "@/lib/api"
+
+/** The category being viewed (?category=…), for highlighting it. */
+function useActiveCategory() {
+  const sp = useSearchParams()
+  return (sp.get("category") || "").trim()
+}
+
+function NavCategoryBar({ categories }: { categories: Parameters<typeof CategoryBar>[0]["categories"] }) {
+  return <CategoryBar categories={categories} activeSlug={useActiveCategory()} />
+}
+
+function NavCategorySheet() {
+  return <CategorySheet activeSlug={useActiveCategory()} />
+}
 
 const NavLink = ({
   href,
@@ -214,13 +229,9 @@ function NotchNavbarInner({
     void refreshBookmarks?.()
   }
 
-  const categories = [
-    { label: "Business", href: "/?category=business-compliance", icon: Briefcase },
-    { label: "Career", href: "/?category=career", icon: GraduationCap },
-    { label: "Academic", href: "/?category=academic", icon: BookOpen },
-    { label: "Finance", href: "/?category=personal-finance", icon: Wallet },
-    { label: "Lifestyle", href: "/?category=lifestyle", icon: Heart },
-  ]
+  // Admin-defined (Django admin → Categories): which, order, labels,
+  // icons, pinned. Desktop: "Priority + More" bar; phones: chips + sheet.
+  const { navbar: navCategories } = useCategories()
 
   const accountMenu = (
     <div className="py-1">
@@ -341,7 +352,7 @@ function NotchNavbarInner({
           </svg>
         </div>
 
-        <div className="flex h-16 relative z-10 shrink-0 -ml-px max-w-[min(100%,1100px)]">
+        <div className="flex h-16 relative z-10 shrink-0 -ml-px max-w-[min(100%,1100px)] lg:w-[min(calc(100vw-120px),1100px)]">
           <div className="w-[36px] sm:w-[50px] h-full relative shrink-0">
             <div className="absolute inset-0 bg-zinc-50 dark:bg-black" style={{ clipPath: "path('M0 0 H50 V64 C25 64 25 40 0 40 Z')" }} />
             <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 50 64">
@@ -367,19 +378,11 @@ function NotchNavbarInner({
 
                 <NavLink href="/" icon={Home} label="Home" />
 
-                {/* Categories scroll instead of clipping when the row is
-                   too narrow to fit all of them — overflow-hidden here
-                   was silently cutting off the last category link. */}
-                <nav className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto xl:gap-4">
-                  {categories.map((category) => (
-                    <NavLink
-                      key={category.label}
-                      href={category.href}
-                      icon={category.icon}
-                      label={category.label}
-                    />
-                  ))}
-                </nav>
+                {/* "Priority + More": as many categories as fit on one
+                    line, the rest in a More menu (no scrollbar, no wrap). */}
+                <Suspense fallback={<div className="min-w-0 flex-1" />}>
+                  <NavCategoryBar categories={navCategories} />
+                </Suspense>
 
                 <div className="flex gap-1 pl-3 border-l border-foreground/10 shrink-0 items-center">
                   <button
@@ -506,6 +509,9 @@ function NotchNavbarInner({
       <BookSearchModal open={searchOpen} onOpenChange={setSearchOpen} />
 
       <AnimatePresence>
+        <Suspense fallback={null}>
+          <NavCategorySheet />
+        </Suspense>
         {isMobileMenuOpen && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
@@ -520,15 +526,18 @@ function NotchNavbarInner({
                 <span className="font-medium text-foreground/90">Home</span>
               </Link>
 
-              <div className="h-px bg-foreground/10 my-3" />
-              <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-foreground/40">Browse</p>
-
-              {categories.map((category) => (
-                <Link key={category.label} href={category.href} className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
-                  <category.icon className="w-5 h-5 opacity-70 shrink-0" />
-                  <span className="font-medium text-foreground/90">{category.label}</span>
-                </Link>
-              ))}
+              {/* One entry instead of a long list: opens the categories sheet. */}
+              <button
+                type="button"
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors text-left"
+                onClick={() => {
+                  setIsMobileMenuOpen(false)
+                  openCategorySheet()
+                }}
+              >
+                <LayoutGrid className="w-5 h-5 opacity-70" />
+                <span className="font-medium text-foreground/90">Browse categories</span>
+              </button>
 
               <div className="h-px bg-foreground/10 my-3" />
               <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-foreground/40">Library</p>

@@ -4,6 +4,7 @@ import { Suspense } from "react"
 import Link from "next/link"
 import { BookOpen, Mail } from "lucide-react"
 import { useIsEditorFocusedRoute } from "@/lib/pdf-editor/use-is-editor-focused-route"
+import { categoryHref, useCategories } from "@/lib/categories"
 
 const policyLinks = [
   { href: "/terms", label: "Terms & Conditions" },
@@ -12,13 +13,6 @@ const policyLinks = [
   { href: "/refund-policy", label: "Refund Policy" },
 ]
 
-const browseLinks = [
-  { href: "/?category=business-compliance", label: "Business & Compliance" },
-  { href: "/?category=career", label: "Career" },
-  { href: "/?category=academic", label: "Academic" },
-  { href: "/?category=personal-finance", label: "Personal Finance" },
-  { href: "/?category=lifestyle", label: "Lifestyle" },
-]
 
 const toolLinks = [
   { href: "/pro", label: "★ PlugYard Pro" },
@@ -30,6 +24,9 @@ const toolLinks = [
 function SiteFooterInner() {
   const year = new Date().getFullYear()
   const isEditorFocusedRoute = useIsEditorFocusedRoute()
+  // Admin-defined categories (same list as the navbar), not a fixed list.
+  const { navbar } = useCategories()
+  const browseLinks = navbar.map((c) => ({ href: categoryHref(c.slug), label: c.label }))
 
   // The focused editor view is a full-screen app-like tool (own fixed
   // toolbar, fills exactly the viewport below the nav) - the marketing
