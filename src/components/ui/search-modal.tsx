@@ -3,18 +3,12 @@
 import * as React from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
-  Buildings,
-  ChatTeardropText,
   Checks,
-  EnvelopeSimple,
   FileArrowDown,
-  ListPlus,
   MagnifyingGlass,
   Plus,
-  RadioButton,
   ShareFat,
   SlidersHorizontal,
-  Users,
   X,
 } from "@phosphor-icons/react"
 import { cn } from "@/lib/utils"
@@ -82,31 +76,6 @@ export interface SearchModalProps {
 
 const ICON = "h-[18px] w-[18px] text-neutral-400 dark:text-neutral-500"
 
-const DEFAULT_TAGS: SearchTag[] = [
-  { label: "Reactions", icon: <RadioButton className="h-4 w-4" /> },
-  { label: "People", icon: <Users className="h-4 w-4" /> },
-  { label: "Companies", icon: <Buildings className="h-4 w-4" /> },
-]
-
-const DEFAULT_RESULTS: SearchResult[] = [
-  {
-    name: "Jason Woordheart",
-    meta: "jason@dribbble.com",
-    actions: [
-      { icon: <ChatTeardropText className="h-4 w-4" />, label: "Message" },
-      { icon: <ListPlus className="h-4 w-4" />, label: "Add to list" },
-    ],
-  },
-]
-
-const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
-  { label: "Create new task", shortcut: "E" },
-  { label: "Create note", shortcut: "S" },
-  { label: "Add member", shortcut: "R" },
-]
-
-const DEFAULT_FILES: SearchFile[] = [{ name: "Invoice", ext: ".pdf", verified: true }]
-
 function slugFromHref(href?: string): string | undefined {
   if (!href) return undefined
   try {
@@ -124,10 +93,10 @@ function slugFromHref(href?: string): string | undefined {
 
 export function SearchModal({
   placeholder = "Search guides, topics, questions…",
-  tags = DEFAULT_TAGS,
-  results = DEFAULT_RESULTS,
-  quickActions = DEFAULT_QUICK_ACTIONS,
-  files = DEFAULT_FILES,
+  tags = [],
+  results = [],
+  quickActions = [],
+  files = [],
   defaultQuery = "",
   onQueryChange,
   onSelectResult,

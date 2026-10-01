@@ -286,9 +286,19 @@ export async function getBooks(params?: {
   if (params?.page) q.set("page", String(params.page))
   if (params?.pageSize) q.set("page_size", String(params.pageSize))
 
-  const qs = q.toString()
+  const url = `${API}/books/${q.toString() ? `?${q}` : ""}`
   try {
-    const res = await authFetch(`${API}/books/${qs ? `?${qs}` : ""}`, { auth: false })
+    // Logged in: send the token, so the request counts against the user's
+    // own limit, not the per-IP anonymous one shared by everyone behind a
+    // mobile carrier's IP. A dead session must never break the shelf, so a
+    // 401 falls back to the public (anonymous) request.
+    let res: Response
+    try {
+      res = await authFetch(url, { auth: !!getToken() })
+    } catch (err) {
+      if (!(err instanceof AuthFetchError && err.status === 401)) throw err
+      res = await authFetch(url, { auth: false })
+    }
     return await res.json()
   } catch {
     throw new UserError("Failed to load books")
