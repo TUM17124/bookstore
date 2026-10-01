@@ -37,6 +37,8 @@ import {
   getStoredUser,
   isLoggedIn,
   clientLogout,
+  listenForUserChanges,
+  refreshMe,
   type AuthUser,
 } from "@/lib/auth-client"
 import { getReferralCode } from "@/lib/referral"
@@ -111,9 +113,15 @@ function NotchNavbarInner({
   const isEditorFocusedRoute = useIsEditorFocusedRoute()
 
   useEffect(() => {
+    listenForUserChanges()
+    // The profile comes from the server (/api/me/): on page load, and again
+    // whenever the cached copy is only the partial one written at login.
+    void refreshMe()
     const sync = () => {
       if (isLoggedIn()) {
-        setUser(getStoredUser())
+        const stored = getStoredUser()
+        setUser(stored)
+        if (stored && stored.id == null) void refreshMe()
         getProStatus()
           .then((s) => setIsPro(s.is_pro))
           .catch(() => setIsPro(false))

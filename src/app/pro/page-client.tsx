@@ -11,7 +11,7 @@ import {
   confirmProPayment,
   type ProStatus,
 } from '@/lib/api'
-import { isLoggedIn } from '@/lib/auth-client'
+import { broadcastAccountChange, isLoggedIn } from '@/lib/auth-client'
 import { useAsyncAction } from '@/hooks/use-async-action'
 import { ActionButton } from '@/components/ui/action-button'
 
@@ -101,6 +101,7 @@ function ProInner() {
         setStatus((cur) =>
           cur?.subscription ? { is_pro: false, subscription: { ...cur.subscription, status: 'cancelled' } } : cur,
         )
+        broadcastAccountChange()
       },
     },
   )

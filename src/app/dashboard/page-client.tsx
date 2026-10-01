@@ -21,6 +21,7 @@ import { useAsyncAction } from "@/hooks/use-async-action";
 import { ActionButton, ActionStatus } from "@/components/ui/action-button";
 import { errorMessage } from "@/lib/auth-fetch";
 import { UserError } from "@/lib/user-error";
+import { broadcastAccountChange } from "@/lib/auth-client";
 
 const PAYOUT_EVERY_DAYS = 30;
 
@@ -347,6 +348,21 @@ export default function DashboardPage() {
     }
   }, [token]);
 
+  // Payout account changed in another tab (or settings): re-read it.
+  useEffect(() => {
+    if (!token) return;
+    const onAccountChanged = () => {
+      payoutAccount(token)
+        .then((d) => {
+          setPayout(d);
+          setBanks(Array.isArray(d?.banks) ? d.banks : []);
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("auth-changed", onAccountChanged);
+    return () => window.removeEventListener("auth-changed", onAccountChanged);
+  }, [token]);
+
   const byBook = useMemo(() => {
     const m: Record<number, any> = {};
 
@@ -413,6 +429,7 @@ export default function DashboardPage() {
             ? "Payout account updated."
             : "Payout account saved. Earnings are sent every 30 days."
         );
+        broadcastAccountChange();
       },
     }
   );
@@ -451,6 +468,7 @@ export default function DashboardPage() {
         });
         setMsgOk(true);
         setMsg("Payout account deleted.");
+        broadcastAccountChange();
       },
     }
   );

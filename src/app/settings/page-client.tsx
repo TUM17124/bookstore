@@ -17,7 +17,7 @@ import {
   type NotificationPrefs,
   type ProStatus,
 } from "@/lib/api"
-import { clientLogout, isLoggedIn } from "@/lib/auth-client"
+import { broadcastAccountChange, clientLogout, isLoggedIn, setStoredUser, type AuthUser } from "@/lib/auth-client"
 import { splitName } from "@/lib/name"
 import { AffiliateInvite } from "@/components/affiliate-invite"
 import {
@@ -47,7 +47,7 @@ function ActionForm({
   children,
 }: {
   run: (ctx: ActionContext, form: FormData) => Promise<unknown>
-  onDone?: () => void
+  onDone?: (result: unknown) => void
   label: ReactNode
   loadingLabel?: string
   successLabel?: string
@@ -152,6 +152,7 @@ function ProSection({
         if (proStatus?.subscription) {
           onCancelled({ is_pro: false, subscription: { ...proStatus.subscription, status: "cancelled" } })
         }
+        broadcastAccountChange()
       },
     },
   )
@@ -262,6 +263,15 @@ export default function SettingsPage() {
       reloadNotificationPrefs()
       getProStatus().then(setProStatus).catch(() => {})
     }
+    // A profile change here or in another tab: show the server's values.
+    const onUserChanged = () => {
+      if (!isLoggedIn()) return
+      reload()
+      reloadNotificationPrefs()
+      getProStatus().then(setProStatus).catch(() => {})
+    }
+    window.addEventListener("auth-changed", onUserChanged)
+    return () => window.removeEventListener("auth-changed", onUserChanged)
   }, [])
 
   const pushToggle = useAsyncAction(
@@ -279,6 +289,14 @@ export default function SettingsPage() {
       },
     },
   )
+
+  /** A profile save succeeded: publish the user the server returned to every
+   * part of the UI, in this tab and in other open tabs. */
+  const publishUser = (res: unknown) => {
+    const user = (res as { user?: AuthUser } | null)?.user
+    if (user?.email) setStoredUser(user)
+    else reload()
+  }
 
   if (!ready) {
     return (
@@ -383,12 +401,13 @@ export default function SettingsPage() {
                     const [first, last] = splitName(String(f.get("name")))
                     return changeName(first, last, ctx)
                   }}
-                  onDone={reload}
+                  onDone={publishUser}
                   label="Save name"
                   className="flex flex-col gap-2 sm:flex-row"
                   buttonClassName="w-full rounded bg-black px-4 py-2 text-white sm:w-auto"
                 >
                   <input
+                    key={`name-${data.user.first_name}-${data.user.last_name}`}
                     name="name"
                     defaultValue={[data.user.first_name, data.user.last_name].filter(Boolean).join(" ") || data.user.name || ""}
                     placeholder="Full name"
@@ -398,12 +417,12 @@ export default function SettingsPage() {
                 </ActionForm>
                 <ActionForm
                   run={(ctx, f) => changeUsername(String(f.get("username")), ctx)}
-                  onDone={reload}
+                  onDone={publishUser}
                   label="Change username"
                   className="flex flex-col gap-2 sm:flex-row"
                   buttonClassName="w-full rounded bg-black px-4 py-2 text-white sm:w-auto"
                 >
-                  <input name="username" defaultValue={data.user.username} className="min-w-0 w-full rounded border p-2 sm:flex-1" />
+                  <input key={`username-${data.user.username}`} name="username" defaultValue={data.user.username} className="min-w-0 w-full rounded border p-2 sm:flex-1" />
                 </ActionForm>
               </section>
             )}
@@ -411,8 +430,18 @@ export default function SettingsPage() {
             {active === "email" && (
               <section className="min-w-0 space-y-3 rounded-xl border p-5">
                 <h2 className="text-xl font-semibold">Email</h2>
+                <p className="break-words text-sm text-foreground/70">
+                  Current email: <strong>{data.user.email}</strong>
+                </p>
+                {data.user.pending_email ? (
+                  <p role="status" className="break-words rounded border border-amber-400/50 bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                    We sent a code to <strong>{data.user.pending_email}</strong>. Your email stays{" "}
+                    <strong>{data.user.email}</strong> until you enter that code below.
+                  </p>
+                ) : null}
                 <ActionForm
                   run={(ctx, f) => startEmailChange(String(f.get("email")), String(f.get("password")), ctx)}
+                  onDone={publishUser}
                   label="Verify new email"
                   loadingLabel="Sending code…"
                   successLabel="Code sent"
@@ -424,7 +453,7 @@ export default function SettingsPage() {
                 </ActionForm>
                 <ActionForm
                   run={(ctx, f) => confirmEmailChange(String(f.get("code")), ctx)}
-                  onDone={reload}
+                  onDone={publishUser}
                   label="Confirm"
                   loadingLabel="Confirming…"
                   successLabel="Email changed"
@@ -456,7 +485,10 @@ export default function SettingsPage() {
                     <PrefToggle
                       checked={prefs?.email_enabled ?? true}
                       disabled={!prefs}
-                      save={async (ctx, email_enabled) => setPrefs(await updateNotificationPrefs({ email_enabled }, ctx))}
+                      save={async (ctx, email_enabled) => {
+                        setPrefs(await updateNotificationPrefs({ email_enabled }, ctx))
+                        broadcastAccountChange()
+                      }}
                     />
                   </label>
 
@@ -471,7 +503,10 @@ export default function SettingsPage() {
                     <PrefToggle
                       checked={prefs?.push_enabled ?? true}
                       disabled={!prefs}
-                      save={async (ctx, push_enabled) => setPrefs(await updateNotificationPrefs({ push_enabled }, ctx))}
+                      save={async (ctx, push_enabled) => {
+                        setPrefs(await updateNotificationPrefs({ push_enabled }, ctx))
+                        broadcastAccountChange()
+                      }}
                     />
                   </label>
                 </div>
@@ -530,7 +565,7 @@ export default function SettingsPage() {
                 </div>
                 <ActionForm
                   run={(ctx, f) => requestAffiliateWithdrawal(String(f.get("amount")), ctx)}
-                  onDone={reload}
+                  onDone={broadcastAccountChange}
                   disabled={!payoutReady}
                   label="Request withdrawal"
                   loadingLabel="Requesting…"
