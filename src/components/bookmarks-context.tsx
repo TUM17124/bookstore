@@ -49,6 +49,7 @@ function apiBookToCfg(b: ApiBook): BookCfg {
     desc: b.desc || '',
     images: {
       front: b.images?.front || undefined,
+      frontThumbs: b.images?.frontThumbs,
       spine: b.images?.spine || undefined,
       back: b.images?.back || undefined,
     },

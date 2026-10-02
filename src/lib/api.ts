@@ -1,6 +1,7 @@
 // src/lib/api.ts
 import { splitName } from "@/lib/name"
 import { AuthFetchError, authFetch, type CallOptions, type RequestOptions } from "@/lib/auth-fetch"
+import { takePreloaded } from "@/lib/preload"
 import { UserError } from "@/lib/user-error"
 
 const API = process.env.NEXT_PUBLIC_API_URL!
@@ -16,6 +17,8 @@ export type ApiBook = {
     front?: string | null
     spine?: string | null
     back?: string | null
+    /** Perf Step 2: WebP copies of the front (about 300 / 600 px wide). */
+    frontThumbs?: { w: number; url: string }[]
   }
   edge?: string
   spineBg?: string
@@ -605,6 +608,8 @@ export type BannerData = {
 
 export async function getBanners(category?: string): Promise<{ banners: BannerData[]; server_now?: string }> {
   const q = category ? `?category=${encodeURIComponent(category)}` : ""
+  const pre = await takePreloaded<{ banners: BannerData[]; server_now?: string }>(`/banners/${q}`, null)
+  if (pre && Array.isArray(pre.banners)) return pre
   return getOr(`/banners/${q}`, { banners: [] }, { auth: false })
 }
 
@@ -1252,6 +1257,10 @@ export async function getHomeSections(category?: string, call?: CallOptions): Pr
       signal: call?.signal,
       onRetry: call?.onRetry,
     })
+  // Perf Step 2: already requested by the inline script in the HTML?
+  const pre = await takePreloaded<HomeSectionsPage>(`/home/sections/${q}`, getToken(), call?.signal)
+  if (call?.signal?.aborted) throw new DOMException("Aborted", "AbortError")
+  if (pre && Array.isArray(pre.sections)) return pre
   try {
     return await load(!!getToken())
   } catch (err) {

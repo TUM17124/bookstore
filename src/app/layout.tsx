@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
+import { preloadScript } from "@/lib/preload"
 import { NotchNavbar } from "@/components/ui/notch-navbar"
 import { MainOffset } from "@/components/main-offset"
 import { BookmarksProvider } from "@/components/bookmarks-context"
@@ -148,6 +149,8 @@ export default function RootLayout({
   return (
     <html lang="en-KE" suppressHydrationWarning>
       <head>
+        {/* Perf Step 2: start the home page's data requests now, not when the JS is ready. */}
+        <script dangerouslySetInnerHTML={{ __html: preloadScript(process.env.NEXT_PUBLIC_API_URL || "") }} />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

@@ -2108,11 +2108,12 @@ export function PdfReader({
         >
           📋 Notes{visibleThoughts.length ? ` (${visibleThoughts.length})` : ''}
         </button>
-        {marked > 0 && (
-          <button type="button" onClick={() => void goToMark()} className="rounded-full bg-black/10 px-3 py-1 text-sm font-bold text-black">
-            Go to mark ({marked})
-          </button>
-        )}
+        {/* Always in the bar (disabled until there is a mark) so the
+            toolbar doesn't re-wrap and push the pages down when saved
+            marks arrive. */}
+        <button type="button" onClick={() => void goToMark()} disabled={marked === 0} className="rounded-full bg-black/10 px-3 py-1 text-sm font-bold text-black disabled:opacity-45">
+          Go to mark{marked > 0 ? ` (${marked})` : ''}
+        </button>
         <button type="button" onClick={togglePopOut} className={`rounded-full px-3 py-1 text-sm font-bold ${pipOpen ? 'bg-[#f591ac] text-[var(--on-brand)]' : 'bg-black/10 text-black'}`}>
           {!isPro && '🔒 '}Pop out{!isPro && ' · PRO'}
         </button>
@@ -2278,11 +2279,17 @@ export function PdfReader({
         onCut={(e: ClipboardEvent) => {
           if (copyProtected) e.preventDefault()
         }}
-        className={`min-h-0 flex-1 overflow-auto ${highlightMode ? highlightSelectClass(true) : 'select-none'}`}
+        className={`relative min-h-0 flex-1 overflow-auto ${highlightMode ? highlightSelectClass(true) : 'select-none'}`}
         style={highlightSelectStyle(highlightMode)}
       >
-        {status ? (
-          <p className={`p-6 text-sm font-semibold ${accessError ? 'text-[#b4233c]' : 'text-black/50'}`} role={accessError ? 'alert' : undefined}>
+        {status && accessError ? (
+          <p className="p-6 text-sm font-semibold text-[#b4233c]" role="alert">
+            {status}
+          </p>
+        ) : status ? (
+          // "Opening…" floats over the page area: in the flow it pushed the
+          // pages down, then pulled them up again when it went away.
+          <p className="pointer-events-none absolute inset-x-0 top-24 z-10 text-center text-sm font-semibold text-black/50" role="status">
             {status}
           </p>
         ) : null}
