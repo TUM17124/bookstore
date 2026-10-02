@@ -1,8 +1,8 @@
 "use client"
 
-import { Suspense } from "react"
+import { Suspense, useId, useState } from "react"
 import Link from "next/link"
-import { BookOpen, Mail } from "lucide-react"
+import { BookOpen, ChevronDown, Mail } from "lucide-react"
 import { useIsEditorFocusedRoute } from "@/lib/pdf-editor/use-is-editor-focused-route"
 import { categoryHref, useCategories } from "@/lib/categories"
 
@@ -14,12 +14,106 @@ const policyLinks = [
 ]
 
 
+const accountLinks = [
+  { href: "/signup", label: "Sign up" },
+  { href: "/login", label: "Log in" },
+  { href: "/publish", label: "Publish" },
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/settings", label: "Settings" },
+  { href: "/bookmarks", label: "Bookmarks" },
+]
+
 const toolLinks = [
   { href: "/pro", label: "★ PlugYard Pro" },
   { href: "/tools/pdf-editor", label: "Free PDF Editor" },
   { href: "/purchases", label: "My Purchases" },
   { href: "/bookmarks", label: "Bookmarks" },
 ]
+
+/** Phones: one footer column as a collapsed accordion row. */
+function FooterAccordion({ title, links }: { title: string; links: { href: string; label: string }[] }) {
+  const [open, setOpen] = useState(false)
+  const id = useId()
+  return (
+    <div className="border-b border-foreground/10">
+      <h3>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={id}
+          onClick={() => setOpen((v) => !v)}
+          className="flex min-h-[48px] w-full items-center justify-between text-left text-sm font-semibold text-foreground/80 outline-none focus-visible:ring-2 focus-visible:ring-foreground/30"
+        >
+          {title}
+          <ChevronDown
+            aria-hidden
+            className={`h-4 w-4 text-foreground/50 motion-safe:transition-transform motion-safe:duration-200 ${open ? "rotate-180" : ""}`}
+          />
+        </button>
+      </h3>
+      {/* grid-rows 0fr -> 1fr: a smooth open/close with no fixed height. */}
+      <div
+        id={id}
+        className={`grid motion-safe:transition-[grid-template-rows] motion-safe:duration-200 ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+        inert={!open}
+      >
+        <ul className="grid min-h-0 grid-cols-2 gap-x-4 overflow-hidden">
+          {links.map((l) => (
+            <li key={l.href} className="min-w-0">
+              <Link
+                href={l.href}
+                className="flex min-h-[44px] items-center text-sm text-foreground/70 hover:text-foreground"
+              >
+                {l.label}
+              </Link>
+            </li>
+          ))}
+          <li className="col-span-2 h-2" aria-hidden />
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+/** Phones (under 768px): accordions + one compact brand/legal block. The
+ * categories are left out here - they're already in the navbar chips and
+ * the "All" sheet. Desktop/tablet keep the full footer below. */
+function PhoneFooter({ year }: { year: number }) {
+  return (
+    <div className="px-4 pb-[max(20px,env(safe-area-inset-bottom))] pt-2 md:hidden">
+      <nav aria-label="Footer">
+        <FooterAccordion title="Tools & Pro" links={toolLinks} />
+        <FooterAccordion title="Account" links={accountLinks} />
+      </nav>
+      <div className="mt-5 space-y-3">
+        <Link href="/" className="inline-flex items-center gap-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="" width={28} height={28} className="h-7 w-7 rounded-md object-contain" />
+          <span className="text-sm font-semibold text-foreground">PlugYard</span>
+          <span className="text-xs text-foreground/50">· Kenya&apos;s digital bookstore</span>
+        </Link>
+        <a
+          href="mailto:contact@plugyard.com"
+          className="flex min-h-[44px] w-fit items-center gap-2 text-sm font-medium text-sky-600 dark:text-sky-400"
+        >
+          <Mail className="h-4 w-4" aria-hidden />
+          contact@plugyard.com
+        </a>
+        <p className="text-xs leading-relaxed text-foreground/45">
+          © {year} PlugYard ·{" "}
+          {policyLinks.map((l, i) => (
+            <span key={l.href}>
+              <Link href={l.href} className="underline-offset-2 hover:text-foreground hover:underline">
+                {l.label.replace(" & Conditions", "").replace(" Policy", "")}
+              </Link>
+              {i < policyLinks.length - 1 ? " · " : ""}
+            </span>
+          ))}
+        </p>
+      </div>
+    </div>
+  )
+}
 
 function SiteFooterInner() {
   const year = new Date().getFullYear()
@@ -42,7 +136,9 @@ function SiteFooterInner() {
         aria-hidden
       />
 
-      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
+      <PhoneFooter year={year} />
+
+      <div className="mx-auto hidden max-w-6xl px-4 py-12 sm:px-6 md:block lg:px-8">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-5">
           {/* Brand + contact */}
           <div className="sm:col-span-2 lg:col-span-1">
@@ -132,54 +228,16 @@ function SiteFooterInner() {
               Account
             </h3>
             <ul className="mt-4 space-y-2.5">
-              <li>
-                <Link
-                  href="/signup"
-                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
-                >
-                  Sign up
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/login"
-                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
-                >
-                  Log in
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/publish"
-                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
-                >
-                  Publish
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/dashboard"
-                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
-                >
-                  Dashboard
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/settings"
-                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
-                >
-                  Settings
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/bookmarks"
-                  className="text-sm text-foreground/70 transition-colors hover:text-foreground"
-                >
-                  Bookmarks
-                </Link>
-              </li>
+              {accountLinks.map((l) => (
+                <li key={l.href}>
+                  <Link
+                    href={l.href}
+                    className="text-sm text-foreground/70 transition-colors hover:text-foreground"
+                  >
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
 
