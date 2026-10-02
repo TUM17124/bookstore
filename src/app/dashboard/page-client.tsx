@@ -604,8 +604,8 @@ export default function DashboardPage() {
               onClick={() => setActive(s.id)}
               className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm transition-colors ${
                 active === s.id
-                  ? "border-black bg-black text-white"
-                  : "border-neutral-300 text-neutral-600"
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-foreground/15 text-foreground/70"
               }`}
             >
               {s.label}
@@ -623,8 +623,8 @@ export default function DashboardPage() {
                   onClick={() => setActive(s.id)}
                   className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                     active === s.id
-                      ? "bg-black text-white"
-                      : "text-neutral-600 hover:bg-neutral-100"
+                      ? "bg-foreground text-background"
+                      : "text-foreground/70 hover:bg-foreground/5"
                   }`}
                 >
                   {s.label}
@@ -642,7 +642,7 @@ export default function DashboardPage() {
                 Sales and cut
               </h2>
 
-              <p className="text-sm text-neutral-600">
+              <p className="text-sm text-foreground/70">
                 PlugYard keeps{" "}
                 <b>{cutPercent}%</b>. You keep{" "}
                 <b>{authorPercent}%</b>. Minimum
@@ -655,7 +655,7 @@ export default function DashboardPage() {
 
               <div className="grid gap-3 sm:grid-cols-4">
                 <div className="rounded-xl border p-3">
-                  <p className="text-xs uppercase tracking-wide text-neutral-500">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
                     Gross sales
                   </p>
                   <p className="text-lg font-semibold">
@@ -664,7 +664,7 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="rounded-xl border p-3">
-                  <p className="text-xs uppercase tracking-wide text-neutral-500">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
                     Your cut
                   </p>
                   <p className="text-lg font-semibold">
@@ -673,7 +673,7 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="rounded-xl border p-3">
-                  <p className="text-xs uppercase tracking-wide text-neutral-500">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
                     Available
                   </p>
                   <p className="text-lg font-semibold">
@@ -682,7 +682,7 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="rounded-xl border p-3">
-                  <p className="text-xs uppercase tracking-wide text-neutral-500">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
                     Orders
                   </p>
                   <p className="text-lg font-semibold">
@@ -692,7 +692,7 @@ export default function DashboardPage() {
               </div>
 
               {sales.length === 0 ? (
-                <p className="text-sm text-neutral-600">
+                <p className="text-sm text-foreground/70">
                   No sales yet. That is normal for
                   a new title.
                 </p>
@@ -732,7 +732,7 @@ export default function DashboardPage() {
                         <span>
                           <b>{title}</b>
 
-                          <span className="text-neutral-500">
+                          <span className="text-muted-foreground">
                             {" "}
                             · Order #
                             {row.order_id ||
@@ -765,12 +765,12 @@ export default function DashboardPage() {
                 loadingLabel="Requesting…"
                 successLabel="Requested"
                 errorClassName="text-sm text-red-600"
-                className="w-full rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-400"
+                className="w-full rounded-lg bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:cursor-not-allowed disabled:bg-neutral-400"
               >
                 {`Request payout · ${money(available)}`}
               </ActionButton>
 
-              <p className="text-xs text-neutral-500">
+              <p className="text-xs text-muted-foreground">
                 {!hasAccount
                   ? "Save a payout account below before requesting."
                   : available < minPayout
@@ -786,7 +786,7 @@ export default function DashboardPage() {
                 Where should we send your money?
               </h2>
 
-              <p className="text-sm text-neutral-600">
+              <p className="text-sm text-foreground/70">
                 Sales are paid every{" "}
                 {payout?.payout_every_days ||
                   PAYOUT_EVERY_DAYS}{" "}
@@ -984,7 +984,7 @@ export default function DashboardPage() {
                     </label>
 
                     {banks.length === 0 && (
-                      <p className="text-xs text-neutral-500 sm:col-span-2">
+                      <p className="text-xs text-muted-foreground sm:col-span-2">
                         Bank list is empty. Deploy
                         the backend banks list, or
                         use M-Pesa.
@@ -1020,7 +1020,7 @@ export default function DashboardPage() {
                     loadingLabel="Saving…"
                     successLabel="Saved"
                     errorClassName="mt-2 text-sm text-red-600"
-                    className="w-full bg-black text-white rounded-lg py-2 aria-busy:opacity-80"
+                    className="w-full bg-foreground text-background rounded-lg py-2 aria-busy:opacity-80"
                   >
                     {hasAccount
                       ? "Update payout account"
@@ -1059,7 +1059,7 @@ export default function DashboardPage() {
               {historyOpen && (
                 <div className="space-y-2">
                   {cycles.length === 0 ? (
-                    <p className="text-sm text-neutral-600">
+                    <p className="text-sm text-foreground/70">
                       No payout cycles yet.
                     </p>
                   ) : (
@@ -1088,7 +1088,7 @@ export default function DashboardPage() {
                                     "—"}
                                 </b>
 
-                                <span className="text-neutral-500">
+                                <span className="text-muted-foreground">
                                   {" "}
                                   ·{" "}
                                   {c.status ||
@@ -1123,7 +1123,7 @@ export default function DashboardPage() {
               </h2>
 
               {books.length === 0 && (
-                <p className="text-sm text-neutral-600">
+                <p className="text-sm text-foreground/70">
                   No books yet. Publish a title
                   to manage it here.
                 </p>
@@ -1341,7 +1341,7 @@ function BookBoostRow({
             {book.title}
           </p>
 
-          <p className="text-sm text-neutral-600">
+          <p className="text-sm text-foreground/70">
             {book.year
               ? `${book.year} · `
               : ""}
@@ -1365,12 +1365,12 @@ function BookBoostRow({
             (boost?.status ===
               "paid" &&
               left === 0) ? (
-            <p className="text-sm text-neutral-600">
+            <p className="text-sm text-foreground/70">
               Boost ended. You can boost
               again now.
             </p>
           ) : (
-            <p className="text-sm text-neutral-600">
+            <p className="text-sm text-foreground/70">
               Not boosted. Pay with
               Paystack to feature this
               title.
@@ -1425,7 +1425,7 @@ function BookBoostRow({
           </ActionButton>
         </div>
       </div>
-      <ActionStatus action={remove.state === "retrying" ? remove : boostAction} className="text-sm text-neutral-600" />
+      <ActionStatus action={remove.state === "retrying" ? remove : boostAction} className="text-sm text-foreground/70" />
       {remove.errorText || boostAction.errorText ? (
         <p role="alert" className="text-sm text-red-600">
           {remove.errorText || boostAction.errorText}
@@ -1624,7 +1624,7 @@ function BookBoostRow({
                 <button
                   type="button"
                   onClick={() => setAttachRemoved(true)}
-                  className="shrink-0 text-xs font-medium text-neutral-600 underline hover:text-black"
+                  className="shrink-0 text-xs font-medium text-foreground/70 underline hover:text-foreground"
                 >
                   Remove
                 </button>
@@ -1639,7 +1639,7 @@ function BookBoostRow({
             )}
 
             {book.status === "published" && (
-              <span className="mt-1 block text-xs text-neutral-500">
+              <span className="mt-1 block text-xs text-muted-foreground">
                 This book is already published — a new PDF here won&apos;t go
                 live immediately. It goes to admin for review, and buyers
                 keep getting the current file until it&apos;s approved.
@@ -1669,7 +1669,7 @@ function BookBoostRow({
               loadingLabel="Saving…"
               successLabel="Saved"
               errorClassName="mt-2 text-sm text-red-600"
-              className="w-full bg-black text-white rounded-lg py-2 disabled:opacity-50 aria-busy:opacity-80"
+              className="w-full bg-foreground text-background rounded-lg py-2 disabled:opacity-50 aria-busy:opacity-80"
             >
               Save changes
             </ActionButton>

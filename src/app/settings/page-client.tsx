@@ -375,7 +375,7 @@ export default function SettingsPage() {
                 onClick={() => setActive(s.id)}
                 className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm transition-colors ${
                   active === s.id
-                    ? "border-black bg-black text-white"
+                    ? "border-foreground bg-foreground text-background"
                     : "border-foreground/15 text-foreground/70"
                 }`}
               >
@@ -393,7 +393,7 @@ export default function SettingsPage() {
                     onClick={() => setActive(s.id)}
                     className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                       active === s.id
-                        ? "bg-black text-white"
+                        ? "bg-foreground text-background"
                         : "text-foreground/70 hover:bg-foreground/5"
                     }`}
                   >
@@ -419,7 +419,7 @@ export default function SettingsPage() {
                   onDone={publishUser}
                   label="Save name"
                   className="flex flex-col gap-2 sm:flex-row"
-                  buttonClassName="w-full rounded bg-black px-4 py-2 text-white sm:w-auto"
+                  buttonClassName="w-full rounded bg-foreground px-4 py-2 text-background sm:w-auto"
                 >
                   <input
                     key={`name-${data.user.first_name}-${data.user.last_name}`}
@@ -435,7 +435,7 @@ export default function SettingsPage() {
                   onDone={publishUser}
                   label="Change username"
                   className="flex flex-col gap-2 sm:flex-row"
-                  buttonClassName="w-full rounded bg-black px-4 py-2 text-white sm:w-auto"
+                  buttonClassName="w-full rounded bg-foreground px-4 py-2 text-background sm:w-auto"
                 >
                   <input key={`username-${data.user.username}`} name="username" defaultValue={data.user.username} className="min-w-0 w-full rounded border p-2 sm:flex-1" />
                 </ActionForm>
@@ -487,7 +487,7 @@ export default function SettingsPage() {
                   loadingLabel="Sending code…"
                   successLabel="Code sent"
                   className="flex flex-col gap-2 sm:flex-row"
-                  buttonClassName="w-full rounded bg-black px-4 py-2 text-white sm:w-auto"
+                  buttonClassName="w-full rounded bg-foreground px-4 py-2 text-background sm:w-auto"
                 >
                   <input name="email" type="email" placeholder="New email" className="min-w-0 w-full rounded border p-2 sm:flex-1" />
                   {data.user.password_auth ? (
@@ -651,7 +651,7 @@ export default function SettingsPage() {
                   loadingLabel="Requesting…"
                   successLabel="Requested"
                   className="flex flex-col gap-2 sm:flex-row"
-                  buttonClassName="w-full rounded bg-black px-4 py-2 text-white disabled:opacity-50 sm:w-auto"
+                  buttonClassName="w-full rounded bg-foreground px-4 py-2 text-background disabled:opacity-50 sm:w-auto"
                 >
                   <input
                     required

@@ -130,7 +130,7 @@ function SiteFooterInner() {
   if (isEditorFocusedRoute) return null
 
   return (
-    <footer className="site-footer relative border-t border-foreground/5 bg-zinc-50 dark:bg-black">
+    <footer className="site-footer relative border-t border-foreground/5 bg-zinc-50 dark:bg-background">
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-px bg-foreground/[0.04]"
         aria-hidden

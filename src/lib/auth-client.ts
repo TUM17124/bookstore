@@ -32,6 +32,8 @@ export type AuthUser = {
   password_auth?: boolean
   /** A requested new email waiting for its confirmation code. */
   pending_email?: string
+  /** "light" / "dark" saved to the account, "" = no choice (lib/theme.ts). */
+  theme?: string
 }
 
 export function getStoredUser(): AuthUser | null {

@@ -46,7 +46,7 @@ export function AffiliateInvite({
           <button
             type="button"
             onClick={() => copy(link, "link")}
-            className="w-full rounded bg-black px-4 py-2 text-sm text-white sm:w-auto"
+            className="w-full rounded bg-foreground px-4 py-2 text-sm text-background sm:w-auto"
           >
             {copied === "link" ? "Copied" : "Copy link"}
           </button>

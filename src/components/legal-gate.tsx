@@ -89,7 +89,7 @@ export function LegalGate() {
           onClick={() => getToken() && void accept.run()}
           loadingLabel="Saving…"
           errorClassName="text-sm text-red-500"
-          className="w-full rounded-lg bg-black py-2 text-white disabled:opacity-50 aria-busy:opacity-80"
+          className="w-full rounded-lg bg-foreground py-2 text-background disabled:opacity-50 aria-busy:opacity-80"
         >
           I have read and accept
         </ActionButton>
