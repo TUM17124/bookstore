@@ -22,6 +22,8 @@ import { ActionButton, ActionStatus } from "@/components/ui/action-button";
 import { errorMessage } from "@/lib/auth-fetch";
 import { UserError } from "@/lib/user-error";
 import { broadcastAccountChange } from "@/lib/auth-client";
+import { useCurrency, useMoney } from "@/lib/money";
+import { CampaignsTab } from "./campaigns-tab";
 
 const PAYOUT_EVERY_DAYS = 30;
 
@@ -29,6 +31,7 @@ const SECTIONS = [
   { id: "sales", label: "Sales and cut" },
   { id: "payout", label: "Payout account" },
   { id: "books", label: "Your books" },
+  { id: "campaigns", label: "Campaigns" },
 ] as const;
 
 type SectionId = (typeof SECTIONS)[number]["id"];
@@ -76,6 +79,8 @@ function cycleDate(c: any): Date | null {
 }
 
 export default function DashboardPage() {
+  // Part C: every amount uses the site currency setting.
+  const money = useMoney();
   const [loggedIn, setLoggedIn] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [active, setActive] = useState<SectionId>("sales");
@@ -309,6 +314,9 @@ export default function DashboardPage() {
         window.location.search
       );
 
+    // Part C: notifications link to /dashboard?tab=campaigns
+    if (params.get("tab") === "campaigns") setActive("campaigns");
+
     const editBookId = params.get("edit_book_id");
     if (editBookId) {
       setActive("books");
@@ -497,7 +505,7 @@ export default function DashboardPage() {
         setMsgOk(true);
         setMsg(
           d?.message ||
-            `Payout of KES ${Number(d?.amount || available).toLocaleString()} requested.`
+            `Payout of ${money(d?.amount || available)} requested.`
         );
       },
     }
@@ -512,11 +520,11 @@ export default function DashboardPage() {
     if (available < minPayout) {
       setMsgOk(false);
       setMsg(
-        `Minimum payout is KES ${minPayout.toLocaleString()}. Available KES ${available.toLocaleString()}.`
+        `Minimum payout is ${money(minPayout)}. Available ${money(available)}.`
       );
       return;
     }
-    if (!window.confirm(`Request payout of KES ${available.toLocaleString()}?`)) return;
+    if (!window.confirm(`Request payout of ${money(available)}?`)) return;
     void payoutRequest.run();
   }
 
@@ -640,8 +648,7 @@ export default function DashboardPage() {
                 <b>{authorPercent}%</b>. Minimum
                 payout is{" "}
                 <b>
-                  KES{" "}
-                  {minPayout.toLocaleString()}
+                  {money(minPayout)}
                 </b>
                 .
               </p>
@@ -652,8 +659,7 @@ export default function DashboardPage() {
                     Gross sales
                   </p>
                   <p className="text-lg font-semibold">
-                    KES{" "}
-                    {computedSalesTotal.toLocaleString()}
+                    {money(computedSalesTotal)}
                   </p>
                 </div>
 
@@ -662,8 +668,7 @@ export default function DashboardPage() {
                     Your cut
                   </p>
                   <p className="text-lg font-semibold">
-                    KES{" "}
-                    {computedAuthorTotal.toLocaleString()}
+                    {money(computedAuthorTotal)}
                   </p>
                 </div>
 
@@ -672,8 +677,7 @@ export default function DashboardPage() {
                     Available
                   </p>
                   <p className="text-lg font-semibold">
-                    KES{" "}
-                    {available.toLocaleString()}
+                    {money(available)}
                   </p>
                 </div>
 
@@ -740,10 +744,9 @@ export default function DashboardPage() {
                         </span>
 
                         <span>
-                          Your cut KES{" "}
-                          {yourCut.toLocaleString()}
+                          Your cut {money(yourCut)}
                           {grossAmt
-                            ? ` · gross ${grossAmt.toLocaleString()}`
+                            ? ` · gross ${money(grossAmt)}`
                             : ""}
                           {row.cut_percent != null
                             ? ` · platform ${row.cut_percent}%`
@@ -764,14 +767,14 @@ export default function DashboardPage() {
                 errorClassName="text-sm text-red-600"
                 className="w-full rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-400"
               >
-                {`Request payout · KES ${available.toLocaleString()}`}
+                {`Request payout · ${money(available)}`}
               </ActionButton>
 
               <p className="text-xs text-neutral-500">
                 {!hasAccount
                   ? "Save a payout account below before requesting."
                   : available < minPayout
-                    ? `You need at least KES ${minPayout.toLocaleString()} available.`
+                    ? `You need at least ${money(minPayout)} available.`
                     : "Paid from Site Settings minimum payout."}
               </p>
             </section>
@@ -1098,11 +1101,7 @@ export default function DashboardPage() {
                               </span>
 
                               <span>
-                                KES{" "}
-                                {Number(
-                                  c.amount ||
-                                    0
-                                ).toLocaleString()}
+                                {money(c.amount || 0)}
                               </span>
                             </li>
                           );
@@ -1114,6 +1113,8 @@ export default function DashboardPage() {
               )}
             </section>
           )}
+
+          {active === "campaigns" && <CampaignsTab />}
 
           {active === "books" && (
             <section className="space-y-3">
@@ -1205,6 +1206,7 @@ function BookBoostRow({
     ok: boolean
   ) => void;
 }) {
+  const currency = useCurrency();
   const { label, left } =
     useCountdown(
       boost?.seconds_left || 0
@@ -1482,7 +1484,7 @@ function BookBoostRow({
           {!isFree && (
             <>
               <label className="text-sm font-medium">
-                eBook price (KES)
+                eBook price ({currency.code})
                 <input
                   name="ebook_price"
                   type="number"
@@ -1499,7 +1501,7 @@ function BookBoostRow({
               </label>
 
               <label className="text-sm font-medium">
-                Audiobook price (KES)
+                Audiobook price ({currency.code})
                 <input
                   name="audiobook_price"
                   type="number"

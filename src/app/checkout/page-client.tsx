@@ -3,7 +3,10 @@
 import { Suspense, useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { createCheckout, CheckoutError } from '@/lib/api'
+import { createCheckout, CheckoutError, getQuote, PriceChangedError, type PriceQuote } from '@/lib/api'
+import { PriceTag } from '@/components/offers/price-tag'
+import { noteServerTime } from '@/components/offers/countdown'
+import { useMoney } from '@/lib/money'
 import { useAsyncAction } from '@/hooks/use-async-action'
 import { ActionButton } from '@/components/ui/action-button'
 import { UserError } from '@/lib/user-error'
@@ -51,6 +54,12 @@ function CheckoutInner() {
   const [loggedIn, setLoggedIn] = useState(false)
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [emailNotice, setEmailNotice] = useState<PromptCopy>(FALLBACK_EMAIL_NOTICE)
+  // Part C: the server's price for this book right now (offer included).
+  const [quote, setQuote] = useState<PriceQuote | null>(null)
+  const [quoteError, setQuoteError] = useState('')
+  const [priceNotice, setPriceNotice] = useState('')
+  const [quoteNonce, setQuoteNonce] = useState(0)
+  const money = useMoney()
 
   useEffect(() => {
     setMounted(true)
@@ -59,6 +68,28 @@ function CheckoutInner() {
     if (u?.email) setEmail(u.email)
     rememberBook(bookId, title)
   }, [bookId, title])
+
+  useEffect(() => {
+    if (!bookId) return
+    const ctrl = new AbortController()
+    getQuote(bookId, type, { signal: ctrl.signal })
+      .then((q) => {
+        noteServerTime(q.server_now)
+        setQuote(q)
+        setQuoteError('')
+      })
+      .catch(() => {
+        if (!ctrl.signal.aborted) setQuoteError("Couldn't load the price. Check your connection and try again.")
+      })
+    return () => ctrl.abort()
+  }, [bookId, type, quoteNonce])
+
+  // The offer's countdown reached zero: ask the server for the price again
+  // and say so, so nobody pays without seeing the new price.
+  const onOfferEnded = () => {
+    setPriceNotice('The offer has ended. The price below is now the normal price.')
+    setQuoteNonce((n) => n + 1)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -83,7 +114,14 @@ function CheckoutInner() {
     async (ctx, trimmed: string, accepted: boolean) => {
       rememberBook(bookId, title, trimmed)
       const res = await createCheckout(
-        { book_id: Number(bookId), product_type: type, email: trimmed, terms_accepted: accepted },
+        {
+          book_id: Number(bookId),
+          product_type: type,
+          email: trimmed,
+          terms_accepted: accepted,
+          // The price shown here; the server won't charge a different one.
+          expected_amount: quote?.price,
+        },
         ctx,
       )
       if (!res.checkout_url) throw new UserError('No checkout URL returned. Please try again.')
@@ -111,6 +149,11 @@ function CheckoutInner() {
       },
       onError: (err) => {
         if (err instanceof CheckoutError && err.legalRequired) setLegalRequired(true)
+        if (err instanceof PriceChangedError) {
+          setQuote(err.quote)
+          noteServerTime(err.quote.server_now)
+          setPriceNotice(`The price changed to ${money(err.quote.price)}. Nothing was charged. Check it and press Pay again.`)
+        }
       },
     },
   )
@@ -130,6 +173,32 @@ function CheckoutInner() {
       </p>
       <h1 className="mt-2 text-2xl font-bold tracking-tight">{title}</h1>
       <p className="mt-1 text-sm text-foreground/55 capitalize">{productLabel}</p>
+
+      <div className="mt-4 rounded-2xl border border-foreground/10 px-4 py-3" aria-live="polite">
+        {quote ? (
+          <PriceTag
+            listPrice={Number(quote.list_price)}
+            offer={quote.offer}
+            size={quote.offer ? 'detail' : 'card'}
+            onExpire={onOfferEnded}
+            className="text-lg font-bold"
+          />
+        ) : quoteError ? (
+          <p className="text-sm text-red-600 dark:text-red-400">
+            {quoteError}{' '}
+            <button type="button" className="font-semibold underline" onClick={() => setQuoteNonce((n) => n + 1)}>
+              Try again
+            </button>
+          </p>
+        ) : (
+          <p className="text-sm text-foreground/50">Loading price…</p>
+        )}
+        {priceNotice && (
+          <p role="status" className="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[13px] text-amber-800 dark:text-amber-200">
+            {priceNotice}
+          </p>
+        )}
+      </div>
 
       {canceled && (
         <p className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
@@ -269,13 +338,15 @@ function CheckoutInner() {
         <ActionButton
           type="submit"
           action={pay}
-          disabled={!email.trim() || (mounted && !loggedIn && !termsAccepted)}
+          disabled={!email.trim() || !quote || (mounted && !loggedIn && !termsAccepted)}
           loadingLabel="Starting payment…"
+          // After a price change the button offers the NEW price, not "Try again".
+          errorLabel={pay.error instanceof PriceChangedError && quote ? `Pay ${money(quote.price)}` : undefined}
           successLabel="Redirecting…"
           errorClassName="mt-3 text-sm text-red-500"
           className="mt-6 w-full rounded-full bg-foreground py-3 text-sm font-semibold text-background transition hover:bg-foreground/90 disabled:opacity-50 aria-busy:opacity-80"
         >
-          Continue to payment
+          {quote ? `Pay ${money(quote.price)}` : 'Continue to payment'}
         </ActionButton>
         <button
           type="button"

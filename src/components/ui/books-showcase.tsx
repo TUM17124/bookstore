@@ -9,13 +9,17 @@ import { useAsyncAction } from '@/hooks/use-async-action';
 import { ActionButton, ActionStatus } from '@/components/ui/action-button';
 import { BookReviews } from '@/components/book-reviews';
 import { createPortal } from 'react-dom';
-import { searchTrack, getRatings, getRelatedBooks, getBookAccess, downloadBook, type ApiBook, type BookAccess } from '@/lib/api';
+import { searchTrack, getRatings, getRelatedBooks, getBookAccess, downloadBook, type ApiBook, type ApiOffer, type BookAccess } from '@/lib/api';
+import { PriceTag } from '@/components/offers/price-tag';
+import { useCurrency, formatMoney } from '@/lib/money';
 import { PdfReader } from '@/components/pdf-reader';
 import { AudioPlayer } from '@/components/audio-player';
 import { edgeMask, useScrollEdges } from '@/components/category-nav/use-scroll-edges';
 
 export interface BookCfg {
   id: string;
+  /** Part C: live campaign offers from the server. */
+  offers?: { ebook: ApiOffer | null; audiobook: ApiOffer | null } | null;
   title: string;
   author: string;
   year: string;
@@ -88,6 +92,8 @@ export interface BooksShowcaseProps {
   /** Part B: opened from a section — the page makes sure the book is in
    * `books` and selects it (?book=id), which opens the 3D view. */
   onSectionBookOpen?: (book: BookCfg) => void;
+  /** Part C: an offer's countdown hit zero - re-ask the server for this book. */
+  onOfferExpired?: (bookId: string) => void;
   /** Part B: shown at the top of the grid view (category header, chips). */
   topSlot?: React.ReactNode;
   onBookSelect?: (book: BookCfg | null) => void;
@@ -228,16 +234,20 @@ function GridBookCard({
   ) : (
     <>
       {(book.hasEbook !== false) && Number(book.ebookPrice ?? book.price ?? 0) > 0 && (
-        <span className="font-bold text-[var(--bs-pink)]">
-          <span className="mr-0.5 text-[9px] opacity-70 uppercase">eBook</span>
-          KES {Number(book.ebookPrice ?? book.price ?? 0).toLocaleString()}
-        </span>
+        <PriceTag
+          label="eBook"
+          listPrice={Number(book.ebookPrice ?? book.price ?? 0)}
+          offer={book.offers?.ebook}
+          className="font-bold text-[var(--bs-pink)]"
+        />
       )}
       {book.hasAudiobook && Number(book.audiobookPrice ?? book.price ?? 0) > 0 && (
-        <span className="font-bold text-[var(--bs-pink)]">
-          <span className="mr-0.5 text-[9px] opacity-70 uppercase">Audio</span>
-          KES {Number(book.audiobookPrice ?? book.price ?? 0).toLocaleString()}
-        </span>
+        <PriceTag
+          label="Audio"
+          listPrice={Number(book.audiobookPrice ?? book.price ?? 0)}
+          offer={book.offers?.audiobook}
+          className="font-bold text-[var(--bs-pink)]"
+        />
       )}
     </>
   )}
@@ -417,6 +427,41 @@ function RecommendedBooks({ book }: { book: BookCfg }) {
   );
 }
 
+/** Part C: a price in the open-book panel - the offer (with countdown) and,
+ * when the admin set an approximate USD rate, "≈ $x" of what you pay. */
+function DetailPrice({
+  label,
+  listPrice,
+  offer,
+  onExpire,
+}: {
+  label: string;
+  listPrice: number;
+  offer?: ApiOffer | null;
+  onExpire?: () => void;
+}) {
+  const cfg = useCurrency();
+  const pay = offer ? Number(offer.price) : listPrice;
+  const usdRate = Number(cfg.approx_usd_rate || 0);
+  return (
+    <div className="text-[16px] leading-tight">
+      <PriceTag
+        label={label}
+        listPrice={listPrice}
+        offer={offer}
+        size="detail"
+        onExpire={onExpire}
+        className="text-[var(--bs-pink)] [&>span:first-child>span:first-child]:text-[var(--bs-lav)]"
+      />
+      {usdRate > 0 && cfg.code !== "USD" && (
+        <span className="ml-1.5 font-bold tabular-nums text-[var(--bs-cream)]/70">
+          ≈ {formatMoney(pay / usdRate, { ...cfg, symbol: "$", space: false, decimals: 2, position: "before" })}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function BooksShowcase({
   books = [],
   heroTitle = 'Books',
@@ -427,6 +472,7 @@ export function BooksShowcase({
   className,
   sections = [],
   onSectionBookOpen,
+  onOfferExpired,
   topSlot,
   onBookSelect,
   onNearEnd,
@@ -2126,26 +2172,17 @@ export function BooksShowcase({
           {selectedCfg && (
             <div className={`pointer-events-none mt-5 mb-1 ${dpChild(300)}`}>
               {(() => {
-                const ebookKes = Number(selectedCfg.ebookPrice ?? selectedCfg.price ?? 0);
-                const audioKes = Number(selectedCfg.audiobookPrice ?? selectedCfg.price ?? 0);
-                const rate = 130;
+                const ebookPrice = Number(selectedCfg.ebookPrice ?? selectedCfg.price ?? 0);
+                const audioPrice = Number(selectedCfg.audiobookPrice ?? selectedCfg.price ?? 0);
                 const hasEbook = selectedCfg.hasEbook !== false;
                 const hasAudiobook = selectedCfg.hasAudiobook === true;
                 return (
-                  <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
-                    {hasEbook && ebookKes > 0 && (
-                      <p className="text-[16px] leading-none">
-                        <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--bs-lav)]/50">eBook</span>
-                        <span className="font-extrabold tabular-nums text-[var(--bs-pink)]">KES {ebookKes.toLocaleString()}</span>
-                        <span className="ml-1.5 font-bold tabular-nums text-[var(--bs-cream)]/70">≈ ${(ebookKes / rate).toFixed(2)}</span>
-                      </p>
+                  <div className="flex flex-wrap items-start gap-x-6 gap-y-2">
+                    {hasEbook && ebookPrice > 0 && (
+                      <DetailPrice label="eBook" listPrice={ebookPrice} offer={selectedCfg.offers?.ebook} onExpire={() => onOfferExpired?.(selectedCfg.id)} />
                     )}
-                    {hasAudiobook && audioKes > 0 && (
-                      <p className="text-[16px] leading-none">
-                        <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--bs-lav)]/50">Audiobook</span>
-                        <span className="font-extrabold tabular-nums text-[var(--bs-pink)]">KES {audioKes.toLocaleString()}</span>
-                        <span className="ml-1.5 font-bold tabular-nums text-[var(--bs-cream)]/70">≈ ${(audioKes / rate).toFixed(2)}</span>
-                      </p>
+                    {hasAudiobook && audioPrice > 0 && (
+                      <DetailPrice label="Audiobook" listPrice={audioPrice} offer={selectedCfg.offers?.audiobook} onExpire={() => onOfferExpired?.(selectedCfg.id)} />
                     )}
                   </div>
                 );

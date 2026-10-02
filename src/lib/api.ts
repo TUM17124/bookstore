@@ -38,6 +38,34 @@ export type ApiBook = {
   previewPages?: number
   audioUrl?: string | null
   pdfUrl?: string | null
+  /** Part C: live campaign offers (server-calculated). */
+  offers?: { ebook: ApiOffer | null; audiobook: ApiOffer | null } | null
+}
+
+/** A live campaign offer on one product. Prices are decimal strings. */
+export type ApiOffer = {
+  price: string
+  /** The honest struck-through price (lowest in the last N days). */
+  original_price: string
+  saving: string
+  saving_percent: number
+  /** The campaign's real end time (ISO), for the countdown. */
+  ends_at: string
+  campaign: { id: number; name: string; slug: string }
+}
+
+/** What the buyer pays right now (GET /books/<id>/quote/). */
+export type PriceQuote = {
+  book_id: number
+  product_type: "ebook" | "audiobook"
+  list_price: string
+  price: string
+  original_price: string | null
+  saving: string
+  saving_percent: number
+  offer: ApiOffer | null
+  currency: string
+  server_now: string
 }
 
 export type Paginated<T> = {
@@ -86,6 +114,17 @@ export class SessionEvictedError extends Error {
   constructor() {
     super("You've been signed out because you logged in on another device.")
     this.name = "SessionEvictedError"
+  }
+}
+
+/** Part C: the price changed since the page loaded (an offer ended or
+ * started). Nothing was charged; show `quote` and let the buyer confirm. */
+export class PriceChangedError extends UserError {
+  quote: PriceQuote
+  constructor(message: string, quote: PriceQuote) {
+    super(message)
+    this.name = "PriceChangedError"
+    this.quote = quote
   }
 }
 
@@ -517,20 +556,156 @@ export async function createCheckout(
     product_type: "ebook" | "audiobook"
     email: string
     terms_accepted?: boolean
+    /** The price the page showed; the server refuses to charge another. */
+    expected_amount?: string
   },
   call?: CallOptions,
 ) {
   try {
-    return await apiAction<{ order_id: number; checkout_url: string; dev_mode?: boolean }>(
+    return await apiAction<{ order_id: number; checkout_url: string; dev_mode?: boolean; amount?: string }>(
       "/checkout/",
       { method: "POST", body: JSON.stringify(payload) },
       call,
     )
   } catch (err) {
-    const body = (err as { body?: { legal_required?: boolean } }).body
+    const body = (err as { body?: { legal_required?: boolean; code?: string; quote?: PriceQuote } }).body
     if (body?.legal_required) throw new CheckoutError((err as Error).message, true)
+    if (body?.code === "price_changed" && body.quote) throw new PriceChangedError((err as Error).message, body.quote)
     throw err
   }
+}
+
+export async function getQuote(bookId: string | number, productType: "ebook" | "audiobook", call?: CallOptions) {
+  return api<PriceQuote>(`/books/${bookId}/quote/?product_type=${productType}`, {
+    auth: false,
+    cache: "no-store",
+    signal: call?.signal,
+  })
+}
+
+// ---------------------------------------------------------------- banners
+
+export type BannerImage = { url: string | null; width: number | null; height: number | null }
+export type BannerData = {
+  id: number
+  title: string
+  subtitle: string
+  button_text: string
+  button_link: string
+  image_desktop: BannerImage
+  image_mobile: BannerImage
+  image_alt: string
+  text_color: string
+  button_color: string
+  button_text_color: string
+  overlay: "none" | "dark" | "light"
+  overlay_strength: number
+  countdown: { label: "Ends in" | "Starts in"; target: string; ends_at: string } | null
+}
+
+export async function getBanners(category?: string): Promise<{ banners: BannerData[]; server_now?: string }> {
+  const q = category ? `?category=${encodeURIComponent(category)}` : ""
+  return getOr(`/banners/${q}`, { banners: [] }, { auth: false })
+}
+
+/** Fire-and-forget view/click count for the admin's banner stats. */
+export function sendBannerEvent(id: number, type: "view" | "click") {
+  if (!API) return
+  try {
+    // keepalive: still sent if the click navigates away. (sendBeacon can't
+    // send JSON to another origin, and the API may be one.)
+    void fetch(`${API}/banners/${id}/event/`, {
+      method: "POST",
+      body: JSON.stringify({ type }),
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+    }).catch(() => {})
+  } catch {
+    // stats only
+  }
+}
+
+// ------------------------------------------------------ author campaigns
+
+export type CampaignProductLimits = {
+  list_price: string
+  reference_price: string
+  min_offer: string
+  max_offer: string
+} | null
+
+export type CampaignEntryData = {
+  id: number
+  book_id: number
+  book_title: string
+  ebook_offer_price: string | null
+  audiobook_offer_price: string | null
+  status: "pending" | "approved" | "rejected" | "withdrawn" | "declined"
+  status_label: string
+  added_by_admin: boolean
+  reject_reason: string
+  decline_reason: string
+}
+
+export type CampaignData = {
+  id: number
+  name: string
+  slug: string
+  description: string
+  starts_at: string
+  ends_at: string
+  join_deadline: string
+  phase: "upcoming" | "running" | "ended" | "off"
+  min_discount_percent: number
+  max_discount_percent: number
+  categories: { slug: string; label: string }[]
+  max_books_per_author: number
+  approval_required: boolean
+  admin_only: boolean
+  can_join: boolean
+  can_decline: boolean
+  entries: CampaignEntryData[]
+  eligible_books: { id: number; title: string; category: string; ebook: CampaignProductLimits; audiobook: CampaignProductLimits }[]
+}
+
+export async function getMyCampaigns() {
+  return api<{ campaigns: CampaignData[]; server_now: string }>("/me/campaigns/", { cache: "no-store" })
+}
+
+export async function joinCampaign(
+  campaignId: number,
+  payload: { book_id: number; ebook_offer_price?: string | null; audiobook_offer_price?: string | null },
+  call?: CallOptions,
+) {
+  return apiAction<CampaignEntryData>(
+    `/me/campaigns/${campaignId}/entries/`,
+    { method: "POST", body: JSON.stringify(payload) },
+    call,
+  )
+}
+
+export async function updateCampaignEntry(
+  entryId: number,
+  payload: { ebook_offer_price?: string | null; audiobook_offer_price?: string | null },
+  call?: CallOptions,
+) {
+  return apiAction<CampaignEntryData>(
+    `/me/campaign-entries/${entryId}/`,
+    { method: "PATCH", body: JSON.stringify(payload) },
+    call,
+  )
+}
+
+export async function withdrawCampaignEntry(entryId: number, call?: CallOptions) {
+  return apiAction<CampaignEntryData>(`/me/campaign-entries/${entryId}/`, { method: "DELETE" }, call)
+}
+
+export async function declineCampaignEntry(entryId: number, reason: string, call?: CallOptions) {
+  return apiAction<CampaignEntryData>(
+    `/me/campaign-entries/${entryId}/decline/`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+    call,
+  )
 }
 
 export async function confirmOrderPayment(

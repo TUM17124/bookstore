@@ -1,5 +1,6 @@
 'use client'
 
+import { useCurrency } from '@/lib/money'
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -13,6 +14,7 @@ import { useCategories } from '@/lib/categories'
 
 
 function PublishPageInner() {
+  const currency = useCurrency()
   const searchParams = useSearchParams()
   const editorDocumentId = searchParams.get('editor_document_id') || ''
 
@@ -201,8 +203,8 @@ function PublishPageInner() {
 
         {!isFree && (
           <>
-            <input name="ebook_price" type="number" min="0" step="1" placeholder="Ebook price (KES)" className="rounded-lg border border-foreground/15 bg-transparent px-3 py-2" />
-            <input name="audiobook_price" type="number" min="0" step="1" placeholder="Audiobook price (KES)" className="rounded-lg border border-foreground/15 bg-transparent px-3 py-2" />
+            <input name="ebook_price" type="number" min="0" step="1" placeholder={`Ebook price (${currency.code})`} className="rounded-lg border border-foreground/15 bg-transparent px-3 py-2" />
+            <input name="audiobook_price" type="number" min="0" step="1" placeholder={`Audiobook price (${currency.code})`} className="rounded-lg border border-foreground/15 bg-transparent px-3 py-2" />
           </>
         )}
 

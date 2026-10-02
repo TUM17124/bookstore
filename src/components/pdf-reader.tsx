@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
+import { useCurrency, useMoney } from '@/lib/money'
 import Link from 'next/link'
 import { getToken, getReaderManifest, getReaderPageText, ContentError, type ReaderManifest } from '@/lib/api'
 import { getPdfProgress, savePdfProgress, getPdfNotes, addPdfNote, updatePdfNote, deletePdfNote, type PdfNoteRow } from '@/lib/api'
@@ -353,6 +354,8 @@ export function PdfReader({
   const [creditsOpen, setCreditsOpen] = useState(false)
   const [creditQuote, setCreditQuote] = useState<TtsCreditQuote | null>(null)
   const [creditAmount, setCreditAmount] = useState('')
+  const currency = useCurrency()
+  const money = useMoney()
   const [creditError, setCreditError] = useState('')
   const creditQuoteTimerRef = useRef<number | null>(null)
   const [usageNotice, setUsageNotice] = useState('')
@@ -2346,14 +2349,14 @@ export function PdfReader({
           <div className="w-full max-w-md rounded-2xl bg-[#f4efe4] p-4 shadow-2xl">
             <p className="text-sm font-bold text-black">Buy robot-reader credits</p>
             <p className="mt-1 text-sm font-bold text-black">
-              KES {creditAmount || creditQuote?.amount || creditQuote?.min_kes || '—'} gives you{' '}
+              {creditAmount || creditQuote?.amount || creditQuote?.min_kes ? money(creditAmount || creditQuote?.amount || creditQuote?.min_kes) : '—'} gives you{' '}
               {estimatedCreditChars != null ? estimatedCreditChars.toLocaleString() : '—'} characters
             </p>
             <p className="mt-1 text-[12px] text-black/60">
-              Pay at least KES {creditQuote?.min_kes || '—'} to add robot-reader credits.
+              Pay at least {creditQuote?.min_kes ? money(creditQuote.min_kes) : '—'} to add robot-reader credits.
               {creditQuote?.volume_bonus_percent ? ` · ${creditQuote.volume_bonus_percent}% extra if you pay 2× the minimum` : ''}
             </p>
-            <label className="mt-3 block text-[11px] font-bold uppercase tracking-wider text-black/50">Amount (KES)</label>
+            <label className="mt-3 block text-[11px] font-bold uppercase tracking-wider text-black/50">Amount ({currency.code})</label>
             <input
               type="number"
               min={creditQuote?.min_kes || 0}
