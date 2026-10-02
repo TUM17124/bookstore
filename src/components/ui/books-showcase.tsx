@@ -2032,10 +2032,10 @@ export function BooksShowcase({
     '--bs-cream': themeColors?.cream ?? '#fdfbf4',
     '--bs-lav': themeColors?.lav ?? '#c9d0ee',
     '--bs-peri': themeColors?.peri ?? '#96a2de',
-    '--bs-bg-light': themeColors?.bgLight ?? themeColors?.bg ?? '#fafafa',
-    '--bs-bg-dark': themeColors?.bgDark ?? themeColors?.bg ?? '#18181b',
-    '--bs-fg-light': themeColors?.foregroundLight ?? '#18181b',
-    '--bs-fg-dark': themeColors?.foregroundDark ?? '#fafafa',
+    '--bs-bg-light': themeColors?.bgLight ?? themeColors?.bg ?? 'var(--background)',
+    '--bs-bg-dark': themeColors?.bgDark ?? themeColors?.bg ?? 'var(--background)',
+    '--bs-fg-light': themeColors?.foregroundLight ?? 'var(--foreground)',
+    '--bs-fg-dark': themeColors?.foregroundDark ?? 'var(--foreground)',
     // Section rows have fixed heading and card-text heights, so a
     // skeleton row is exactly the size of the real one.
     '--bs-section-head': '46px',

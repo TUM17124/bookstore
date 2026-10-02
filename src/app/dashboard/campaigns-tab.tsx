@@ -26,16 +26,16 @@ import { errorMessage } from "@/lib/auth-fetch"
 const PHASE: Record<string, { label: string; cls: string }> = {
   upcoming: { label: "Upcoming", cls: "bg-foreground/10 text-foreground" },
   running: { label: "Running now", cls: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300" },
-  ended: { label: "Ended", cls: "bg-neutral-200 text-neutral-700" },
-  off: { label: "Off", cls: "bg-neutral-200 text-neutral-700" },
+  ended: { label: "Ended", cls: "bg-foreground/10 text-foreground/80" },
+  off: { label: "Off", cls: "bg-foreground/10 text-foreground/80" },
 }
 
 const STATUS_CLS: Record<CampaignEntryData["status"], string> = {
   pending: "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200",
   approved: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300",
   rejected: "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300",
-  withdrawn: "bg-neutral-200 text-neutral-700",
-  declined: "bg-neutral-200 text-neutral-700",
+  withdrawn: "bg-foreground/10 text-foreground/80",
+  declined: "bg-foreground/10 text-foreground/80",
 }
 
 function PriceField({

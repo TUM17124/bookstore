@@ -1,6 +1,8 @@
 import type { Metadata } from "next"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
+import { themeInitScript } from "@/lib/theme"
+import { ThemeAccountSync } from "@/components/theme-account-sync"
 import { preloadScript } from "@/lib/preload"
 import { NotchNavbar } from "@/components/ui/notch-navbar"
 import { MainOffset } from "@/components/main-offset"
@@ -149,6 +151,8 @@ export default function RootLayout({
   return (
     <html lang="en-KE" suppressHydrationWarning>
       <head>
+        {/* The saved (or device) theme on <html> before the first paint: no flash. */}
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript() }} />
         {/* Perf Step 2: start the home page's data requests now, not when the JS is ready. */}
         <script dangerouslySetInnerHTML={{ __html: preloadScript(process.env.NEXT_PUBLIC_API_URL || "") }} />
         <script
@@ -158,6 +162,7 @@ export default function RootLayout({
       </head>
       <body className="antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem enableColorScheme={false}>
+          <ThemeAccountSync />
           <BookmarksProvider>
             <PwaRegister />
             <ReferralCapture />

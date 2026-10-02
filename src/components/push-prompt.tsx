@@ -214,11 +214,11 @@ export function PushPrompt() {
   return (
     <div className="fixed bottom-4 left-4 right-4 z-[69] mx-auto max-w-md rounded-2xl border bg-background p-4 shadow-lg">
       <p className="font-semibold">{title}</p>
-      <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{body}</p>
+      <p className="mt-1 text-sm text-foreground/70 dark:text-neutral-400">{body}</p>
       {msg ? (
         <p
           role={msgIsSoft ? "status" : "alert"}
-          className={`mt-2 text-sm ${msgIsSoft ? "text-neutral-500 dark:text-neutral-400" : "text-red-600"}`}
+          className={`mt-2 text-sm ${msgIsSoft ? "text-muted-foreground dark:text-neutral-400" : "text-red-600"}`}
         >
           {msg}
         </p>
@@ -234,7 +234,7 @@ export function PushPrompt() {
           loadingLabel="Enabling…"
           errorLabel="Allow personal alerts"
           errorPlacement="none"
-          className="flex-1 rounded-lg bg-black py-2 text-sm text-white disabled:opacity-50"
+          className="flex-1 rounded-lg bg-foreground py-2 text-sm text-background disabled:opacity-50"
         >
           Allow personal alerts
         </ActionButton>

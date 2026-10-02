@@ -1275,6 +1275,15 @@ export async function getPersonalisation(): Promise<{ enabled: boolean }> {
   return api<{ enabled: boolean }>("/me/personalisation/")
 }
 
+/** Save the light/dark choice to the account ("system" clears it).
+ * Idempotent on the server; retried on connection problems. */
+export async function saveTheme(
+  theme: "light" | "dark" | "system",
+  call?: CallOptions,
+): Promise<{ theme: "light" | "dark" | ""; user: import("@/lib/auth-client").AuthUser }> {
+  return apiAction("/me/theme/", { method: "POST", body: JSON.stringify({ theme }) }, call)
+}
+
 export async function setPersonalisation(enabled: boolean, call?: CallOptions): Promise<{ enabled: boolean }> {
   return apiAction("/me/personalisation/", { method: "POST", body: JSON.stringify({ enabled }) }, call)
 }

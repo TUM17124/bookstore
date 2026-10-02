@@ -10,8 +10,6 @@ import {
   Search,
   Menu,
   X,
-  Sun,
-  Moon,
   Bookmark,
   Upload,
   LayoutDashboard,
@@ -26,7 +24,6 @@ import {
 import { BookSearchModal } from "@/components/book-search-modal"
 import { cn } from "@/lib/utils"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { useTheme } from "@teispace/next-themes"
 import { useBookmarks } from "@/components/bookmarks-context"
 import { NotificationBell } from "@/components/notification-bell"
 import {
@@ -84,29 +81,6 @@ const NavLink = ({
   </Link>
 )
 
-const MobileThemeToggle = () => {
-  const { theme, setTheme, resolvedTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  if (!mounted) return <div className="w-9 h-9" />
-
-  const isDark = theme === "dark" || resolvedTheme === "dark"
-
-  return (
-    <button
-      type="button"
-      onClick={() => setTheme(isDark ? "light" : "dark")}
-      className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-foreground/5 transition-colors text-foreground/70 hover:text-foreground"
-      aria-label="Toggle theme"
-    >
-      {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-    </button>
-  )
-}
 
 /**
  * Keeps a panel mounted while it animates out (what framer-motion's
@@ -334,7 +308,7 @@ function NotchNavbarInner({
       {accountOpen && (
         <div
           role="menu"
-          className="absolute right-0 top-[calc(100%+6px)] z-50 w-52 rounded-xl border border-foreground/10 bg-zinc-50 dark:bg-zinc-950 shadow-lg"
+          className="absolute right-0 top-[calc(100%+6px)] z-50 w-52 rounded-xl border border-foreground/10 bg-zinc-50 dark:bg-background shadow-lg"
         >
           {accountMenu}
         </div>
@@ -371,7 +345,7 @@ function NotchNavbarInner({
         className={cn("site-navbar fixed top-0 inset-x-0 z-50 h-16 flex px-0", className)}
         {...props}
       >
-        <div className="flex-1 h-10 bg-zinc-50 dark:bg-black z-20 relative min-w-0">
+        <div className="flex-1 h-10 bg-zinc-50 dark:bg-background z-20 relative min-w-0">
           <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
             <line x1="0" y1="39.5" x2="100%" y2="39.5" stroke="currentColor" strokeOpacity={0.05} strokeWidth={0.5} className="text-foreground" />
             <line x1="0" y1="36.5" x2="100%" y2="36.5" stroke="currentColor" strokeOpacity={0.05} strokeWidth={0.5} className="text-foreground" />
@@ -380,7 +354,7 @@ function NotchNavbarInner({
 
         <div className="flex h-16 relative z-10 shrink-0 -ml-px max-w-[min(100%,1100px)] lg:w-[min(calc(100vw-56px),1100px)] 2xl:max-w-[min(100%,1400px)] 2xl:w-[min(calc(100vw-160px),1400px)]">
           <div className="w-[36px] sm:w-[50px] h-full relative shrink-0">
-            <div className="absolute inset-0 bg-zinc-50 dark:bg-black" style={{ clipPath: "path('M0 0 H50 V64 C25 64 25 40 0 40 Z')" }} />
+            <div className="absolute inset-0 bg-zinc-50 dark:bg-background" style={{ clipPath: "path('M0 0 H50 V64 C25 64 25 40 0 40 Z')" }} />
             <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 50 64">
               <path d="M0 39.5 C25 39.5 25 63.5 50 63.5" fill="none" stroke="currentColor" strokeOpacity={0.05} strokeWidth={0.5} className="text-foreground" />
               <path d="M0 36.5 C25 36.5 25 60.5 50 60.5" fill="none" stroke="currentColor" strokeOpacity={0.05} strokeWidth={0.5} className="text-foreground" />
@@ -388,7 +362,7 @@ function NotchNavbarInner({
           </div>
 
           <div className="flex-1 h-full relative min-w-0 -ml-px">
-            <div className="absolute inset-0 bg-zinc-50 dark:bg-black">
+            <div className="absolute inset-0 bg-zinc-50 dark:bg-background">
               <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
                 <line x1="0" y1="63.5" x2="100%" y2="63.5" stroke="currentColor" strokeOpacity={0.05} strokeWidth={0.5} className="text-foreground" />
                 <line x1="0" y1="60.5" x2="100%" y2="60.5" stroke="currentColor" strokeOpacity={0.05} strokeWidth={0.5} className="text-foreground" />
@@ -495,13 +469,13 @@ function NotchNavbarInner({
                   )}
                 </Link>
                 <NotificationBell />
-                <MobileThemeToggle />
+                <ThemeToggle />
               </div>
             </div>
           </div>
 
           <div className="w-[36px] sm:w-[50px] h-full relative shrink-0 -ml-px">
-            <div className="absolute inset-0 bg-zinc-50 dark:bg-black" style={{ clipPath: "path('M0 0 H50 V40 C25 40 25 64 0 64 Z')" }} />
+            <div className="absolute inset-0 bg-zinc-50 dark:bg-background" style={{ clipPath: "path('M0 0 H50 V40 C25 40 25 64 0 64 Z')" }} />
             <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 50 64">
               <path d="M0 63.5 C25 63.5 25 39.5 50 39.5" fill="none" stroke="currentColor" strokeOpacity={0.05} strokeWidth={0.5} className="text-foreground" />
               <path d="M0 60.5 C25 60.5 25 36.5 50 36.5" fill="none" stroke="currentColor" strokeOpacity={0.05} strokeWidth={0.5} className="text-foreground" />
@@ -509,7 +483,7 @@ function NotchNavbarInner({
           </div>
         </div>
 
-        <div className="flex-1 h-10 bg-zinc-50 dark:bg-black z-20 relative min-w-0 -ml-px">
+        <div className="flex-1 h-10 bg-zinc-50 dark:bg-background z-20 relative min-w-0 -ml-px">
           <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
             <line x1="0" y1="39.5" x2="100%" y2="39.5" stroke="currentColor" strokeOpacity={0.05} strokeWidth={0.5} className="text-foreground" />
             <line x1="0" y1="36.5" x2="100%" y2="36.5" stroke="currentColor" strokeOpacity={0.05} strokeWidth={0.5} className="text-foreground" />
@@ -538,7 +512,7 @@ function NotchNavbarInner({
       {menuMounted && (
           <div
             data-state={menuShown ? "open" : "closed"}
-            className="fixed inset-x-0 top-16 z-40 bg-zinc-50 dark:bg-black border-b border-foreground/5 p-4 lg:hidden shadow-lg max-h-[calc(100vh-4rem)] overflow-y-auto transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none data-[state=closed]:-translate-y-5 data-[state=closed]:opacity-0"
+            className="fixed inset-x-0 top-16 z-40 bg-zinc-50 dark:bg-background border-b border-foreground/5 p-4 lg:hidden shadow-lg max-h-[calc(100vh-4rem)] overflow-y-auto transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none data-[state=closed]:-translate-y-5 data-[state=closed]:opacity-0"
           >
             <nav className="flex flex-col gap-1">
               <Link href="/" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
