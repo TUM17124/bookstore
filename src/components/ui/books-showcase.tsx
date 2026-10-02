@@ -1061,6 +1061,15 @@ export function BooksShowcase({
       x.fillRect(0, 0, s, s);
       return tex(c);
     })();
+    // Soft shadow behind each book: strong on the dark theme, faint on the
+    // light one (where a 45% blob looks like a smudge). Follows theme changes.
+    const blobMats: THREE.MeshBasicMaterial[] = [];
+    const blobOpacity = () => (document.documentElement.classList.contains('dark') ? 0.45 : 0.16);
+    const themeObserver = new MutationObserver(() => {
+      const o = blobOpacity();
+      blobMats.forEach((m) => (m.opacity = o));
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     const blobTex = (function () {
       const s = 256,
         c = mkCanvas(s, s),
@@ -1359,10 +1368,9 @@ export function BooksShowcase({
         pagesB.push(pp);
         pageFB.push(0.3 * Math.pow(1 - i / PAGE_B, 2.6));
       }
-      const blob = new THREE.Mesh(
-        blobGeo,
-        new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, opacity: 0.45, depthWrite: false }),
-      );
+      const blobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, opacity: blobOpacity(), depthWrite: false });
+      blobMats.push(blobMat);
+      const blob = new THREE.Mesh(blobGeo, blobMat);
       blob.scale.set(3.1, 3.9, 1);
       blob.position.set(0.1, -0.3, -0.85);
       blob.renderOrder = -5;
@@ -1925,6 +1933,7 @@ export function BooksShowcase({
       visibilityObserver.disconnect();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       timer.dispose();
+      themeObserver.disconnect();
       ro.disconnect();
       window.removeEventListener('resize', onWindowResize);
       window.removeEventListener('orientationchange', onWindowResize);
