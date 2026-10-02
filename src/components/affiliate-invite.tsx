@@ -1,5 +1,6 @@
 "use client"
 
+import { useMoney } from "@/lib/money"
 import { useState } from "react"
 
 export function AffiliateInvite({
@@ -9,6 +10,7 @@ export function AffiliateInvite({
   code: string
   referralReward?: string
 }) {
+  const money = useMoney()
   const [copied, setCopied] = useState<"link" | "code" | "">("")
   const origin =
     typeof window !== "undefined" ? window.location.origin : "https://plugyard.com"
@@ -29,7 +31,7 @@ export function AffiliateInvite({
       <p className="text-sm text-foreground/70">
         Share your invite link or code. When someone creates an account with it,
         they are tied to you. You earn{" "}
-        <strong>KES {referralReward || "0"}</strong> when a referred author is
+        <strong>{money(referralReward || 0)}</strong> when a referred author is
         published.
       </p>
 

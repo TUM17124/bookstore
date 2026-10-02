@@ -1,5 +1,6 @@
 ﻿"use client"
 
+import { useMoney } from "@/lib/money"
 import Link from "next/link"
 import { useEffect, useState, type ReactNode } from "react"
 import {
@@ -239,6 +240,7 @@ const SECTIONS = [
 type SectionId = (typeof SECTIONS)[number]["id"]
 
 export default function SettingsPage() {
+  const money = useMoney()
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
@@ -634,12 +636,12 @@ export default function SettingsPage() {
                   <Stat label="Invited" value={a.referrals} />
                   <Stat label="Eligible" value={a.eligible_referrals} />
                   <Stat label="Accepted books" value={a.accepted_books} />
-                  <Stat label="Available" value={`KES ${a.available_balance}`} />
-                  <Stat label="Earned" value={`KES ${a.earned}`} />
-                  <Stat label="Withdrawn" value={`KES ${a.withdrawn}`} />
-                  <Stat label="Invite reward" value={`KES ${a.referral_reward}`} />
-                  <Stat label="Book reward" value={`KES ${a.book_reward}`} />
-                  <Stat label="Minimum withdrawal" value={`KES ${a.minimum_withdrawal}`} />
+                  <Stat label="Available" value={money(a.available_balance)} />
+                  <Stat label="Earned" value={money(a.earned)} />
+                  <Stat label="Withdrawn" value={money(a.withdrawn)} />
+                  <Stat label="Invite reward" value={money(a.referral_reward)} />
+                  <Stat label="Book reward" value={money(a.book_reward)} />
+                  <Stat label="Minimum withdrawal" value={money(a.minimum_withdrawal)} />
                 </div>
                 <ActionForm
                   run={(ctx, f) => requestAffiliateWithdrawal(String(f.get("amount")), ctx)}
@@ -689,7 +691,7 @@ export default function SettingsPage() {
                               <td className="py-2 pr-3 whitespace-nowrap">
                                 {w.created_at ? new Date(w.created_at).toLocaleString() : "—"}
                               </td>
-                              <td className="py-2 pr-3">KES {w.amount}</td>
+                              <td className="py-2 pr-3">{money(w.amount)}</td>
                               <td className="py-2 pr-3 capitalize">{w.status}</td>
                               <td className="py-2 break-all text-foreground/60">{w.note || w.paystack_reference || "—"}</td>
                             </tr>
@@ -724,7 +726,7 @@ export default function SettingsPage() {
                                 {x.created_at ? new Date(x.created_at).toLocaleString() : "—"}
                               </td>
                               <td className="py-2 pr-3">{x.kind}</td>
-                              <td className="py-2 pr-3">KES {x.amount}</td>
+                              <td className="py-2 pr-3">{money(x.amount)}</td>
                               <td className="py-2 text-foreground/60">{x.description || "—"}</td>
                             </tr>
                           ))}

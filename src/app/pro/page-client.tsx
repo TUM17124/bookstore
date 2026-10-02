@@ -1,5 +1,6 @@
 'use client'
 
+import { useMoney } from '@/lib/money'
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -34,6 +35,7 @@ const BENEFITS = [
 ]
 
 function ProInner() {
+  const money = useMoney()
   const sp = useSearchParams()
   const proRef = (sp.get('pro_ref') || '').trim()
 
@@ -131,7 +133,7 @@ function ProInner() {
           {price ? (
             <>
               <span className="text-2xl font-extrabold text-foreground">
-                KES {Number(price).toLocaleString()}
+                {money(price)}
               </span>
               <span className="text-sm"> / month</span>
             </>
@@ -233,7 +235,7 @@ function ProInner() {
             errorClassName="mt-3 text-center text-sm text-red-700"
             className="w-full rounded-full bg-[#d4af37] px-4 py-3.5 text-center text-base font-bold text-[#3a2e08] disabled:opacity-60 aria-busy:opacity-80"
           >
-            {`Upgrade to Pro — KES ${price ? Number(price).toLocaleString() : '…'}/month`}
+            {`Upgrade to Pro — ${price ? money(price) : '…'}/month`}
           </ActionButton>
         )}
       </div>

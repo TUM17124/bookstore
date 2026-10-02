@@ -7,6 +7,7 @@ import { BooksShowcase, type BookCfg, type ShowcaseSection } from "@/components/
 import { getBooks, getBook, asBookList, getHomeSections, type Paginated, type ApiBook, type CategoryInfo, type SectionBook } from "@/lib/api"
 import { useCategories } from "@/lib/categories"
 import { CategoryChips } from "@/components/category-nav/category-chips"
+import { Banners, useBannerData } from "@/components/offers/banners"
 import { CategoryBar } from "@/components/category-nav/category-bar"
 import { errorMessage } from "@/lib/auth-fetch"
 import { OfferMarquee } from "@/components/offer-marquee"
@@ -33,9 +34,10 @@ function toCfg(b: ApiBook): BookCfg {
     backInk: b.backInk,
     chapters: b.chapters,
     price: b.price != null ? Number(b.price) : undefined,
-    ebookPrice: b.ebook_price != null ? Number(b.ebook_price) : undefined,
-    audiobookPrice:
-      b.audiobook_price != null ? Number(b.audiobook_price) : undefined,
+    // Same rule as the server's checkout price (shop/pricing.list_price):
+    // a 0/empty product price falls back to the book's price.
+    ebookPrice: Number(b.ebook_price) || (b.price != null ? Number(b.price) : undefined),
+    audiobookPrice: Number(b.audiobook_price) || (b.price != null ? Number(b.price) : undefined),
     hasEbook:
       b.hasEbook !== false && b.hasEbook !== undefined ? !!b.hasEbook : true,
     hasAudiobook: !!b.hasAudiobook,
@@ -49,6 +51,7 @@ function toCfg(b: ApiBook): BookCfg {
     pdfUrl: b.pdfUrl || undefined,
     ratingAvg: (b as SectionBook).rating_avg,
     ratingCount: (b as SectionBook).rating_count,
+    offers: b.offers ?? null,
   }
 }
 
@@ -114,7 +117,7 @@ function useHomeSections(category: string, enabled: boolean) {
   }, [])
 
   const retry = () => setNonce((n) => n + 1)
-  if (!enabled) return { sections: [], info: null, error: "", notFound: false, retry }
+  if (!enabled) return { sections: [], info: null, error: "", notFound: false, retry, settled: true }
   // While a new request is in flight the last sections stay (no flash),
   // but an old error / not-found doesn't.
   const current = result?.key === key
@@ -124,6 +127,8 @@ function useHomeSections(category: string, enabled: boolean) {
     error: current ? result.error : "",
     notFound: current ? result.notFound : false,
     retry,
+    /** Any answer (sections, error or not-found) has arrived. */
+    settled: result != null,
   }
 }
 
@@ -159,6 +164,16 @@ function HomeInner() {
   const [books, setBooks] = useState<BookCfg[]>([])
   const home = useHomeSections(category, !q)
   const { navbar: navCats } = useCategories()
+  // Ask for the banners now, not when the shelf first renders.
+  const bannersReady = useBannerData(category)
+  // Keep the placeholder until the sections and banners have answered
+  // (max 3 s), so they appear in place instead of pushing the grid down.
+  const [gateExpired, setGateExpired] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setGateExpired(true), 3000)
+    return () => clearTimeout(t)
+  }, [])
+  const extrasReady = gateExpired || ((home.settled || !!q) && (bannersReady || !!q))
   const [error, setError] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -250,6 +265,18 @@ function HomeInner() {
     router.replace(qs ? `/?${qs}` : "/", { scroll: false })
   }, [router])
 
+  // Part C: an offer countdown reached zero - fetch the book's price from
+  // the server again (offers end on their own there).
+  const onOfferExpired = useCallback((id: string) => {
+    getBook(id)
+      .then((b) => {
+        if (!b) return
+        const fresh = toCfg(b)
+        setBooks((prev) => prev.map((x) => (x.id === fresh.id ? fresh : x)))
+      })
+      .catch(() => {})
+  }, [])
+
   const onSectionBookOpen = useCallback(
     (book: BookCfg) => {
       setBooks((prev) => (prev.some((b) => b.id === book.id) ? prev : [...prev, book]))
@@ -271,6 +298,8 @@ function HomeInner() {
           <CategoryBar categories={navCats} activeSlug={category} />
         </div>
       </div>
+      {/* Part C: admin banners - home, or this category's page. */}
+      <Banners category={category} />
       {home.info ? (
         <header className="mb-6">
           <h1 className="text-[clamp(22px,2.6cqw,32px)] font-extrabold tracking-[-0.01em]">{home.info.label}</h1>
@@ -314,7 +343,7 @@ function HomeInner() {
     }
   }, [selectedBookId, loading, books])
 
-  if (loading) {
+  if (loading || !extrasReady) {
     return (
       <main className="home-shelf">
         <OfferMarquee />
@@ -360,6 +389,7 @@ function HomeInner() {
           books={books}
           sections={home.sections}
           onSectionBookOpen={onSectionBookOpen}
+          onOfferExpired={onOfferExpired}
           topSlot={topSlot}
           openBookId={selectedBookId}
           openView={view}
