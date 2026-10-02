@@ -1,19 +1,40 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import * as THREE from 'three';
+// Types only: the three.js code (~130 KB gzipped) is loaded when a book is
+// first opened (or the pointer/finger first touches the shelf), not with the page.
+import type * as THREE from 'three';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useBookmarks } from '@/components/bookmarks-context';
 import { useAsyncAction } from '@/hooks/use-async-action';
 import { ActionButton, ActionStatus } from '@/components/ui/action-button';
-import { BookReviews } from '@/components/book-reviews';
 import { createPortal } from 'react-dom';
 import { searchTrack, getRatings, getRelatedBooks, getBookAccess, downloadBook, type ApiBook, type ApiOffer, type BookAccess } from '@/lib/api';
 import { PriceTag } from '@/components/offers/price-tag';
+import dynamic from 'next/dynamic';
+
+// Loaded only when opened (they used to ship with every page): the full
+// reader, the audio player and the reviews panel.
+function PanelLoading() {
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center p-6" role="status" aria-live="polite">
+      <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-current/20 border-t-[var(--brand-pink)] motion-reduce:animate-none" aria-hidden />
+      <span className="sr-only">Loading…</span>
+    </div>
+  );
+}
+const PdfReader = dynamic(() => import('@/components/pdf-reader').then((m) => m.PdfReader), { ssr: false, loading: PanelLoading });
+const AudioPlayer = dynamic(() => import('@/components/audio-player').then((m) => m.AudioPlayer), { ssr: false, loading: PanelLoading });
+const BookReviews = dynamic(() => import('@/components/book-reviews').then((m) => m.BookReviews), { ssr: false, loading: PanelLoading });
+
+let threePromise: Promise<typeof import('three')> | null = null;
+/** Start (once) downloading three.js; the 3D book view needs it. */
+function loadThree() {
+  threePromise ??= import('three');
+  return threePromise;
+}
 import { useCurrency, formatMoney } from '@/lib/money';
-import { PdfReader } from '@/components/pdf-reader';
-import { AudioPlayer } from '@/components/audio-player';
 import { edgeMask, useScrollEdges } from '@/components/category-nav/use-scroll-edges';
 
 export interface BookCfg {
@@ -572,6 +593,8 @@ export function BooksShowcase({
   const gridRef = useRef<HTMLDivElement | null>(null);
   const sceneApiRef = useRef<{ openById: (id: string) => void; closeCurrent: () => void } | null>(null);
   const pendingOpenIdRef = useRef<string | null>(null);
+  // The 3D scene (and three.js) is set up the first time a book is opened.
+  const [sceneWanted, setSceneWanted] = useState(false);
 
   const onBookSelectRef = useRef(onBookSelect);
   useEffect(() => {
@@ -725,6 +748,7 @@ export function BooksShowcase({
 
   function openFromGrid(book: BookCfg) {
     pendingOpenIdRef.current = String(book.id);
+    setSceneWanted(true);
     if (sceneApiRef.current) {
       sceneApiRef.current.openById(String(book.id));
     } else {
@@ -739,6 +763,7 @@ export function BooksShowcase({
     const book = books.find((b) => String(b.id) === String(openBookId));
     if (!book) return;
     pendingOpenIdRef.current = String(book.id);
+    setSceneWanted(true);
     if (sceneApiRef.current) {
       sceneApiRef.current.openById(String(book.id));
     } else {
@@ -753,8 +778,11 @@ export function BooksShowcase({
   useEffect(() => {
     const root = rootRef.current;
     const canvasEl = canvasRef.current;
-    if (!root || !canvasEl || books.length === 0) return;
+    if (!root || !canvasEl || books.length === 0 || !sceneWanted) return;
 
+    let disposed = false;
+    let cleanup: void | (() => void);
+    const setupScene = (THREE: typeof import('three')) => {
     let cancelled = false;
     const timeouts: ReturnType<typeof setTimeout>[] = [];
     const setT = (fn: () => void, ms: number) => {
@@ -1956,7 +1984,20 @@ export function BooksShowcase({
       scene.environment = null;
       renderer.dispose();
     };
-  }, [books.length > 0, showDetailPanel]);
+    };
+    loadThree()
+      .then((mod) => {
+        if (!disposed) cleanup = setupScene(mod);
+      })
+      .catch(() => {
+        // offline: the book stays in its "opening" state; reopening retries
+        threePromise = null;
+      });
+    return () => {
+      disposed = true;
+      if (cleanup) cleanup();
+    };
+  }, [books.length > 0, showDetailPanel, sceneWanted]);
 
   const themeVars = {
     '--bs-navy': themeColors?.navy ?? '#141a32',
@@ -2011,6 +2052,10 @@ export function BooksShowcase({
         className,
       )}
       onScroll={uiMode === 'hero' ? onGridScroll : undefined}
+      onPointerDown={() => void loadThree()}
+      onPointerOver={(e) => {
+        if (e.pointerType === 'mouse') void loadThree();
+      }}
     >
       <style>{`
         .bs-book-stage {

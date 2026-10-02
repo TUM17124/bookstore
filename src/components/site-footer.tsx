@@ -5,6 +5,7 @@ import Link from "next/link"
 import { BookOpen, ChevronDown, Mail } from "lucide-react"
 import { useIsEditorFocusedRoute } from "@/lib/pdf-editor/use-is-editor-focused-route"
 import { categoryHref, useCategories } from "@/lib/categories"
+import { BrandLogo } from "@/components/brand-logo"
 
 const policyLinks = [
   { href: "/terms", label: "Terms & Conditions" },
@@ -87,8 +88,7 @@ function PhoneFooter({ year }: { year: number }) {
       </nav>
       <div className="mt-5 space-y-3">
         <Link href="/" className="inline-flex items-center gap-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="" width={28} height={28} className="h-7 w-7 rounded-md object-contain" />
+          <BrandLogo size={28} className="h-7 w-7 rounded-md object-contain" />
           <span className="text-sm font-semibold text-foreground">PlugYard</span>
           <span className="text-xs text-foreground/50">· Kenya&apos;s digital bookstore</span>
         </Link>
@@ -143,12 +143,7 @@ function SiteFooterInner() {
           {/* Brand + contact */}
           <div className="sm:col-span-2 lg:col-span-1">
             <Link href="/" className="inline-flex items-center gap-2.5">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/logo.png"
-                alt=""
-                className="h-9 w-9 rounded-lg object-contain"
-              />
+              <BrandLogo size={36} className="h-9 w-9 rounded-lg object-contain" />
               <span className="text-base font-semibold tracking-tight text-foreground">
                 PlugYard
               </span>

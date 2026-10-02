@@ -16,8 +16,8 @@ self.addEventListener("push", (event) => {
     title: "PlugYard",
     body: "A note for your shelf is waiting.",
     url: "/",
-    icon: "/logo.png",
-    badge: "/logo.png",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
     tag: "",
     kind: "",
   };
@@ -43,8 +43,8 @@ self.addEventListener("push", (event) => {
 
   const options = {
     body: data.body || "A note for your shelf is waiting.",
-    icon: data.icon || "/logo.png",
-    badge: data.badge || "/logo.png",
+    icon: data.icon || "/icon-192.png",
+    badge: data.badge || "/icon-192.png",
     tag,
     renotify: Boolean(tag),
     data: {
