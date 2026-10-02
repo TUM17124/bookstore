@@ -63,10 +63,16 @@ export const metadata: Metadata = {
       "max-video-preview": -1,
     },
   },
+  // Small, purpose-sized icons (the 1.4 MB original is only the source file:
+  // design/logo-source.png). /logo.png still answers, at 512 px, for old links.
   icons: {
-    icon: [{ url: "/logo.png", type: "image/png" }],
-    apple: "/logo.png",
-    shortcut: "/logo.png",
+    icon: [
+      { url: "/favicon.ico", sizes: "16x16 32x32 48x48" },
+      { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/icon-512.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+    shortcut: "/favicon.ico",
   },
   manifest: "/manifest.webmanifest",
   openGraph: {
@@ -79,7 +85,7 @@ export const metadata: Metadata = {
       "Buy eBooks and audiobooks instantly — no account needed. Publish your content, set your price, and get paid. AI narration on every title. Free PDF editor with auto-save.",
     images: [
       {
-        url: "/logo.png",
+        url: "/icon-512.png",
         width: 512,
         height: 512,
         alt: "PlugYard",
@@ -91,7 +97,7 @@ export const metadata: Metadata = {
     title: "PlugYard — Buy eBooks & Audiobooks Online",
     description:
       "Buy or sell eBooks & audiobooks online. No account to purchase. Publish content and get paid. AI narration. Free PDF editor.",
-    images: ["/logo.png"],
+    images: ["/icon-512.png"],
   },
   verification: {
     google: "G5QylOyQKIG9YdPoVnVJAABBv2hONBE7kGmMH7XpdCQ",
@@ -118,7 +124,7 @@ const jsonLd = {
       "@id": `${SITE}/#organization`,
       "name": "PlugYard",
       "url": SITE,
-      "logo": { "@type": "ImageObject", "url": `${SITE}/logo.png` },
+      "logo": { "@type": "ImageObject", "url": `${SITE}/icon-512.png` },
       "contactPoint": { "@type": "ContactPoint", "email": "contact@plugyard.com", "contactType": "customer support" },
       "sameAs": [],
     },

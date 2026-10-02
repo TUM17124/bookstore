@@ -40,6 +40,7 @@ import {
 } from "@/lib/auth-client"
 import { getReferralCode } from "@/lib/referral"
 import { useCategories } from "@/lib/categories"
+import { BrandLogo } from "@/components/brand-logo"
 import { CategoryBar } from "@/components/category-nav/category-bar"
 import { CategorySheet, openCategorySheet } from "@/components/category-nav/category-sheet"
 import { useSearchParams } from "next/navigation"
@@ -372,8 +373,7 @@ function NotchNavbarInner({
             <div className="relative w-full h-full flex items-end justify-between pb-2 px-2 sm:px-4 lg:px-5">
               <div className="hidden lg:flex items-center gap-3 xl:gap-4 mb-1 w-full min-w-0">
                 <Link href="/" className="flex items-center shrink-0" aria-label="Home">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/logo.png" alt="Logo" className="h-8 w-8 rounded-lg object-contain" />
+                  <BrandLogo size={32} alt="Logo" className="h-8 w-8 rounded-lg object-contain" />
                 </Link>
 
                 <NavLink href="/" icon={Home} label="Home" />
@@ -434,8 +434,7 @@ function NotchNavbarInner({
 
               <div className="lg:hidden flex items-center gap-2 mb-1">
                 <Link href="/" className="flex items-center shrink-0" aria-label="Home">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/logo.png" alt="Logo" className="h-7 w-7 rounded-md object-contain" />
+                  <BrandLogo size={28} alt="Logo" className="h-7 w-7 rounded-md object-contain" />
                 </Link>
                 <button
                   type="button"
