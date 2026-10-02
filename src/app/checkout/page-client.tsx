@@ -60,6 +60,9 @@ function CheckoutInner() {
   const [priceNotice, setPriceNotice] = useState('')
   const [quoteNonce, setQuoteNonce] = useState(0)
   const money = useMoney()
+  // A free book never needs checkout (the site offers Read/Download), but a
+  // direct link here must not offer to "Pay KES 0".
+  const isFree = !!quote && Number(quote.list_price) <= 0 && Number(quote.price) <= 0
 
   useEffect(() => {
     setMounted(true)
@@ -174,6 +177,21 @@ function CheckoutInner() {
       <h1 className="mt-2 text-2xl font-bold tracking-tight">{title}</h1>
       <p className="mt-1 text-sm text-foreground/55 capitalize">{productLabel}</p>
 
+      {isFree ? (
+        <div className="mt-6 rounded-3xl border border-emerald-500/25 bg-emerald-500/[0.06] p-6">
+          <p className="text-lg font-bold">This book is free</p>
+          <p className="mt-1 text-sm text-foreground/70">
+            There&apos;s nothing to pay. Open the book to read it.
+          </p>
+          <Link
+            href={`/?book=${encodeURIComponent(bookId)}`}
+            className="mt-4 inline-flex min-h-[44px] items-center rounded-full bg-foreground px-5 text-sm font-semibold text-background hover:bg-foreground/90"
+          >
+            Back to the book
+          </Link>
+        </div>
+      ) : (
+      <>
       <div className="mt-4 rounded-2xl border border-foreground/10 px-4 py-3" aria-live="polite">
         {quote ? (
           <PriceTag
@@ -360,6 +378,8 @@ function CheckoutInner() {
           Cancel
         </button>
       </form>
+      </>
+      )}
 
       <p className="mt-6 text-center text-[12px] text-foreground/40">
         By continuing you agree to our{' '}
