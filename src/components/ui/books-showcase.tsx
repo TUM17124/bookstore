@@ -62,7 +62,7 @@ export interface BookCfg {
   front?: (x: CanvasRenderingContext2D, w: number, h: number) => void;
   back?: (x: CanvasRenderingContext2D, w: number, h: number) => void;
   spine?: (x: CanvasRenderingContext2D, w: number, h: number) => void;
-  images?: { front?: string; back?: string; spine?: string };
+  images?: { front?: string; back?: string; spine?: string; frontThumbs?: { w: number; url: string }[] };
   coverURL?: string | null;
   edge?: string;
   backBg?: string;
@@ -137,6 +137,16 @@ function coverSrc(book: BookCfg) {
   return book.images?.front || book.coverURL || '';
 }
 
+/** Perf Step 2: WebP thumbnails of the front ("url 300w, url 600w"), or ''. */
+function coverSrcSet(book: BookCfg) {
+  const thumbs = book.images?.front ? book.images.frontThumbs : undefined;
+  return thumbs?.length ? thumbs.map((t) => `${t.url} ${t.w}w`).join(', ') : '';
+}
+
+// The card's cover face: ~84% of a card that is 44% of the row on phones
+// and 200px from 768px up.
+const CARD_COVER_SIZES = '(min-width: 768px) 170px, 36vw';
+
 function StarsRow({ value, className }: { value: number; className?: string }) {
   const rounded = Math.round(value);
   return (
@@ -158,12 +168,16 @@ function GridBookCard({
   book,
   onOpen,
   spinning,
+  eager = false,
 }: {
   book: BookCfg;
   onOpen: () => void;
   spinning?: boolean;
+  /** Perf Step 2: covers in the first row load at once; the rest when near the screen. */
+  eager?: boolean;
 }) {
   const src = coverSrc(book);
+  const srcSet = coverSrcSet(book);
   const [broken, setBroken] = useState(false);
   const hasPayloadRating = book.ratingCount != null;
   const [avg, setAvg] = useState(hasPayloadRating && book.ratingCount ? Number(book.ratingAvg) || 0 : book.stars || 0);
@@ -209,7 +223,10 @@ function GridBookCard({
             <div className="bs-book-front" style={{ background: spineColor }}>
               {src && !broken ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={src} alt={book.title} className="block h-full w-full object-cover" onError={() => setBroken(true)} />
+                <picture className="block h-full w-full">
+                  {srcSet && <source type="image/webp" srcSet={srcSet} sizes={CARD_COVER_SIZES} />}
+                  <img src={src} alt={book.title} loading={eager ? 'eager' : 'lazy'} decoding="async" className="block h-full w-full object-cover" onError={() => setBroken(true)} />
+                </picture>
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center px-3 text-center">
                   <span className="line-clamp-4 text-[13px] font-bold leading-snug text-white">{book.title}</span>
@@ -287,8 +304,10 @@ function SectionRow({
   section,
   onOpen,
   spinningId,
+  first = false,
 }: {
   section: ShowcaseSection;
+  first?: boolean;
   onOpen: (book: BookCfg) => void;
   spinningId?: string | null;
 }) {
@@ -333,9 +352,9 @@ function SectionRow({
         style={{ ...edgeMask(edges.start, edges.end), ['--bs-card-meta' as string]: 'var(--bs-section-meta)' }}
         className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain px-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {section.books.map((book) => (
+        {section.books.map((book, i) => (
           <li key={book.id} className="w-[44%] shrink-0 snap-start @min-[520px]:w-[30%] @min-[768px]:w-[200px]">
-            <GridBookCard book={book} spinning={spinningId === book.id} onOpen={() => onOpen(book)} />
+            <GridBookCard book={book} eager={first && i < 6} spinning={spinningId === book.id} onOpen={() => onOpen(book)} />
           </li>
         ))}
       </ul>
@@ -417,8 +436,8 @@ function SectionsBlock({
     <div ref={ref} style={reserve ? { minHeight: reserve } : undefined} aria-busy={loading || undefined}>
       {loading
         ? Array.from({ length: skeletons }, (_, i) => <SectionSkeleton key={i} />)
-        : sections.map((section) => (
-            <SectionRow key={section.id} section={section} spinningId={spinningId} onOpen={onOpen} />
+        : sections.map((section, i) => (
+            <SectionRow key={section.id} section={section} first={i === 0} spinningId={spinningId} onOpen={onOpen} />
           ))}
     </div>
   );
@@ -434,6 +453,7 @@ function apiBookToMiniCfg(b: ApiBook): BookCfg {
     desc: b.desc || '',
     images: {
       front: b.images?.front || undefined,
+      frontThumbs: b.images?.frontThumbs,
       spine: b.images?.spine || undefined,
       back: b.images?.back || undefined,
     },
@@ -611,6 +631,7 @@ export function BooksShowcase({
   }, [onNearEnd]);
 
   const [uiMode, setUiMode] = useState<'hero' | 'opening' | 'detail' | 'closing'>('hero');
+  const [linkOpen, setLinkOpen] = useState(() => !!openBookId);
   const [selectedCfg, setSelectedCfg] = useState<BookCfg | null>(null);
 
   // What the SERVER says this user may do with the selected book. Display
@@ -637,7 +658,10 @@ export function BooksShowcase({
   const [downloadMenu, setDownloadMenu] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const shelfActive = uiMode !== 'hero' && !!selectedCfg;
-  const showGrid = uiMode === 'hero' || uiMode === 'opening';
+  // Perf Step 2: a book opened from a link (?book=) skips the grid while
+  // opening, so the book view is in its final place from the first frame
+  // (the grid used to show first, then vanish and pull the view up a screen).
+  const showGrid = uiMode === 'hero' || (uiMode === 'opening' && !linkOpen);
 
   useEffect(() => {
     // Opening a book (including from Recommendations, while scrolled down
@@ -747,6 +771,7 @@ export function BooksShowcase({
   }, [selectedCfg?.id]);
 
   function openFromGrid(book: BookCfg) {
+    setLinkOpen(false);
     pendingOpenIdRef.current = String(book.id);
     setSceneWanted(true);
     if (sceneApiRef.current) {
@@ -762,8 +787,10 @@ export function BooksShowcase({
     if (!openBookId) return;
     const book = books.find((b) => String(b.id) === String(openBookId));
     if (!book) return;
+    const fromLink = pendingOpenIdRef.current !== String(book.id);
     pendingOpenIdRef.current = String(book.id);
     setSceneWanted(true);
+    if (fromLink) setLinkOpen(true);
     if (sceneApiRef.current) {
       sceneApiRef.current.openById(String(book.id));
     } else {

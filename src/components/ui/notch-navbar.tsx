@@ -26,7 +26,6 @@ import {
 import { BookSearchModal } from "@/components/book-search-modal"
 import { cn } from "@/lib/utils"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { motion, AnimatePresence } from "framer-motion"
 import { useTheme } from "@teispace/next-themes"
 import { useBookmarks } from "@/components/bookmarks-context"
 import { NotificationBell } from "@/components/notification-bell"
@@ -109,6 +108,31 @@ const MobileThemeToggle = () => {
   )
 }
 
+/**
+ * Keeps a panel mounted while it animates out (what framer-motion's
+ * AnimatePresence did). `settled` turns on a couple of frames after opening
+ * (so the CSS transition has a start state) and off `ms` after closing; the
+ * panel stays mounted while either is true.
+ */
+function usePresence(open: boolean, ms: number) {
+  const [settled, setSettled] = useState(false)
+  useEffect(() => {
+    if (open) {
+      let r2 = 0
+      const r1 = requestAnimationFrame(() => {
+        r2 = requestAnimationFrame(() => setSettled(true))
+      })
+      return () => {
+        cancelAnimationFrame(r1)
+        cancelAnimationFrame(r2)
+      }
+    }
+    const t = setTimeout(() => setSettled(false), ms)
+    return () => clearTimeout(t)
+  }, [open, ms])
+  return { mounted: open || settled, shown: open && settled }
+}
+
 function NotchNavbarInner({
   className,
   ...props
@@ -120,6 +144,7 @@ function NotchNavbarInner({
   const [authReady, setAuthReady] = useState(false)
   const [isPro, setIsPro] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const { mounted: menuMounted, shown: menuShown } = usePresence(isMobileMenuOpen, 200)
   const [searchOpen, setSearchOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
   const [referralCode, setReferralCode] = useState("")
@@ -507,17 +532,13 @@ function NotchNavbarInner({
 
       <BookSearchModal open={searchOpen} onOpenChange={setSearchOpen} />
 
-      <AnimatePresence>
-        <Suspense fallback={null}>
-          <NavCategorySheet />
-        </Suspense>
-        {isMobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-x-0 top-16 z-40 bg-zinc-50 dark:bg-black border-b border-foreground/5 p-4 lg:hidden shadow-lg max-h-[calc(100vh-4rem)] overflow-y-auto"
+      <Suspense fallback={null}>
+        <NavCategorySheet />
+      </Suspense>
+      {menuMounted && (
+          <div
+            data-state={menuShown ? "open" : "closed"}
+            className="fixed inset-x-0 top-16 z-40 bg-zinc-50 dark:bg-black border-b border-foreground/5 p-4 lg:hidden shadow-lg max-h-[calc(100vh-4rem)] overflow-y-auto transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none data-[state=closed]:-translate-y-5 data-[state=closed]:opacity-0"
           >
             <nav className="flex flex-col gap-1">
               <Link href="/" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
@@ -609,9 +630,8 @@ function NotchNavbarInner({
                 </>
               )}
             </nav>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+      )}
     </>
   )
 }
