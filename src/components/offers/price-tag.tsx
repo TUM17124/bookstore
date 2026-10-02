@@ -60,7 +60,7 @@ export function PriceTag({
             {money(live.original_price)}
           </s>
           <span className="tabular-nums">{money(live.price)}</span>
-          <span className="ml-1 rounded bg-[var(--bs-pink,#f591ac)] px-1 text-[9px] font-bold text-[#141a32]">
+          <span className="ml-1 rounded bg-[var(--bs-pink,#f591ac)] px-1 text-[9px] font-bold text-[var(--on-brand)]">
             −{live.saving_percent}%
           </span>
         </span>

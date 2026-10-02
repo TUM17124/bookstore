@@ -1413,10 +1413,10 @@ function BookBoostRow({
             successLabel="Redirecting…"
             errorPlacement="none"
             retryPlacement="none"
-            className={`px-4 py-2 rounded-lg text-white ${
+            className={`px-4 py-2 rounded-lg ${
               active
-                ? "bg-neutral-400 cursor-not-allowed"
-                : "bg-indigo-600"
+                ? "bg-neutral-400 text-white cursor-not-allowed"
+                : "bg-foreground text-background"
             }`}
           >
             {active

@@ -41,7 +41,7 @@ function Row({
           <button
             type="button"
             onClick={onListen}
-            className="rounded-full bg-[#141a32] px-3 py-1 text-xs font-semibold text-[#fdfbf4]"
+            className="rounded-full bg-foreground px-3 py-1 text-xs font-semibold text-background"
           >
             Listen
           </button>
@@ -49,7 +49,7 @@ function Row({
           <button
             type="button"
             onClick={onRead}
-            className="rounded-full bg-[#141a32] px-3 py-1 text-xs font-semibold text-[#fdfbf4]"
+            className="rounded-full bg-foreground px-3 py-1 text-xs font-semibold text-background"
           >
             Read
           </button>
@@ -60,10 +60,11 @@ function Row({
           <ActionButton
             action={download}
             onClick={() => void download.run()}
+            compact
             loadingLabel="Downloading…"
             successLabel="Downloaded"
             errorPlacement="none"
-            className="text-xs font-semibold underline disabled:opacity-50"
+            className="rounded-full border border-foreground/20 px-3 py-[3px] text-xs font-semibold disabled:opacity-50"
           >
             Download
           </ActionButton>
@@ -145,12 +146,12 @@ export default function PurchasesPage() {
       </LegalOverlay>
 
       {reader && (
-        <div className="fixed inset-0 z-[10000] flex flex-col bg-[#0b1020]">
-          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
+        <div className="fixed inset-0 z-[10000] flex flex-col bg-background text-foreground">
+          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-foreground/10 px-3">
             <button
               type="button"
               onClick={() => setReader(null)}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-foreground hover:bg-foreground/10"
             >
               ×
             </button>
@@ -163,7 +164,7 @@ export default function PurchasesPage() {
       )}
 
       {player && (
-        <div className="fixed inset-0 z-[10000] flex flex-col bg-[#0b1020]">
+        <div className="fixed inset-0 z-[10000] flex flex-col bg-background text-foreground">
           <AudioPlayer
             title={`Book #${player.book_id}`}
             bookId={String(player.book_id)}

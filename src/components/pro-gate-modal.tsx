@@ -51,7 +51,7 @@ export function ProGateModal({
           <Link
             href="/pro#credits"
             onClick={onClose}
-            className="inline-flex flex-1 items-center justify-center rounded-full bg-[#f591ac] px-4 py-2.5 text-sm font-semibold text-[#141a32]"
+            className="inline-flex flex-1 items-center justify-center rounded-full bg-[#f591ac] px-4 py-2.5 text-sm font-semibold text-[var(--on-brand)]"
           >
             Buy credits
           </Link>

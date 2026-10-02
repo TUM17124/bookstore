@@ -41,7 +41,8 @@ function GuestDownloadButton({
       action={download}
       onClick={() => void download.run()}
       disabled={item.downloads_remaining <= 0}
-      loadingLabel="Preparing download…"
+      compact
+      loadingLabel="Downloading…"
       successLabel="Downloaded"
       errorClassName="basis-full text-xs text-red-500"
       className="rounded-full border border-foreground/20 px-4 py-2 text-sm font-semibold disabled:opacity-50"
@@ -213,13 +214,13 @@ function GuestLibraryInner() {
       ) : null}
 
       {reading && token && (
-        <div className="fixed inset-0 z-[10000] flex flex-col bg-[#0b1020]">
-          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
+        <div className="fixed inset-0 z-[10000] flex flex-col bg-background text-foreground">
+          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-foreground/10 px-3">
             <button
               type="button"
               onClick={() => setReading(null)}
               aria-label="Close reader"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-foreground hover:bg-foreground/10"
             >
               ×
             </button>
@@ -230,7 +231,7 @@ function GuestLibraryInner() {
       )}
 
       {listening && token && (
-        <div className="fixed inset-0 z-[10000] flex flex-col bg-[#0b1020]">
+        <div className="fixed inset-0 z-[10000] flex flex-col bg-background text-foreground">
           <AudioPlayer
             title={listening.book.title}
             bookId={listening.book.id}

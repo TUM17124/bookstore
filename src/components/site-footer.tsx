@@ -94,7 +94,7 @@ function PhoneFooter({ year }: { year: number }) {
         </Link>
         <a
           href="mailto:contact@plugyard.com"
-          className="flex min-h-[44px] w-fit items-center gap-2 text-sm font-medium text-sky-600 dark:text-sky-400"
+          className="flex min-h-[44px] w-fit items-center gap-2 text-sm font-medium text-foreground underline-offset-2 hover:underline"
         >
           <Mail className="h-4 w-4" aria-hidden />
           contact@plugyard.com
@@ -170,14 +170,14 @@ function SiteFooterInner() {
                 hover:border-foreground/20 hover:bg-foreground/[0.07]
               "
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-500/15 text-sky-600 dark:text-sky-400">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-foreground">
                 <Mail className="h-4 w-4" />
               </span>
               <span className="min-w-0">
                 <span className="block text-[11px] font-semibold uppercase tracking-wider text-foreground/45">
                   Contact
                 </span>
-                <span className="block truncate font-semibold text-sky-600 underline-offset-2 hover:underline dark:text-sky-400">
+                <span className="block truncate font-semibold text-foreground underline-offset-2 hover:underline">
                   contact@plugyard.com
                 </span>
               </span>
@@ -268,7 +268,7 @@ function SiteFooterInner() {
           </p>
           <a
             href="mailto:contact@plugyard.com"
-            className="text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
+            className="text-xs font-medium text-foreground/70 hover:text-foreground hover:underline"
           >
             contact@plugyard.com
           </a>

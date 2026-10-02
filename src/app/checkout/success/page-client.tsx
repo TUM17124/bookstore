@@ -176,7 +176,7 @@ function SuccessInner() {
             value={emailInput}
             onChange={(e) => setEmailInput(e.target.value)}
             placeholder="name@example.com"
-            className="mt-3 w-full rounded-xl border border-foreground/15 bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-sky-500/30"
+            className="mt-3 w-full rounded-xl border border-foreground/15 bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-foreground/25"
           />
           <button
             type="submit"
@@ -268,12 +268,12 @@ function SuccessInner() {
       </p>
 
       {readerOpen && canRead && bookId && (
-        <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
-          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
+        <div className="fixed inset-0 z-[9999] flex flex-col bg-background text-foreground">
+          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-foreground/10 px-3">
             <button
               type="button"
               onClick={() => setReaderOpen(false)}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-foreground hover:bg-foreground/10"
             >
               ×
             </button>

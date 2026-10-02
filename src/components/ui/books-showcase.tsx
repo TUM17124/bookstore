@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -94,6 +94,9 @@ export interface BooksShowcaseProps {
   onSectionBookOpen?: (book: BookCfg) => void;
   /** Part C: an offer's countdown hit zero - re-ask the server for this book. */
   onOfferExpired?: (bookId: string) => void;
+  /** Sections are still loading: show this many same-size skeletons. */
+  sectionsLoading?: boolean;
+  sectionSkeletons?: number;
   /** Part B: shown at the top of the grid view (category header, chips). */
   topSlot?: React.ReactNode;
   onBookSelect?: (book: BookCfg | null) => void;
@@ -104,8 +107,8 @@ export interface BooksShowcaseProps {
 
 const OPEN_SLIP_CLASS =
   'pointer-events-none absolute left-1/2 top-[62%] z-10 -translate-x-1/2 -translate-y-1/2 ' +
-  'rounded-full px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--bs-navy)] ' +
-  'bg-[var(--bs-cream)] shadow-[0_6px_16px_rgba(0,0,0,0.28)] ' +
+  'rounded-full px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--on-brand)] ' +
+  'bg-white shadow-[0_6px_16px_rgba(0,0,0,0.28)] ' +
   'opacity-0 scale-[0.94] transition-[opacity,transform] duration-200 ease-out ' +
   'group-hover:opacity-100 group-hover:scale-100 group-focus-visible:opacity-100 group-focus-visible:scale-100';
 
@@ -216,7 +219,7 @@ function GridBookCard({
         {!spinning && <span className={OPEN_SLIP_CLASS}>Open</span>}
       </div>
 
-      <div className="mt-2.5 min-w-0">
+      <div className="mt-2.5 min-h-[var(--bs-card-meta,0px)] min-w-0">
         <div className="line-clamp-2 text-[13px] font-semibold leading-snug text-current">{book.title}</div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           <StarsRow value={avg} />
@@ -230,7 +233,7 @@ function GridBookCard({
         </div>
         <div className="mt-1 flex items-baseline gap-2 text-[12px] leading-tight">
   {book.isFree ? (
-    <span className="font-bold text-[var(--bs-pink)] uppercase text-[10px] tracking-wider">Free</span>
+    <span className="font-bold text-[var(--brand-pink-text)] uppercase text-[10px] tracking-wider">Free</span>
   ) : (
     <>
       {(book.hasEbook !== false) && Number(book.ebookPrice ?? book.price ?? 0) > 0 && (
@@ -238,7 +241,7 @@ function GridBookCard({
           label="eBook"
           listPrice={Number(book.ebookPrice ?? book.price ?? 0)}
           offer={book.offers?.ebook}
-          className="font-bold text-[var(--bs-pink)]"
+          className="font-bold text-[var(--brand-pink-text)]"
         />
       )}
       {book.hasAudiobook && Number(book.audiobookPrice ?? book.price ?? 0) > 0 && (
@@ -246,7 +249,7 @@ function GridBookCard({
           label="Audio"
           listPrice={Number(book.audiobookPrice ?? book.price ?? 0)}
           offer={book.offers?.audiobook}
-          className="font-bold text-[var(--bs-pink)]"
+          className="font-bold text-[var(--brand-pink-text)]"
         />
       )}
     </>
@@ -275,7 +278,7 @@ function SectionRow({
   const edges = useScrollEdges(rowRef);
   return (
     <section aria-labelledby={headingId} className="mb-8">
-      <div className="mb-3 flex items-end justify-between gap-3">
+      <div className="mb-3 flex min-h-[var(--bs-section-head)] items-end justify-between gap-3">
         <div className="min-w-0">
           <h2 id={headingId} className="text-[clamp(17px,1.8cqw,22px)] font-extrabold tracking-[-0.01em] text-current">
             {section.title}
@@ -306,7 +309,7 @@ function SectionRow({
       ) : null}
       <ul
         ref={rowRef}
-        style={edgeMask(edges.start, edges.end)}
+        style={{ ...edgeMask(edges.start, edges.end), ['--bs-card-meta' as string]: 'var(--bs-section-meta)' }}
         className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain px-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {section.books.map((book) => (
@@ -316,6 +319,87 @@ function SectionRow({
         ))}
       </ul>
     </section>
+  );
+}
+
+/** Part C follow-up: a placeholder the exact size of a SectionRow, shown
+ * while the sections load, so they fill this space instead of pushing the
+ * book grid down. */
+function SectionSkeleton() {
+  return (
+    <section aria-hidden className="mb-8">
+      <div className="mb-3 flex min-h-[var(--bs-section-head)] flex-col justify-end gap-1.5">
+        <span className="h-[18px] w-44 rounded-md bg-current/10 motion-safe:animate-pulse" />
+        <span className="h-[12px] w-64 max-w-[70%] rounded-md bg-current/[0.07] motion-safe:animate-pulse" />
+      </div>
+      <ul className="-mx-1 flex gap-4 overflow-hidden px-1 pb-2">
+        {Array.from({ length: 6 }, (_, i) => (
+          <li key={i} className="w-[44%] shrink-0 @min-[520px]:w-[30%] @min-[768px]:w-[200px]">
+            <div className="relative aspect-[2/2.85] w-full">
+              <div className="absolute inset-[6%_10%_4%_6%] rounded-md bg-current/[0.08] motion-safe:animate-pulse" />
+            </div>
+            <div className="mt-2.5 min-h-[var(--bs-section-meta)] space-y-1.5">
+              <span className="block h-[13px] w-4/5 rounded bg-current/[0.08]" />
+              <span className="block h-[11px] w-1/2 rounded bg-current/[0.06]" />
+              <span className="block h-[12px] w-2/5 rounded bg-current/[0.06]" />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** Sections, or skeletons of the same size while they load. If fewer
+ * sections arrive than were reserved, the space stays until the reader's
+ * next tap/key press (a shift right after input isn't a jump), then goes. */
+function SectionsBlock({
+  sections,
+  loading,
+  skeletons,
+  spinningId,
+  onOpen,
+}: {
+  sections: ShowcaseSection[];
+  loading: boolean;
+  skeletons: number;
+  spinningId: string | null;
+  onOpen: (book: BookCfg) => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [reserve, setReserve] = useState(0);
+  const wasLoading = useRef(loading);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (wasLoading.current && !loading && el) {
+      // Keep the skeletons' height until the next input.
+      const h = el.dataset.skeletonHeight ? Number(el.dataset.skeletonHeight) : 0;
+      if (h > el.scrollHeight) setReserve(h);
+    }
+    if (loading && el) el.dataset.skeletonHeight = String(el.scrollHeight);
+    wasLoading.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    if (!reserve) return;
+    const release = () => setReserve(0);
+    window.addEventListener('pointerdown', release, { once: true });
+    window.addEventListener('keydown', release, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', release);
+      window.removeEventListener('keydown', release);
+    };
+  }, [reserve]);
+
+  return (
+    <div ref={ref} style={reserve ? { minHeight: reserve } : undefined} aria-busy={loading || undefined}>
+      {loading
+        ? Array.from({ length: skeletons }, (_, i) => <SectionSkeleton key={i} />)
+        : sections.map((section) => (
+            <SectionRow key={section.id} section={section} spinningId={spinningId} onOpen={onOpen} />
+          ))}
+    </div>
   );
 }
 
@@ -382,15 +466,15 @@ function RecommendedBooks({ book }: { book: BookCfg }) {
   };
 
   return (
-    <div className="w-full border-t border-[var(--bs-lav)]/20 bg-[var(--bs-navy)] text-[var(--bs-cream)]">
+    <div className="w-full border-t border-current/10 bg-[var(--bs-bg-light)] text-[var(--bs-fg-light)] dark:bg-[var(--bs-bg-dark)] dark:text-[var(--bs-fg-dark)]">
       <div className="flex items-center justify-between px-4 pt-5 sm:px-8">
-        <h3 className="text-[13px] font-bold uppercase tracking-wide text-[var(--bs-lav)]/70">Recommendations</h3>
+        <h3 className="text-[13px] font-bold uppercase tracking-wide text-current/60">Recommendations</h3>
         <div className="flex gap-2">
           <button
             type="button"
             aria-label="Scroll recommendations left"
             onClick={() => skip(-1)}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-[var(--bs-cream)] hover:bg-white/20"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-current/10 hover:bg-current/20"
           >
             ‹
           </button>
@@ -398,7 +482,7 @@ function RecommendedBooks({ book }: { book: BookCfg }) {
             type="button"
             aria-label="Scroll recommendations right"
             onClick={() => skip(1)}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-[var(--bs-cream)] hover:bg-white/20"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-current/10 hover:bg-current/20"
           >
             ›
           </button>
@@ -451,10 +535,10 @@ function DetailPrice({
         offer={offer}
         size="detail"
         onExpire={onExpire}
-        className="text-[var(--bs-pink)] [&>span:first-child>span:first-child]:text-[var(--bs-lav)]"
+        className="text-[var(--brand-pink-text)] [&>span:first-child>span:first-child]:text-current/55"
       />
       {usdRate > 0 && cfg.code !== "USD" && (
-        <span className="ml-1.5 font-bold tabular-nums text-[var(--bs-cream)]/70">
+        <span className="ml-1.5 font-bold tabular-nums text-current/60">
           ≈ {formatMoney(pay / usdRate, { ...cfg, symbol: "$", space: false, decimals: 2, position: "before" })}
         </span>
       )}
@@ -473,6 +557,8 @@ export function BooksShowcase({
   sections = [],
   onSectionBookOpen,
   onOfferExpired,
+  sectionsLoading,
+  sectionSkeletons,
   topSlot,
   onBookSelect,
   onNearEnd,
@@ -764,7 +850,7 @@ export function BooksShowcase({
       console.warn('BooksShowcase: WebGL renderer creation failed', err);
       const fail = document.createElement('div');
       fail.className =
-        'absolute inset-0 z-50 flex items-center justify-center p-10 text-center text-lg leading-relaxed text-[var(--bs-lav)]';
+        'absolute inset-0 z-50 flex items-center justify-center p-10 text-center text-lg leading-relaxed text-current/70';
       fail.textContent = 'This experience needs WebGL, which your browser blocked or does not support.';
       root.appendChild(fail);
       return () => fail.remove();
@@ -975,6 +1061,15 @@ export function BooksShowcase({
       x.fillRect(0, 0, s, s);
       return tex(c);
     })();
+    // Soft shadow behind each book: strong on the dark theme, faint on the
+    // light one (where a 45% blob looks like a smudge). Follows theme changes.
+    const blobMats: THREE.MeshBasicMaterial[] = [];
+    const blobOpacity = () => (document.documentElement.classList.contains('dark') ? 0.45 : 0.16);
+    const themeObserver = new MutationObserver(() => {
+      const o = blobOpacity();
+      blobMats.forEach((m) => (m.opacity = o));
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     const blobTex = (function () {
       const s = 256,
         c = mkCanvas(s, s),
@@ -1273,10 +1368,9 @@ export function BooksShowcase({
         pagesB.push(pp);
         pageFB.push(0.3 * Math.pow(1 - i / PAGE_B, 2.6));
       }
-      const blob = new THREE.Mesh(
-        blobGeo,
-        new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, opacity: 0.45, depthWrite: false }),
-      );
+      const blobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, opacity: blobOpacity(), depthWrite: false });
+      blobMats.push(blobMat);
+      const blob = new THREE.Mesh(blobGeo, blobMat);
       blob.scale.set(3.1, 3.9, 1);
       blob.position.set(0.1, -0.3, -0.85);
       blob.renderOrder = -5;
@@ -1839,6 +1933,7 @@ export function BooksShowcase({
       visibilityObserver.disconnect();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       timer.dispose();
+      themeObserver.disconnect();
       ro.disconnect();
       window.removeEventListener('resize', onWindowResize);
       window.removeEventListener('orientationchange', onWindowResize);
@@ -1873,6 +1968,10 @@ export function BooksShowcase({
     '--bs-bg-dark': themeColors?.bgDark ?? themeColors?.bg ?? '#18181b',
     '--bs-fg-light': themeColors?.foregroundLight ?? '#18181b',
     '--bs-fg-dark': themeColors?.foregroundDark ?? '#fafafa',
+    // Section rows have fixed heading and card-text heights, so a
+    // skeleton row is exactly the size of the real one.
+    '--bs-section-head': '46px',
+    '--bs-section-meta': '104px',
   } as React.CSSProperties;
 
   const panelVisible = uiMode === 'detail';
@@ -1903,12 +2002,12 @@ export function BooksShowcase({
       data-state={uiMode}
       className={cn(
         'book-showcase relative isolate h-full min-h-[560px] font-sans outline-none [container-type:size] [-webkit-tap-highlight-color:transparent]',
-        'focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--bs-peri)]',
+        'focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-current/40',
         'transition-colors duration-500 ease-out',
         uiMode === 'closing' ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden',
         uiMode === 'hero' || uiMode === 'opening'
           ? 'bg-[var(--bs-bg-light)] text-[var(--bs-fg-light)] dark:bg-[var(--bs-bg-dark)] dark:text-[var(--bs-fg-dark)]'
-          : 'bg-[var(--bs-navy)] text-[var(--bs-cream)]',
+          : 'bg-[var(--bs-bg-light)] text-[var(--bs-fg-light)] dark:bg-[var(--bs-bg-dark)] dark:text-[var(--bs-fg-dark)]',
         className,
       )}
       onScroll={uiMode === 'hero' ? onGridScroll : undefined}
@@ -2041,14 +2140,13 @@ export function BooksShowcase({
           )}
         >
           {topSlot}
-          {sections.map((section) => (
-            <SectionRow
-              key={section.id}
-              section={section}
-              spinningId={uiMode === 'opening' ? selectedCfg?.id ?? null : null}
-              onOpen={(book) => (onSectionBookOpen ? onSectionBookOpen(book) : openFromGrid(book))}
-            />
-          ))}
+          <SectionsBlock
+            sections={sections}
+            loading={!!sectionsLoading}
+            skeletons={sectionSkeletons ?? 0}
+            spinningId={uiMode === 'opening' ? selectedCfg?.id ?? null : null}
+            onOpen={(book) => (onSectionBookOpen ? onSectionBookOpen(book) : openFromGrid(book))}
+          />
           {showNav && (
             <nav className="mb-5 flex items-center justify-between">
               <div className="text-[clamp(20px,2.2cqw,29px)] font-extrabold tracking-[-0.01em] text-current">{navTitle}</div>
@@ -2089,7 +2187,7 @@ export function BooksShowcase({
           type="button"
           aria-label="Close detail view"
           onClick={() => sceneApiRef.current?.closeCurrent()}
-          className={`book-close-btn absolute left-[18px] top-[30px] z-[80] inline-flex h-[52px] w-[52px] items-center justify-center rounded-full border-[1.5px] border-[var(--bs-cream)]/40 bg-transparent text-[17px] leading-none text-[var(--bs-cream)] transition-[opacity,border-color] duration-300 delay-150 hover:border-[var(--bs-cream)]/90 @max-[760px]:top-[88px] ${
+          className={`book-close-btn absolute left-[18px] top-[30px] z-[80] inline-flex h-[52px] w-[52px] items-center justify-center rounded-full border-[1.5px] border-current/30 bg-transparent text-[17px] leading-none text-current transition-[opacity,border-color] duration-300 delay-150 hover:border-current/70 @max-[760px]:top-[88px] ${
             uiMode === 'detail' ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
           }`}
         >
@@ -2106,7 +2204,7 @@ export function BooksShowcase({
             if (!root) return;
             root.scrollTo({ top: root.scrollHeight, behavior: 'smooth' });
           }}
-          className={`pointer-events-auto absolute bottom-2 left-1/2 z-[20] flex -translate-x-1/2 flex-col items-center gap-0.5 text-[var(--bs-cream)]/75 transition-opacity duration-300 ${
+          className={`pointer-events-auto absolute bottom-2 left-1/2 z-[20] flex -translate-x-1/2 flex-col items-center gap-0.5 text-current/65 transition-opacity duration-300 ${
             uiMode === 'detail' ? 'opacity-100 delay-500' : 'pointer-events-none opacity-0'
           }`}
         >
@@ -2127,10 +2225,10 @@ export function BooksShowcase({
             ${panelVisible ? 'visible' : 'invisible delay-[500ms]'}`}
         >
         <div className="pointer-events-auto min-h-0 flex-1 pr-1">
-          <h1 className={`m-0 mb-2 line-clamp-2 text-[var(--bs-pink)] text-[clamp(22px,3.2cqw,42px)] font-extrabold leading-[1.12] tracking-[-0.02em] @max-[760px]:text-[clamp(20px,6cqw,32px)] ${dpChild(50)}`}>
+          <h1 className={`m-0 mb-2 line-clamp-2 text-[var(--brand-pink-text)] text-[clamp(22px,3.2cqw,42px)] font-extrabold leading-[1.12] tracking-[-0.02em] @max-[760px]:text-[clamp(20px,6cqw,32px)] ${dpChild(50)}`}>
             {selectedCfg?.title}
           </h1>
-          <p className={`mt-0 line-clamp-4 max-w-[54ch] text-[var(--bs-lav)] text-[clamp(13px,1.1cqw,16px)] leading-[1.45] @max-[760px]:line-clamp-3 @max-[760px]:text-[13px] ${dpChild(130)}`}>
+          <p className={`mt-0 line-clamp-4 max-w-[54ch] text-current/75 text-[clamp(13px,1.1cqw,16px)] leading-[1.45] @max-[760px]:line-clamp-3 @max-[760px]:text-[13px] ${dpChild(130)}`}>
             {selectedCfg?.desc}
           </p>
           <div className={`mt-3 flex flex-col gap-1.5 ${dpChild(210)}`}>
@@ -2138,37 +2236,37 @@ export function BooksShowcase({
               <button type="button" onClick={() => setReviewsOpen(true)} className="pointer-events-auto inline-flex items-center gap-2 rounded-full" aria-label="Rate and comment">
                 <StarsRow value={ratingCount > 0 ? ratingAvg : selectedCfg?.stars ?? 0} className="gap-[3px] [&>svg]:h-4 [&>svg]:w-4" />
                 {ratingCount > 0 ? (
-                  <span className="text-[13px] text-[#98a4d6]">
+                  <span className="text-[13px] text-current/60">
                     {ratingAvg.toFixed(1)} · {ratingCount} {ratingCount === 1 ? 'rating' : 'ratings'}
                   </span>
                 ) : (
-                  <span className="text-[12px] text-[#98a4d6]/80">Catalog rating</span>
+                  <span className="text-[12px] text-current/55">Catalog rating</span>
                 )}
               </button>
-              <div className="h-4 w-px bg-[var(--bs-lav)]/[0.28]" />
-              <div className="text-[13px] italic text-[#98a4d6]">{selectedCfg?.year}</div>
+              <div className="h-4 w-px bg-current/20" />
+              <div className="text-[13px] italic text-current/60">{selectedCfg?.year}</div>
             </div>
             {ratingCount === 0 ? (
-              <p className="text-[12px] text-[var(--bs-lav)]/70">
+              <p className="text-[12px] text-current/65">
                 Stars shown are set by PlugYard. No reader ratings yet.{' '}
-                <button type="button" onClick={() => setReviewsOpen(true)} className="pointer-events-auto font-semibold text-[var(--bs-pink)] underline">
+                <button type="button" onClick={() => setReviewsOpen(true)} className="pointer-events-auto font-semibold text-[var(--brand-pink-text)] underline">
                   Click to rate and comment
                 </button>
               </p>
             ) : myRating == null ? (
-              <button type="button" onClick={() => setReviewsOpen(true)} className="pointer-events-auto w-fit text-left text-[12px] font-semibold text-[var(--bs-pink)] underline">
+              <button type="button" onClick={() => setReviewsOpen(true)} className="pointer-events-auto w-fit text-left text-[12px] font-semibold text-[var(--brand-pink-text)] underline">
                 Click to rate and comment
               </button>
             ) : (
-              <p className="text-[12px] text-[var(--bs-lav)]/70">
+              <p className="text-[12px] text-current/65">
                 You rated this {myRating}/5.{' '}
-                <button type="button" onClick={() => setReviewsOpen(true)} className="pointer-events-auto font-semibold text-[var(--bs-pink)] underline">
+                <button type="button" onClick={() => setReviewsOpen(true)} className="pointer-events-auto font-semibold text-[var(--brand-pink-text)] underline">
                   Change or comment
                 </button>
               </p>
             )}
           </div>
-          <div className={`mt-[26px] border-t border-[var(--bs-lav)]/[0.18] @max-[760px]:mt-4 ${dpChild(270)}`} />
+          <div className={`mt-[26px] border-t border-current/15 @max-[760px]:mt-4 ${dpChild(270)}`} />
           {selectedCfg && (
             <div className={`pointer-events-none mt-5 mb-1 ${dpChild(300)}`}>
               {(() => {
@@ -2189,7 +2287,7 @@ export function BooksShowcase({
               })()}
             </div>
           )}
-          <div className={`pointer-events-auto mt-4 flex max-w-full flex-wrap items-center gap-[10px] rounded-[28px] bg-[#1a2140] p-[10px] shadow-[0_24px_60px_rgba(0,0,0,0.45)] ${dpChild(330)}`}>
+          <div className={`pointer-events-auto mt-4 flex max-w-full flex-wrap items-center gap-[10px] rounded-[28px] bg-current/[0.05] p-[10px] ring-1 ring-current/10 ${dpChild(330)}`}>
             {(() => {
               const isFree = selectedCfg?.isFree === true;
               const hasEbook = selectedCfg?.hasEbook !== false;
@@ -2213,7 +2311,7 @@ export function BooksShowcase({
                       if (!selectedCfg || !canReadEbook) return;
                       setReaderOpen(true);
                     }}
-                    className="relative inline-flex h-[54px] shrink-0 items-center gap-[10px] rounded-full bg-[var(--bs-cream)] px-[22px] text-[16.5px] font-semibold text-[var(--bs-navy)] hover:scale-[1.04] disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-4"
+                    className="relative inline-flex h-[54px] shrink-0 items-center gap-[10px] rounded-full bg-[var(--bs-fg-light)] px-[22px] text-[16.5px] font-semibold text-[var(--bs-bg-light)] dark:bg-[var(--bs-fg-dark)] dark:text-[var(--bs-bg-dark)] hover:scale-[1.04] disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-4"
                   >
                     Read
                     {!canReadEbook && <span className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500" />}
@@ -2223,24 +2321,26 @@ export function BooksShowcase({
                       action={downloadAction}
                       disabled={!!buyLoading || (!hasEbook && !hasAudio)}
                       onClick={() => setDownloadMenu((v) => !v)}
+                      // compact: the label is swapped for a spinner/tick while
+                      // busy, so the button is only as wide as "Download".
+                      compact
                       loadingLabel="Downloading…"
                       successLabel="Downloaded"
-                      errorLabel="Download"
                       errorPlacement="none"
                       retryPlacement="none"
                       aria-haspopup="menu"
                       aria-expanded={downloadMenu}
-                      className="inline-flex h-[54px] items-center justify-center rounded-full bg-[var(--bs-pink)] px-5 text-[16.5px] font-semibold text-[var(--bs-navy)] hover:scale-[1.04] disabled:opacity-60 @max-[760px]:h-12"
+                      className="inline-flex h-[54px] w-auto shrink-0 items-center justify-center rounded-full bg-[var(--bs-pink)] px-[22px] text-[16.5px] font-semibold text-[var(--on-brand)] hover:scale-[1.04] disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-4"
                     >
                       {buyLoading ? '…' : 'Download'}
                     </ActionButton>
                     {downloadMenu && (
-                      <div className="absolute bottom-[110%] left-0 z-30 min-w-[200px] rounded-2xl bg-[#141a32] p-2 text-left text-sm text-white shadow-xl ring-1 ring-white/10">
-                        <p className="px-2 pb-1 text-[11px] uppercase tracking-wider text-white/40">Choose a file</p>
+                      <div className="absolute bottom-[110%] left-0 z-30 min-w-[200px] rounded-2xl bg-[var(--bs-bg-light)] p-2 text-left text-sm text-[var(--bs-fg-light)] shadow-xl ring-1 ring-black/10 dark:bg-[var(--bs-bg-dark)] dark:text-[var(--bs-fg-dark)] dark:ring-white/10">
+                        <p className="px-2 pb-1 text-[11px] uppercase tracking-wider text-current/50">Choose a file</p>
                         <button
                           type="button"
                           disabled={!hasEbook || ebookDownloadsOff}
-                          className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10 disabled:opacity-40"
+                          className="block w-full rounded-xl px-3 py-2 text-left hover:bg-current/[0.07] disabled:opacity-40"
                           onClick={() => {
                             setDownloadMenu(false);
                             if (!selectedCfg || !hasEbook || ebookDownloadsOff) return;
@@ -2259,7 +2359,7 @@ export function BooksShowcase({
                         <button
                           type="button"
                           disabled={!hasAudio || audioDownloadsOff}
-                          className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10 disabled:opacity-40"
+                          className="block w-full rounded-xl px-3 py-2 text-left hover:bg-current/[0.07] disabled:opacity-40"
                           onClick={() => {
                             setDownloadMenu(false);
                             if (!selectedCfg || !hasAudio || audioDownloadsOff) return;
@@ -2291,12 +2391,12 @@ export function BooksShowcase({
                       const q = new URLSearchParams({ bookId: selectedCfg.id, type: 'audiobook', title: selectedCfg.title });
                       window.location.href = `/checkout?${q}`;
                     }}
-                    className="relative inline-flex h-[54px] shrink-0 items-center justify-center rounded-full bg-[#10152c] px-5 text-[16.5px] font-semibold text-white ring-1 ring-[var(--bs-lav)]/25 disabled:opacity-60 @max-[760px]:h-12"
+                    className="relative inline-flex h-[54px] shrink-0 items-center justify-center rounded-full bg-current/[0.08] px-[22px] text-[16.5px] font-semibold ring-1 ring-current/15 disabled:opacity-60 @max-[760px]:h-12 @max-[760px]:px-4"
                   >
                     {!hasAudio ? 'No audio' : canListen ? 'Listen' : 'Buy to listen'}
                     {!hasAudio && <span className="pointer-events-none absolute left-[-6%] right-[-6%] top-1/2 h-[2.5px] -translate-y-1/2 rotate-[-12deg] rounded-full bg-red-500" />}
                   </button>
-                  <button type="button" onClick={() => void shareBook()} aria-label="Share this book" className="inline-flex h-[54px] shrink-0 w-[54px] items-center justify-center rounded-full bg-[#242c50] text-[var(--bs-cream)] hover:scale-[1.04]">
+                  <button type="button" onClick={() => void shareBook()} aria-label="Share this book" className="inline-flex h-[54px] shrink-0 w-[54px] items-center justify-center rounded-full bg-current/[0.08] hover:scale-[1.04]">
                     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
                       <circle cx="18" cy="5" r="3" />
                       <circle cx="6" cy="12" r="3" />
@@ -2318,7 +2418,7 @@ export function BooksShowcase({
                         });
                         setPreviewOpen(true);
                       }}
-                      className="inline-flex h-[54px] shrink-0 w-[54px] items-center justify-center rounded-full bg-[#242c50] text-[var(--bs-lav)] transition hover:scale-[1.04] @max-[760px]:h-12 @max-[760px]:w-12"
+                      className="inline-flex h-[54px] shrink-0 w-[54px] items-center justify-center rounded-full bg-current/[0.08] transition hover:scale-[1.04] @max-[760px]:h-12 @max-[760px]:w-12"
                     >
                       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.7}>
                         <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" />
@@ -2327,11 +2427,11 @@ export function BooksShowcase({
                     </button>
                   )}
                   {contentMsg && (
-                    <p className="basis-full px-2 text-[13px] font-semibold text-[var(--bs-pink)]" role="status">{contentMsg}</p>
+                    <p className="basis-full px-2 text-[13px] font-semibold text-[var(--brand-pink-text)]" role="status">{contentMsg}</p>
                   )}
-                  <ActionStatus action={bookmarkAction.state === 'retrying' ? bookmarkAction : downloadAction} className="basis-full px-2 text-[13px] font-semibold text-[var(--bs-lav)]" />
+                  <ActionStatus action={bookmarkAction.state === 'retrying' ? bookmarkAction : downloadAction} className="basis-full px-2 text-[13px] font-semibold text-current/70" />
                   {downloadAction.errorText && (
-                    <p className="basis-full px-2 text-[13px] font-semibold text-[var(--bs-pink)]" role="alert">
+                    <p className="basis-full px-2 text-[13px] font-semibold text-[var(--brand-pink-text)]" role="alert">
                       {downloadAction.errorText}{' '}
                       <button type="button" className="underline" onClick={() => setDownloadMenu(true)}>
                         Try again
@@ -2339,7 +2439,7 @@ export function BooksShowcase({
                     </p>
                   )}
                   {bookmarkAction.errorText && (
-                    <p className="basis-full px-2 text-[13px] font-semibold text-[var(--bs-pink)]" role="alert">
+                    <p className="basis-full px-2 text-[13px] font-semibold text-[var(--brand-pink-text)]" role="alert">
                       {bookmarkAction.errorText}
                     </p>
                   )}
@@ -2355,7 +2455,7 @@ export function BooksShowcase({
               errorPlacement="none"
               loadingLabel={bookmarked ? 'Removing bookmark…' : 'Saving bookmark…'}
               className={`inline-flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-full ${
-                bookmarked ? 'bg-[var(--bs-pink)] text-[var(--bs-navy)]' : 'bg-[#242c50] text-[var(--bs-lav)]'
+                bookmarked ? 'bg-[var(--bs-pink)] text-[var(--on-brand)]' : 'bg-current/[0.08]'
               }`}
             >
               <svg viewBox="0 0 24 24" fill={bookmarked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.7} className="h-5 w-5">
@@ -2389,10 +2489,10 @@ export function BooksShowcase({
       )}
 
       {readerOpen && selectedCfg && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020] [color-scheme:only_light]">
-          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
-            <button type="button" onClick={() => setReaderOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10">×</button>
-            <h2 className="min-w-0 flex-1 truncate text-[16px] font-bold text-white">{selectedCfg.title}</h2>
+        <div className="fixed inset-0 z-[9999] flex flex-col bg-background text-foreground [color-scheme:only_light] dark:[color-scheme:dark]">
+          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-foreground/10 px-3">
+            <button type="button" onClick={() => setReaderOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-foreground hover:bg-foreground/10">×</button>
+            <h2 className="min-w-0 flex-1 truncate text-[16px] font-bold">{selectedCfg.title}</h2>
           </header>
           <PdfReader bookId={selectedCfg.id} />
         </div>,
@@ -2400,12 +2500,12 @@ export function BooksShowcase({
       )}
 
       {previewOpen && selectedCfg && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020] [color-scheme:only_light]">
-          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
-            <button type="button" onClick={() => setPreviewOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10">×</button>
+        <div className="fixed inset-0 z-[9999] flex flex-col bg-background text-foreground [color-scheme:only_light] dark:[color-scheme:dark]">
+          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-foreground/10 px-3">
+            <button type="button" onClick={() => setPreviewOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-foreground hover:bg-foreground/10">×</button>
             <div className="min-w-0 flex-1">
-              <h2 className="truncate text-[16px] font-bold text-white">Preview · {selectedCfg.title}</h2>
-              <p className="text-[12px] text-white/50">First pages only. Buy to read the full book.</p>
+              <h2 className="truncate text-[16px] font-bold">Preview · {selectedCfg.title}</h2>
+              <p className="text-[12px] text-foreground/55">First pages only. Buy to read the full book.</p>
             </div>
           </header>
           <PdfReader bookId={selectedCfg.id} />
@@ -2414,7 +2514,7 @@ export function BooksShowcase({
       )}
 
       {playerOpen && selectedCfg && typeof document !== 'undefined' && selectedCfg.hasAudiobook === true && createPortal(
-        <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0b1020]">
+        <div className="fixed inset-0 z-[9999] flex flex-col bg-background text-foreground">
           <AudioPlayer
             title={selectedCfg.title}
             bookId={selectedCfg.id}

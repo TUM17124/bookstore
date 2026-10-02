@@ -24,7 +24,7 @@ import { errorMessage } from "@/lib/auth-fetch"
  */
 
 const PHASE: Record<string, { label: string; cls: string }> = {
-  upcoming: { label: "Upcoming", cls: "bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300" },
+  upcoming: { label: "Upcoming", cls: "bg-foreground/10 text-foreground" },
   running: { label: "Running now", cls: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300" },
   ended: { label: "Ended", cls: "bg-neutral-200 text-neutral-700" },
   off: { label: "Off", cls: "bg-neutral-200 text-neutral-700" },

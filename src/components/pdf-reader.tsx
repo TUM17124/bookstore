@@ -541,9 +541,9 @@ export function PdfReader({
       <>
         {!loggedIn ? (
           <p className="mt-3 text-[13px] text-black/55">
-            <Link href={loginHref} className="font-semibold text-[#c45b78] underline">Log in</Link>
+            <Link href={loginHref} className="font-semibold text-[#be185d] underline">Log in</Link>
             {' · '}
-            <Link href={signupHref} className="font-semibold text-[#c45b78] underline">Sign up</Link>
+            <Link href={signupHref} className="font-semibold text-[#be185d] underline">Sign up</Link>
           </p>
         ) : null}
         {loggedIn && !visibleThoughts.length ? (
@@ -553,7 +553,7 @@ export function PdfReader({
           <ul aria-label="Saved PDF highlights" className="mt-2 space-y-3 pr-1">
             {visibleThoughts.map((row) => (
               <li key={row.id} className="flex items-start gap-2 rounded-lg bg-white/60 p-2 text-sm">
-                <button type="button" onClick={() => void gotoPage(row.page)} className="shrink-0 font-bold text-[#c45b78]">
+                <button type="button" onClick={() => void gotoPage(row.page)} className="shrink-0 font-bold text-[#be185d]">
                   p.{row.page}
                 </button>
                 <span className="min-w-0 flex-1">
@@ -569,7 +569,7 @@ export function PdfReader({
                   ) : null}
                 </span>
                 <span className="flex shrink-0 flex-col items-end gap-1">
-                  <button type="button" onClick={() => startEditThought(row)} className="font-semibold text-[#c45b78]" aria-label="Edit note">Edit</button>
+                  <button type="button" onClick={() => startEditThought(row)} className="font-semibold text-[#be185d]" aria-label="Edit note">Edit</button>
                   <button type="button" onClick={() => removeThought(row)} className="text-black/40" aria-label="Delete note">×</button>
                 </span>
               </li>
@@ -2044,7 +2044,7 @@ export function PdfReader({
                 <option key={v.id} value={v.id}>{v.label}</option>
               ))}
             </select>
-            <button type="button" onClick={() => void toggleRobotReader()} disabled={ttsBusy} className="flex h-7 items-center gap-1 rounded-full bg-[#f591ac] px-2.5 text-xs font-bold text-[#141a32] disabled:opacity-50">
+            <button type="button" onClick={() => void toggleRobotReader()} disabled={ttsBusy} className="flex h-7 items-center gap-1 rounded-full bg-[#f591ac] px-2.5 text-xs font-bold text-[var(--on-brand)] disabled:opacity-50">
               {ttsBusy ? 'Loading…' : ttsPlaying ? '⏸ Pause' : '▶ Play'}
             </button>
             <div className="flex items-center gap-1">
@@ -2087,8 +2087,8 @@ export function PdfReader({
         <span className="min-w-[3.5rem] text-center text-xs font-semibold text-black/60">{fontSize}px</span>
         <button type="button" onClick={() => { fontTouchedRef.current = true; setFontSize((n: number) => Math.min(40, n + 2)) }} className="rounded-full bg-black/10 px-3 py-1 text-sm font-bold text-black">A+</button>
         <span className="text-xs font-semibold text-black/60">{page} / {total || '—'}</span>
-        <button type="button" onClick={markHere} className="rounded-full bg-[#f591ac] px-3 py-1 text-sm font-bold text-[#141a32]">Mark page {page}</button>
-        <button type="button" onClick={toggleHighlightMode} aria-pressed={highlightMode} className={`rounded-full px-3 py-1 text-sm font-bold ${highlightMode ? 'bg-[#f6e27a] text-[#141a32]' : 'bg-black/10 text-black'}`}>✏️ Highlight</button>
+        <button type="button" onClick={markHere} className="rounded-full bg-[#f591ac] px-3 py-1 text-sm font-bold text-[var(--on-brand)]">Mark page {page}</button>
+        <button type="button" onClick={toggleHighlightMode} aria-pressed={highlightMode} className={`rounded-full px-3 py-1 text-sm font-bold ${highlightMode ? 'bg-[#f6e27a] text-[var(--on-brand)]' : 'bg-black/10 text-black'}`}>✏️ Highlight</button>
         <button
           type="button"
           onClick={() => {
@@ -2104,7 +2104,7 @@ export function PdfReader({
             setNoteMsg('')
           }}
           aria-pressed={notesOpen}
-          className={`rounded-full px-3 py-1 text-sm font-bold ${notesOpen ? 'bg-[#f591ac] text-[#141a32]' : 'bg-black/10 text-black'}`}
+          className={`rounded-full px-3 py-1 text-sm font-bold ${notesOpen ? 'bg-[#f591ac] text-[var(--on-brand)]' : 'bg-black/10 text-black'}`}
         >
           📋 Notes{visibleThoughts.length ? ` (${visibleThoughts.length})` : ''}
         </button>
@@ -2113,7 +2113,7 @@ export function PdfReader({
             Go to mark ({marked})
           </button>
         )}
-        <button type="button" onClick={togglePopOut} className={`rounded-full px-3 py-1 text-sm font-bold ${pipOpen ? 'bg-[#f591ac] text-[#141a32]' : 'bg-black/10 text-black'}`}>
+        <button type="button" onClick={togglePopOut} className={`rounded-full px-3 py-1 text-sm font-bold ${pipOpen ? 'bg-[#f591ac] text-[var(--on-brand)]' : 'bg-black/10 text-black'}`}>
           {!isPro && '🔒 '}Pop out{!isPro && ' · PRO'}
         </button>
         <button
@@ -2123,7 +2123,7 @@ export function PdfReader({
             if (!allowed) return
             setTtsPanelOpen((v: boolean) => !v)
           }}
-          className={`rounded-full px-3 py-1 text-sm font-bold ${ttsPanelOpen ? 'bg-[#f591ac] text-[#141a32]' : 'bg-black/10 text-black'}`}
+          className={`rounded-full px-3 py-1 text-sm font-bold ${ttsPanelOpen ? 'bg-[#f591ac] text-[var(--on-brand)]' : 'bg-black/10 text-black'}`}
         >
           {!isPro && !creditChars && '🔒 '}🔊 Robot reader
         </button>
@@ -2159,7 +2159,7 @@ export function PdfReader({
               <option key={v.id} value={v.id}>{v.label}</option>
             ))}
           </select>
-          <button type="button" onClick={() => void toggleRobotReader()} disabled={ttsBusy} className="flex h-8 items-center gap-1.5 rounded-full bg-[#f591ac] px-3 text-sm font-bold text-[#141a32] disabled:opacity-50">
+          <button type="button" onClick={() => void toggleRobotReader()} disabled={ttsBusy} className="flex h-8 items-center gap-1.5 rounded-full bg-[#f591ac] px-3 text-sm font-bold text-[var(--on-brand)] disabled:opacity-50">
             {ttsBusy ? 'Loading…' : ttsPlaying ? '⏸ Pause' : '▶ Play page'}
           </button>
           <div className="flex items-center gap-1">
@@ -2188,7 +2188,7 @@ export function PdfReader({
               {draft.quote}
             </p>
             {editingNote ? (
-              <button type="button" disabled={savingNote} onClick={() => void saveThought()} className="shrink-0 rounded-full bg-[#141a32] px-3 py-1.5 text-[13px] font-bold text-white disabled:opacity-50">
+              <button type="button" disabled={savingNote} onClick={() => void saveThought()} className="shrink-0 rounded-full bg-[var(--on-brand)] px-3 py-1.5 text-[13px] font-bold text-white disabled:opacity-50">
                 {savingNote ? (draft.id ? 'Updating…' : 'Saving…') : draft.id ? 'Update' : 'Save'}
               </button>
             ) : (
@@ -2223,7 +2223,7 @@ export function PdfReader({
       ) : null}
 
       {highlightMode && noteMsg ? (
-        <p className="shrink-0 px-3 py-1.5 text-center text-[12px] font-semibold text-[#c45b78]">{noteMsg}</p>
+        <p className="shrink-0 px-3 py-1.5 text-center text-[12px] font-semibold text-[#be185d]">{noteMsg}</p>
       ) : null}
 
       {notesOpen ? (
@@ -2287,16 +2287,16 @@ export function PdfReader({
           </p>
         ) : null}
         {resumeAt > 1 ? (
-          <p className="px-4 pt-4 text-center text-[13px] font-semibold text-[#c45b78]">
+          <p className="px-4 pt-4 text-center text-[13px] font-semibold text-[#be185d]">
             Continuing from page {resumeAt}{loggedIn ? ' · synced to your account' : ''}
           </p>
         ) : null}
         {!loggedIn ? (
           <p className="px-4 pt-3 text-center text-[13px] text-black/60">
             Your place is saved on this phone only.{' '}
-            <Link href={loginHref} className="font-semibold text-[#c45b78] underline">Log in</Link>
+            <Link href={loginHref} className="font-semibold text-[#be185d] underline">Log in</Link>
             {' · '}
-            <Link href={signupHref} className="font-semibold text-[#c45b78] underline">Create account</Link>
+            <Link href={signupHref} className="font-semibold text-[#be185d] underline">Create account</Link>
           </p>
         ) : (
           <p className="px-4 pt-3 text-center text-[12px] text-black/55">Your page syncs to this account.</p>
@@ -2376,7 +2376,7 @@ export function PdfReader({
                 loadingLabel="Opening pay…"
                 successLabel="Redirecting…"
                 errorPlacement="none"
-                className="h-10 flex-1 rounded-full bg-[#f591ac] text-sm font-bold text-[#141a32] disabled:opacity-50"
+                className="h-10 flex-1 rounded-full bg-[#f591ac] text-sm font-bold text-[var(--on-brand)] disabled:opacity-50"
               >
                 Pay now
               </ActionButton>

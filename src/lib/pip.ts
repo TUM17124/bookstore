@@ -41,7 +41,7 @@ function copyStylesInto(pipWindow: Window) {
   })
 }
 
-export function usePictureInPicture(background = '#0b1020') {
+export function usePictureInPicture(background?: string) {
   const [pipWindow, setPipWindow] = useState<Window | null>(null)
   const supported = typeof window !== 'undefined' && 'documentPictureInPicture' in window
 
@@ -54,9 +54,12 @@ export function usePictureInPicture(background = '#0b1020') {
           height: opts?.height ?? 220,
         })
         copyStylesInto(win)
-        win.document.documentElement.style.colorScheme = 'dark'
+        // Same light/dark theme as the page (was always dark navy).
+        const dark = document.documentElement.classList.contains('dark')
+        win.document.documentElement.className = document.documentElement.className
+        win.document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
         win.document.body.style.margin = '0'
-        win.document.body.style.background = background
+        win.document.body.style.background = background ?? getComputedStyle(document.body).backgroundColor
         win.document.body.style.overflow = 'hidden'
         win.addEventListener('pagehide', () => setPipWindow(null))
         setPipWindow(win)

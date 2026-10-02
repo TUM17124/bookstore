@@ -95,6 +95,24 @@
   color-scheme: dark;
 }
 
+/* Brand accent (pink) and its readable text versions. Pink on white is only
+   ~2:1, so pink TEXT in light mode uses a deeper pink; pink BACKGROUNDS keep
+   the brand pink with near-black text on them. */
+:root {
+  --brand-pink: #f591ac;
+  --brand-pink-text: #be185d;
+  --on-brand: #1a1a1a;
+  /* Native controls (checkboxes, radios, range) and default focus rings in
+     the site's own colours instead of the browser's blue. */
+  accent-color: var(--foreground);
+}
+:root.dark {
+  --brand-pink-text: #f591ac;
+}
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline-color: color-mix(in oklab, var(--foreground) 70%, transparent);
+}
+
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
