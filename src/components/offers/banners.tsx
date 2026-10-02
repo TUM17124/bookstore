@@ -155,9 +155,13 @@ export function Banners({ category = "" }: { category?: string }) {
   const [data, ready] = resourceFor(category)()
   const [hidden, setHidden] = useState<Set<number>>(new Set())
   const [nonce, setNonce] = useState(0)
+  // Decided once, when the shelf first appears: banners known by then
+  // (from the server or this browser's last visit) are drawn; ones that
+  // arrive later wait for the next visit instead of pushing the page down.
+  const [show] = useState(() => ready && data.banners.length > 0)
   const banners = data.banners.filter((b) => !hidden.has(b.id))
 
-  if (!ready || !banners.length) return null
+  if (!show || !banners.length) return null
 
   // A "Starts in" countdown reaching zero turns into "Ends in" on the
   // server - reload; an "Ends in" one means the campaign is over - hide it.

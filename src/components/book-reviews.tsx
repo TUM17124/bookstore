@@ -95,7 +95,7 @@ function Avatar({
   }
   return (
     <div
-      className={`${s} flex shrink-0 items-center justify-center rounded-full bg-[#141a32] font-bold text-[#fdfbf4] ring-1 ring-foreground/10 dark:bg-[#1a2140]`}
+      className={`${s} flex shrink-0 items-center justify-center rounded-full bg-foreground font-bold text-background ring-1 ring-foreground/10`}
     >
       {label}
     </div>
@@ -252,7 +252,7 @@ export function BookReviews({
                     setReplyTo(c);
                     setError('');
                   }}
-                  className="mt-2 text-[13px] font-medium text-[#f591ac] hover:underline"
+                  className="mt-2 text-[13px] font-medium text-[var(--brand-pink-text)] hover:underline"
                 >
                   Reply
                 </button>
@@ -271,21 +271,21 @@ export function BookReviews({
     <div className="flex min-h-0 flex-1 flex-col bg-background text-foreground">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-lg px-4 pb-4 pt-2 sm:max-w-xl">
-          <section className="mb-6 rounded-3xl border border-foreground/10 bg-[#141a32] p-5 text-[#fdfbf4] shadow-sm dark:bg-[#10152c]">
-            <p className="text-center text-[13px] font-medium uppercase tracking-[0.2em] text-[#c9d0ee]/70">
+          <section className="mb-6 rounded-3xl border border-foreground/10 bg-foreground/[0.04] p-5 text-foreground shadow-sm">
+            <p className="text-center text-[13px] font-medium uppercase tracking-[0.2em] text-foreground/75">
               Community score
             </p>
             <p className="mt-2 text-center text-4xl font-bold tracking-tight text-[#fdfbf4]">
               {count > 0 ? Number(average).toFixed(1) : '—'}
-              <span className="text-lg font-medium text-[#c9d0ee]/50"> / 5</span>
+              <span className="text-lg font-medium text-foreground/55"> / 5</span>
             </p>
-            <p className="mt-1 text-center text-sm text-[#c9d0ee]/70">
+            <p className="mt-1 text-center text-sm text-foreground/75">
               {count > 0
                 ? `${count} rating${count === 1 ? '' : 's'}`
                 : 'Be the first to rate'}
             </p>
             <div className="mt-4 flex flex-col items-center gap-2">
-              <p className="text-[13px] text-[#c9d0ee]/70">Your rating</p>
+              <p className="text-[13px] text-foreground/75">Your rating</p>
               <div aria-busy={rateAction.busy || undefined}>
                 <Stars
                   value={myRating ?? 0}
@@ -294,7 +294,7 @@ export function BookReviews({
                   onPick={rate}
                 />
               </div>
-              <p role="status" aria-live="polite" className="min-h-[1.25rem] text-[12px] text-[#c9d0ee]/70">
+              <p role="status" aria-live="polite" className="min-h-[1.25rem] text-[12px] text-foreground/75">
                 {rateAction.state === 'loading'
                   ? 'Saving your rating…'
                   : rateAction.state === 'retrying'
@@ -317,17 +317,17 @@ export function BookReviews({
                 </p>
               ) : null}
               {!auth && (
-                <p className="text-[13px] text-[#c9d0ee]/70">
+                <p className="text-[13px] text-foreground/75">
                   <Link
                     href={loginHref}
-                    className="font-semibold text-[#f591ac] hover:underline"
+                    className="font-semibold text-[var(--brand-pink-text)] hover:underline"
                   >
                     Log in
                   </Link>
                   {' · '}
                   <Link
                     href={signupHref}
-                    className="font-semibold text-[#f591ac] hover:underline"
+                    className="font-semibold text-[var(--brand-pink-text)] hover:underline"
                   >
                     Sign up
                   </Link>{' '}
@@ -335,7 +335,7 @@ export function BookReviews({
                 </p>
               )}
               {auth && myRating == null && (
-                <p className="mt-1 rounded-full bg-[#f591ac]/15 px-3 py-1 text-[12px] font-medium text-[#f591ac]">
+                <p className="mt-1 rounded-full bg-[var(--brand-pink)]/15 px-3 py-1 text-[12px] font-medium text-[var(--brand-pink-text)]">
                   Rate the book to unlock comments
                 </p>
               )}
@@ -371,7 +371,7 @@ export function BookReviews({
       <div className="shrink-0 border-t border-foreground/10 bg-background/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-md">
         <div className="mx-auto w-full max-w-lg px-3 py-2 sm:max-w-xl">
           {replyTo && (
-            <div className="mb-2 flex items-center justify-between rounded-xl bg-[#f591ac]/10 px-3 py-1.5 text-[13px]">
+            <div className="mb-2 flex items-center justify-between rounded-xl bg-[var(--brand-pink)]/10 px-3 py-1.5 text-[13px]">
               <span className="truncate text-foreground/80">
                 Replying to{' '}
                 <strong>{replyTo.user.name || replyTo.user.email || 'user'}</strong>
@@ -390,28 +390,28 @@ export function BookReviews({
             <p className="py-2 text-center text-[14px] text-foreground/55">
               <Link
                 href={loginHref}
-                className="font-semibold text-[#f591ac] hover:underline"
+                className="font-semibold text-[var(--brand-pink-text)] hover:underline"
               >
                 Log in
               </Link>
               {' · '}
               <Link
                 href={signupHref}
-                className="font-semibold text-[#f591ac] hover:underline"
+                className="font-semibold text-[var(--brand-pink-text)] hover:underline"
               >
                 Sign up
               </Link>{' '}
               to comment
             </p>
           ) : !canComment ? (
-            <p className="py-2 text-center text-[14px] text-[#f591ac]">
+            <p className="py-2 text-center text-[14px] text-[var(--brand-pink-text)]">
               Select a star rating above to comment
             </p>
           ) : (
             <>
             <form onSubmit={submitComment} className="flex items-end gap-2">
               <Avatar user={{ name: 'You', email: null }} />
-              <div className="min-w-0 flex-1 rounded-2xl border border-foreground/10 bg-foreground/[0.04] px-3 py-2 focus-within:ring-2 focus-within:ring-[#f591ac]/30">
+              <div className="min-w-0 flex-1 rounded-2xl border border-foreground/10 bg-foreground/[0.04] px-3 py-2 focus-within:ring-2 focus-within:ring-[var(--brand-pink)]/40">
                 <textarea
                   value={text}
                   onChange={(e) => setText(e.target.value)}
@@ -434,7 +434,7 @@ export function BookReviews({
                 successLabel="Posted"
                 errorPlacement="none"
                 retryPlacement="none"
-                className="mb-0.5 shrink-0 rounded-full bg-[#141a32] px-4 py-2 text-[14px] font-bold text-[#fdfbf4] shadow-sm hover:brightness-110 disabled:opacity-40 dark:bg-[#f591ac] dark:text-[#141a32]"
+                className="mb-0.5 shrink-0 rounded-full bg-foreground px-4 py-2 text-[14px] font-bold text-background shadow-sm hover:opacity-90 disabled:opacity-40"
               >
                 {replyTo ? 'Reply' : 'Post'}
               </ActionButton>

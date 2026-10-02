@@ -163,17 +163,33 @@ function HomeInner() {
 
   const [books, setBooks] = useState<BookCfg[]>([])
   const home = useHomeSections(category, !q)
-  const { navbar: navCats } = useCategories()
-  // Ask for the banners now, not when the shelf first renders.
-  const bannersReady = useBannerData(category)
-  // Keep the placeholder until the sections and banners have answered
-  // (max 3 s), so they appear in place instead of pushing the grid down.
-  const [gateExpired, setGateExpired] = useState(false)
+  const { navbar: navCats, all: allCats } = useCategories()
+  // The category's title/description are known from the categories list
+  // straight away, so the header doesn't appear late and push things down.
+  const catInfo =
+    home.info ?? (category ? allCats.find((c) => c.slug.toLowerCase() === category.toLowerCase()) ?? null : null)
+  // Ask for the banners now (in parallel with the books and sections),
+  // not when the shelf first renders.
+  useBannerData(category)
+  // How many section rows this page had last time: that many same-size
+  // skeletons hold their place while the sections load (no jump).
+  const shapeKey = `plugyard_sections_count_v1:${category || "home"}`
+  const [expectedSections] = useState(() => {
+    try {
+      const n = Number(localStorage.getItem(shapeKey))
+      return Number.isFinite(n) && n >= 0 && localStorage.getItem(shapeKey) !== null ? Math.min(n, 8) : category ? 2 : 3
+    } catch {
+      return category ? 2 : 3
+    }
+  })
   useEffect(() => {
-    const t = setTimeout(() => setGateExpired(true), 3000)
-    return () => clearTimeout(t)
-  }, [])
-  const extrasReady = gateExpired || ((home.settled || !!q) && (bannersReady || !!q))
+    if (!home.settled || q) return
+    try {
+      localStorage.setItem(shapeKey, String(home.sections.length))
+    } catch {
+      // private mode: default next time
+    }
+  }, [home.settled, home.sections.length, shapeKey, q])
   const [error, setError] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -300,10 +316,10 @@ function HomeInner() {
       </div>
       {/* Part C: admin banners - home, or this category's page. */}
       <Banners category={category} />
-      {home.info ? (
+      {catInfo ? (
         <header className="mb-6">
-          <h1 className="text-[clamp(22px,2.6cqw,32px)] font-extrabold tracking-[-0.01em]">{home.info.label}</h1>
-          {home.info.description ? <p className="mt-1 text-sm opacity-70">{home.info.description}</p> : null}
+          <h1 className="text-[clamp(22px,2.6cqw,32px)] font-extrabold tracking-[-0.01em]">{catInfo.label}</h1>
+          {catInfo.description ? <p className="mt-1 text-sm opacity-70">{catInfo.description}</p> : null}
         </header>
       ) : null}
       {home.notFound ? (
@@ -343,7 +359,7 @@ function HomeInner() {
     }
   }, [selectedBookId, loading, books])
 
-  if (loading || !extrasReady) {
+  if (loading) {
     return (
       <main className="home-shelf">
         <OfferMarquee />
@@ -368,7 +384,7 @@ function HomeInner() {
               : q
                 ? `No books found for “${q}”.`
                 : category
-                  ? `No books in ${home.info?.label || category} yet.`
+                  ? `No books in ${catInfo?.label || category} yet.`
                   : "No books yet. Add featured books in Django admin."}
           </p>
           {q || category ? (
@@ -388,6 +404,8 @@ function HomeInner() {
         <BooksShowcase
           books={books}
           sections={home.sections}
+          sectionsLoading={!q && !home.settled}
+          sectionSkeletons={expectedSections}
           onSectionBookOpen={onSectionBookOpen}
           onOfferExpired={onOfferExpired}
           topSlot={topSlot}
@@ -402,7 +420,7 @@ function HomeInner() {
               : q
                 ? `Search: ${q}`
                 : category
-                  ? `All ${home.info?.label ?? category} books`
+                  ? `All ${catInfo?.label ?? category} books`
                   : home.sections.length
                     ? "All books"
                     : "Bestsellers"

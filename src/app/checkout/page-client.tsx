@@ -253,7 +253,7 @@ function CheckoutInner() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="name@example.com"
-          className="mt-3 w-full rounded-xl border border-foreground/15 bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-sky-500/30"
+          className="mt-3 w-full rounded-xl border border-foreground/15 bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-foreground/25"
         />
 
         <div className="mt-3 flex gap-2 rounded-xl border border-foreground/10 bg-foreground/[0.03] px-3 py-2.5">
@@ -278,14 +278,14 @@ function CheckoutInner() {
                 the same address.
               </p>
             </div>
-            <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 px-3 py-3">
+            <div className="rounded-xl border border-foreground/10 bg-foreground/[0.03] px-3 py-3">
               <p className="text-[13px] leading-relaxed text-foreground/70">
                 Optional: create a free account with this same email to save
                 bookmarks, leave reviews, and re-download later.
               </p>
               <Link
                 href={signupHref}
-                className="mt-3 inline-flex w-full items-center justify-center rounded-full bg-sky-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-600"
+                className="mt-3 inline-flex w-full items-center justify-center rounded-full bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition hover:bg-foreground/90"
               >
                 Create a free account
               </Link>
@@ -293,7 +293,7 @@ function CheckoutInner() {
                 Already have an account?{' '}
                 <Link
                   href={loginHref}
-                  className="font-semibold text-sky-600 underline underline-offset-2 hover:text-sky-500 dark:text-sky-400"
+                  className="font-semibold text-foreground underline underline-offset-2 hover:text-foreground/80"
                 >
                   Log in
                 </Link>

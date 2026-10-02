@@ -36,11 +36,11 @@ export default function BookmarksPage() {
             <p className="max-w-sm text-foreground/45">
               Guest saves stay on this device. Create an account so a
               bookmark is still there when you switch phones.{' '}
-              <Link href="/login" className="font-semibold text-sky-600 underline">
+              <Link href="/login" className="font-semibold text-foreground underline underline-offset-2">
                 Log in
               </Link>
               {' · '}
-              <Link href="/signup" className="font-semibold text-sky-600 underline">
+              <Link href="/signup" className="font-semibold text-foreground underline underline-offset-2">
                 Create account
               </Link>
             </p>
@@ -56,7 +56,7 @@ export default function BookmarksPage() {
       {!loggedIn && (
         <p className="shrink-0 px-4 py-2 text-center text-xs text-foreground/50">
           Saved on this device only.{' '}
-          <Link href="/login" className="font-medium text-sky-600 underline">
+          <Link href="/login" className="font-medium text-foreground underline underline-offset-2">
             Log in
           </Link>{' '}
           to merge into your account.

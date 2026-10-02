@@ -151,7 +151,7 @@ export function AudioPlayer({
   const [obscured, setObscured] = useState(false)
   const [isPro, setIsPro] = useState(false)
   const [proGate, setProGate] = useState(false)
-  const { pipWindow, supported: pipSupported, open: openPip, close: closePip } = usePictureInPicture('#0b1020')
+  const { pipWindow, supported: pipSupported, open: openPip, close: closePip } = usePictureInPicture()
 
   useEffect(() => {
     if (!getToken()) return
@@ -635,16 +635,16 @@ export function AudioPlayer({
 
   return (
     <div
-      className="relative flex min-h-0 flex-1 flex-col bg-[#0b1020] text-[#fdfbf4]"
+      className="relative flex min-h-0 flex-1 flex-col bg-background text-foreground"
       onContextMenu={(e) => e.preventDefault()}
     >
       {obscured && (
-        <div className="pointer-events-none absolute inset-0 z-40 bg-[#0b1020]/95 backdrop-blur-2xl" />
+        <div className="pointer-events-none absolute inset-0 z-40 bg-background/95 backdrop-blur-2xl" />
       )}
       {watermark && (
         <div className="pointer-events-none absolute inset-0 z-30 select-none overflow-hidden opacity-[0.06]">
           <div
-            className="absolute inset-[-50%] grid grid-cols-2 gap-16 rotate-[-24deg] text-[13px] font-bold uppercase tracking-widest text-white"
+            className="absolute inset-[-50%] grid grid-cols-2 gap-16 rotate-[-24deg] text-[13px] font-bold uppercase tracking-widest text-foreground"
             aria-hidden
           >
             {Array.from({ length: 40 }, (_, i) => (
@@ -694,11 +694,11 @@ export function AudioPlayer({
         className="pointer-events-none absolute h-0 w-0 overflow-hidden opacity-0"
       />
 
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-foreground/10 px-3">
         <button
           type="button"
           onClick={onClose}
-          className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-foreground hover:bg-foreground/10"
           aria-label="Close player"
         >
           ×
@@ -724,7 +724,7 @@ export function AudioPlayer({
                   : 'Keep playback controls floating above other windows'
             }
             className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-              pipWindow ? 'bg-[#f591ac] text-[#141a32]' : 'text-white hover:bg-white/10'
+              pipWindow ? 'bg-[var(--brand-pink)] text-[var(--on-brand)]' : 'text-foreground hover:bg-foreground/10'
             }`}
           >
             <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8" aria-hidden>
@@ -742,26 +742,26 @@ export function AudioPlayer({
 
       {pipWindow &&
         createPortal(
-          <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-[#fdfbf4]" style={{ fontFamily: 'inherit' }}>
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-foreground" style={{ fontFamily: 'inherit' }}>
             <p className="w-full truncate text-center text-[13px] font-bold">{title}</p>
             <div className="flex w-full items-center gap-3">
-              <span className="w-10 shrink-0 text-right text-[11px] text-white/50">{fmt(t)}</span>
+              <span className="w-10 shrink-0 text-right text-[11px] text-foreground/50">{fmt(t)}</span>
               <div className="relative h-1.5 flex-1">
-                <div className="absolute inset-0 overflow-hidden rounded-full bg-white/10">
+                <div className="absolute inset-0 overflow-hidden rounded-full bg-foreground/10">
                   <div
-                    className="absolute inset-y-0 left-0 bg-[#f591ac]"
+                    className="absolute inset-y-0 left-0 bg-[var(--brand-pink)]"
                     style={{ width: `${Math.min(100, (t / (dur || Math.max(t + 30, 30))) * 100)}%` }}
                   />
                 </div>
               </div>
-              <span className="w-10 shrink-0 text-[11px] text-white/50">{dur ? fmt(dur) : '—'}</span>
+              <span className="w-10 shrink-0 text-[11px] text-foreground/50">{dur ? fmt(dur) : '—'}</span>
             </div>
             <div className="flex items-center gap-4">
               <button
                 type="button"
                 onClick={() => seek((audioRef.current?.currentTime || t) - 15)}
                 aria-label="Back 15 seconds"
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-foreground/10 text-foreground"
               >
                 <IconBack15 />
               </button>
@@ -769,7 +769,7 @@ export function AudioPlayer({
                 type="button"
                 onClick={toggle}
                 aria-label={playing ? 'Pause' : 'Play'}
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f591ac] text-[#141a32]"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--brand-pink)] text-[var(--on-brand)]"
               >
                 {playing ? <IconPause /> : <IconPlay />}
               </button>
@@ -777,7 +777,7 @@ export function AudioPlayer({
                 type="button"
                 onClick={() => seek((audioRef.current?.currentTime || t) + 15)}
                 aria-label="Forward 15 seconds"
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-foreground/10 text-foreground"
               >
                 <IconFwd15 />
               </button>
@@ -788,45 +788,45 @@ export function AudioPlayer({
 
       <div className="flex min-h-0 flex-1 flex-col items-center justify-start gap-6 overflow-y-auto px-6 py-6">
         {streamError ? (
-          <p className="text-sm font-semibold text-[#f591ac]" role="alert">{streamError}</p>
+          <p className="text-sm font-semibold text-[var(--brand-pink-text)]" role="alert">{streamError}</p>
         ) : status && !ready ? (
-          <p className="text-sm text-white/50">{status}</p>
+          <p className="text-sm text-foreground/50">{status}</p>
         ) : (
           <>
-            <div className="flex h-72 w-72 items-center justify-center rounded-[2.5rem] bg-[#141a32] text-[7.5rem] leading-none text-[#f591ac] ring-1 ring-white/10">
+            <div className="flex h-72 w-72 items-center justify-center rounded-[2.5rem] bg-foreground/[0.06] text-[7.5rem] leading-none text-[var(--brand-pink-text)] ring-1 ring-foreground/10">
               ♪
             </div>
 
             {resumeAt > 0 ? (
-              <p className="text-center text-[13px] text-[#f591ac]">
+              <p className="text-center text-[13px] text-[var(--brand-pink-text)]">
                 Continuing from {fmt(resumeAt)}
                 {loggedIn ? ' · synced to your account' : ''}
               </p>
             ) : null}
 
             {!loggedIn ? (
-              <p className="max-w-md text-center text-[13px] text-white/60">
+              <p className="max-w-md text-center text-[13px] text-foreground/60">
                 Without an account this timestamp dies with the tab. Register
                 so you can pause here and finish on another phone.{' '}
-                <Link href={loginHref} className="font-semibold text-[#f591ac] underline">
+                <Link href={loginHref} className="font-semibold text-[var(--brand-pink-text)] underline">
                   Log in
                 </Link>
                 {' · '}
-                <Link href={signupHref} className="font-semibold text-[#f591ac] underline">
+                <Link href={signupHref} className="font-semibold text-[var(--brand-pink-text)] underline">
                   Create account
                 </Link>
               </p>
             ) : (
-              <p className="max-w-md text-center text-[12px] text-white/45">
+              <p className="max-w-md text-center text-[12px] text-foreground/45">
                 Your place syncs to this account. Pause here, continue on another phone.
               </p>
             )}
 
             <div className="w-full max-w-md">
               <div className="relative h-2 w-full">
-                <div className="absolute inset-0 overflow-hidden rounded-full bg-white/10">
-                  <div className="absolute inset-y-0 left-0 bg-white/30" style={{ width: `${bufPct}%` }} />
-                  <div className="absolute inset-y-0 left-0 bg-[#f591ac]" style={{ width: `${playPct}%` }} />
+                <div className="absolute inset-0 overflow-hidden rounded-full bg-foreground/10">
+                  <div className="absolute inset-y-0 left-0 bg-foreground/30" style={{ width: `${bufPct}%` }} />
+                  <div className="absolute inset-y-0 left-0 bg-[var(--brand-pink)]" style={{ width: `${playPct}%` }} />
                 </div>
                 <input
                   type="range"
@@ -835,10 +835,10 @@ export function AudioPlayer({
                   step={0.1}
                   value={t}
                   onChange={(e) => seek(Number(e.target.value))}
-                  className="absolute inset-0 z-10 m-0 h-2 w-full cursor-pointer appearance-none bg-transparent accent-[#f591ac]"
+                  className="absolute inset-0 z-10 m-0 h-2 w-full cursor-pointer appearance-none bg-transparent accent-[var(--brand-pink)]"
                 />
               </div>
-              <div className="mt-2 flex justify-between text-[12px] text-white/45">
+              <div className="mt-2 flex justify-between text-[12px] text-foreground/45">
                 <span>{fmt(t)}</span>
                 <span>{dur ? fmt(dur) : '—'}</span>
               </div>
@@ -849,7 +849,7 @@ export function AudioPlayer({
                 type="button"
                 onClick={() => seek((audioRef.current?.currentTime || t) - 15)}
                 aria-label="Back 15 seconds"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-foreground/10 text-foreground"
               >
                 <IconBack15 />
               </button>
@@ -857,7 +857,7 @@ export function AudioPlayer({
                 type="button"
                 onClick={toggle}
                 aria-label={playing ? 'Pause' : 'Play'}
-                className="flex h-16 w-16 items-center justify-center rounded-full bg-[#f591ac] text-[#141a32]"
+                className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--brand-pink)] text-[var(--on-brand)]"
               >
                 {playing ? <IconPause /> : <IconPlay />}
               </button>
@@ -865,15 +865,15 @@ export function AudioPlayer({
                 type="button"
                 onClick={() => seek((audioRef.current?.currentTime || t) + 15)}
                 aria-label="Forward 15 seconds"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-foreground/10 text-foreground"
               >
                 <IconFwd15 />
               </button>
             </div>
-            <p className="text-[11px] text-white/35">−15s · play/pause · +15s</p>
+            <p className="text-[11px] text-foreground/35">−15s · play/pause · +15s</p>
 
             <div className="w-full max-w-md">
-              <p className="mb-1 text-center text-[12px] uppercase tracking-wider text-white/40">
+              <p className="mb-1 text-center text-[12px] uppercase tracking-wider text-foreground/40">
                 Volume {Math.round(vol * 100)}%
               </p>
               <input
@@ -883,7 +883,7 @@ export function AudioPlayer({
                 step={0.05}
                 value={vol}
                 onChange={(e) => setVol(Number(e.target.value))}
-                className="w-full accent-[#f591ac]"
+                className="w-full accent-[var(--brand-pink)]"
               />
             </div>
 
@@ -894,7 +894,7 @@ export function AudioPlayer({
                   type="button"
                   onClick={() => setRate(r)}
                   className={`rounded-full px-3 py-1 text-[13px] font-semibold ${
-                    rate === r ? 'bg-[#f591ac] text-[#141a32]' : 'bg-white/10 text-white'
+                    rate === r ? 'bg-[var(--brand-pink)] text-[var(--on-brand)]' : 'bg-foreground/10 text-foreground'
                   }`}
                 >
                   {r}×
@@ -903,7 +903,7 @@ export function AudioPlayer({
             </div>
 
             <div className="w-full max-w-md">
-              <p className="mb-2 text-center text-[12px] uppercase tracking-wider text-white/40">
+              <p className="mb-2 text-center text-[12px] uppercase tracking-wider text-foreground/40">
                 Sleep timer
                 {sleepLeft > 0 ? ` · ${fmt(sleepLeft)}` : ''}
               </p>
@@ -912,7 +912,7 @@ export function AudioPlayer({
                 <button
                   type="button"
                   onClick={() => void enableShake()}
-                  className="rounded-full bg-white/10 px-3 py-2 text-[12px] font-semibold"
+                  className="rounded-full bg-foreground/10 px-3 py-2 text-[12px] font-semibold"
                 >
                   Enable shake
                 </button>
@@ -920,16 +920,16 @@ export function AudioPlayer({
                   type="button"
                   onClick={restartSleep}
                   disabled={!hasSleepChoice}
-                  className="rounded-full bg-[#f591ac] px-3 py-2 text-[12px] font-bold text-[#141a32] disabled:opacity-40"
+                  className="rounded-full bg-[var(--brand-pink)] px-3 py-2 text-[12px] font-bold text-[var(--on-brand)] disabled:opacity-40"
                 >
                   Reset timer
                 </button>
               </div>
 
               {shakeMsg ? (
-                <p className="mb-2 text-center text-[12px] text-[#f591ac]">{shakeMsg}</p>
+                <p className="mb-2 text-center text-[12px] text-[var(--brand-pink-text)]">{shakeMsg}</p>
               ) : (
-                <p className="mb-2 text-center text-[11px] text-white/35">
+                <p className="mb-2 text-center text-[11px] text-foreground/35">
                   Shake only works while a timer is on. Off disables shake.
                 </p>
               )}
@@ -941,7 +941,7 @@ export function AudioPlayer({
                     type="button"
                     onClick={() => startSleep(o.min)}
                     className={`rounded-full px-3 py-1 text-[13px] font-semibold ${
-                      sleepMin === o.min ? 'bg-[#f591ac] text-[#141a32]' : 'bg-white/10 text-white'
+                      sleepMin === o.min ? 'bg-[var(--brand-pink)] text-[var(--on-brand)]' : 'bg-foreground/10 text-foreground'
                     }`}
                   >
                     {o.label}
@@ -950,8 +950,8 @@ export function AudioPlayer({
               </div>
             </div>
 
-            <div className="w-full max-w-md rounded-2xl border border-white/10 p-3">
-              <p className="mb-2 text-[12px] uppercase tracking-wider text-white/40">
+            <div className="w-full max-w-md rounded-2xl border border-foreground/10 p-3">
+              <p className="mb-2 text-[12px] uppercase tracking-wider text-foreground/40">
                 Bookmark this moment
               </p>
               {loggedIn ? (
@@ -967,7 +967,7 @@ export function AudioPlayer({
                       }
                       maxLength={280}
                       disabled={savingNote}
-                      className="min-w-0 flex-1 rounded-full bg-white/10 px-3 py-2 text-sm outline-none disabled:opacity-50"
+                      className="min-w-0 flex-1 rounded-full bg-foreground/10 px-3 py-2 text-sm outline-none disabled:opacity-50"
                     />
                     <ActionButton
                       action={noteSave}
@@ -975,7 +975,7 @@ export function AudioPlayer({
                       loadingLabel={editingNote ? 'Updating…' : 'Saving…'}
                       successLabel="Saved"
                       errorPlacement="none"
-                      className="rounded-full bg-[#f591ac] px-3 py-2 text-sm font-bold text-[#141a32] disabled:opacity-60"
+                      className="rounded-full bg-[var(--brand-pink)] px-3 py-2 text-sm font-bold text-[var(--on-brand)] disabled:opacity-60"
                     >
                       {editingNote ? 'Update' : 'Save'}
                     </ActionButton>
@@ -984,19 +984,19 @@ export function AudioPlayer({
                         type="button"
                         disabled={savingNote}
                         onClick={cancelEditAudioNote}
-                        className="rounded-full bg-white/10 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                        className="rounded-full bg-foreground/10 px-3 py-2 text-sm font-semibold text-foreground disabled:opacity-60"
                       >
                         Cancel
                       </button>
                     ) : null}
                   </div>
                   {editingNote ? (
-                    <p className="mt-2 text-center text-[11px] text-[#f591ac]">
+                    <p className="mt-2 text-center text-[11px] text-[var(--brand-pink-text)]">
                       Editing note at {fmt(editingNote.position)}
                     </p>
                   ) : null}
                   {noteSave.errorText || noteRemove.errorText ? (
-                    <p role="alert" className="mt-2 text-center text-[12px] text-[#f591ac]">
+                    <p role="alert" className="mt-2 text-center text-[12px] text-[var(--brand-pink-text)]">
                       {noteSave.errorText || noteRemove.errorText}
                     </p>
                   ) : null}
@@ -1015,23 +1015,23 @@ export function AudioPlayer({
                     {notes.map((n) => (
                       <li
                         key={n.id}
-                        className="flex items-start gap-2 rounded-lg bg-white/5 p-2 text-sm"
+                        className="flex items-start gap-2 rounded-lg bg-foreground/5 p-2 text-sm"
                       >
                         <button
                           type="button"
                           onClick={() => seek(n.position)}
-                          className="shrink-0 text-[#f591ac]"
+                          className="shrink-0 text-[var(--brand-pink-text)]"
                         >
                           {fmt(n.position)}
                         </button>
-                        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-white/70">
+                        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-foreground/70">
                           {n.note}
                         </span>
                         <span className="flex shrink-0 flex-col items-end gap-1">
                           <button
                             type="button"
                             onClick={() => startEditAudioNote(n)}
-                            className="text-[#f591ac]"
+                            className="text-[var(--brand-pink-text)]"
                             aria-label="Edit note"
                           >
                             Edit
@@ -1040,7 +1040,7 @@ export function AudioPlayer({
                             type="button"
                             onClick={() => void removeAudioNote(n)}
                             disabled={noteRemove.busy}
-                            className="text-white/40 disabled:opacity-40"
+                            className="text-foreground/40 disabled:opacity-40"
                             aria-label="Delete note"
                           >
                             ×
@@ -1051,12 +1051,12 @@ export function AudioPlayer({
                   </ul>
                 </>
               ) : (
-                <p className="text-[13px] text-white/50">
-                  <Link href={loginHref} className="underline text-[#f591ac]">
+                <p className="text-[13px] text-foreground/50">
+                  <Link href={loginHref} className="underline text-[var(--brand-pink-text)]">
                     Log in
                   </Link>
                   {' · '}
-                  <Link href={signupHref} className="underline text-[#f591ac]">
+                  <Link href={signupHref} className="underline text-[var(--brand-pink-text)]">
                     Sign up
                   </Link>{' '}
                   to save notes across devices.
@@ -1073,18 +1073,18 @@ export function AudioPlayer({
                 }}
                 loadingLabel="Saving offline…"
                 successLabel="Saved offline"
-                errorClassName="text-center text-[12px] text-[#f591ac]"
-                className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                errorClassName="text-center text-[12px] text-[var(--brand-pink-text)]"
+                className="rounded-full bg-foreground/10 px-4 py-2 text-sm font-semibold disabled:opacity-60"
               >
                 Save offline on this device
               </ActionButton>
             ) : (
-              <p className="text-center text-[12px] text-white/40">
+              <p className="text-center text-[12px] text-foreground/40">
                 Offline saving is off for this audiobook.
               </p>
             )}
             {offlineMsg ? (
-              <p className="text-center text-[12px] text-white/50">{offlineMsg}</p>
+              <p className="text-center text-[12px] text-foreground/50">{offlineMsg}</p>
             ) : null}
           </>
         )}
