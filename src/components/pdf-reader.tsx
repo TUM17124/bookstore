@@ -275,6 +275,19 @@ export function PdfReader({
   const [status, setStatus] = useState('Opening…')
   const [total, setTotal] = useState(0)
   const [pages, setPages] = useState<Record<number, string>>({})
+  // Height a not-yet-loaded page reserves: the median of the pages already
+  // shown (about 80% of the screen before any has loaded). A 128 px
+  // placeholder grew to a full page when its text arrived and pushed the
+  // pages below down the screen.
+  const [pageEst, setPageEst] = useState<number | null>(null)
+  // The page list stays invisible until the first page's text is in (its
+  // height then sizes the placeholders), so nothing on screen moves while the
+  // pages arrive. Shown after 8 s anyway, so a failed page never hides it.
+  const [revealAnyway, setRevealAnyway] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setRevealAnyway(true), 8000)
+    return () => clearTimeout(t)
+  }, [])
   const [fontSize, setFontSize] = useState(() => (preferPhonePip() ? 10 : 18))
   const [page, setPage] = useState(1)
   const [marked, setMarked] = useState(0)
@@ -1347,6 +1360,18 @@ export function PdfReader({
   }
 
   useLayoutEffect(() => {
+    const heights = Object.keys(pages)
+      .filter((k) => pages[Number(k)])
+      .map((k) => document.getElementById(`read-page-${k}`)?.getBoundingClientRect().height ?? 0)
+      .filter((h) => h > 0)
+      .sort((a, b) => a - b)
+    if (!heights.length) return
+    const median = Math.round(heights[Math.floor(heights.length / 2)])
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- measured from the DOM after paint
+    setPageEst((prev) => (prev != null && Math.abs(prev - median) < 24 ? prev : median))
+  }, [pages, fontSize])
+
+  useLayoutEffect(() => {
     if (ttsActiveSentence < 0) return
     const pageNum = ttsPageLoadedRef.current ?? pageRef.current
     scrollToActiveSentence(pageNum, ttsActiveSentence, true)
@@ -2309,7 +2334,7 @@ export function PdfReader({
           <p className="px-4 pt-3 text-center text-[12px] text-black/55">Your page syncs to this account.</p>
         )}
         <article
-          className={`mx-auto max-w-2xl px-4 py-6 ${highlightMode ? highlightSelectClass(true) : 'select-none'}`}
+          className={`mx-auto max-w-2xl px-4 py-6 ${highlightMode ? highlightSelectClass(true) : 'select-none'} ${pageEst != null || revealAnyway ? '' : 'invisible'}`}
           style={highlightSelectStyle(highlightMode)}
         >
           {numbers.map((n) => (
@@ -2317,7 +2342,7 @@ export function PdfReader({
               key={n}
               id={`read-page-${n}`}
               className={`mb-10 min-h-[8rem] ${highlightSelectClass(highlightMode)}`}
-              style={highlightSelectStyle(highlightMode)}
+              style={pages[n] ? highlightSelectStyle(highlightMode) : { ...highlightSelectStyle(highlightMode), minHeight: pageEst ?? '8rem' }}
             >
               <p className="mb-3 select-none text-[11px] font-bold uppercase tracking-wider text-black/40">Page {n}</p>
               {ttsPageLoaded === n && ttsSentences.length > 0
