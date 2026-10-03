@@ -655,8 +655,10 @@ export async function createCheckout(
 }
 
 export async function getQuote(bookId: string | number, productType: "ebook" | "audiobook", call?: CallOptions) {
+  // With the login when there is one: an offer can be for some people only
+  // (campaign audiences), and checkout charges this buyer's own price.
   return api<PriceQuote>(`/books/${bookId}/quote/?product_type=${productType}`, {
-    auth: false,
+    auth: !!getToken(),
     cache: "no-store",
     signal: call?.signal,
   })
