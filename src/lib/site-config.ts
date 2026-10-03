@@ -35,6 +35,7 @@ export type FeatureName =
   | "guest_checkout"
   | "reviews"
   | "pro_signups"
+  | "ads"
   | "install_prompt"
   | "push_prompt"
   | "personalised_default"

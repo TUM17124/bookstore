@@ -1669,3 +1669,87 @@ export function clearGuestToken() {
     // ignore
   }
 }
+
+// ------------------------------------------------------------------- ads
+// Part E: an author's ad balance, top-ups and ads (charged per click).
+
+export type AdAccount = {
+  enabled: boolean
+  off_message: string
+  balance: string
+  low_balance: boolean
+  min_topup: string
+  min_cpc: string
+  min_daily_budget: string
+  refund_policy: string
+  quote: PromoQuote
+  server_now?: string
+}
+
+export type AdData = {
+  id: number
+  book: { id: string; title: string; is_free: boolean }
+  status: "active" | "paused" | "stopped" | "ended"
+  paused_by_admin: boolean
+  bid: string
+  daily_budget: string
+  ends_on: string | null
+  on_home: boolean
+  on_categories: boolean
+  on_search: boolean
+  categories: string[]
+  created_at: string
+}
+
+export type AdInput = Partial<{
+  book_id: string | number
+  bid: string
+  daily_budget: string
+  ends_on: string | null
+  on_home: boolean
+  on_categories: boolean
+  on_search: boolean
+  categories: string[]
+  action: "pause" | "resume" | "stop"
+}>
+
+export async function getAdAccount(amount?: string): Promise<AdAccount | null> {
+  if (!getToken()) return null
+  const q = amount ? `?amount=${encodeURIComponent(amount)}` : ""
+  return getOr<AdAccount | null>(`/ads/account/${q}`, null, { cache: "no-store" })
+}
+
+export async function startAdTopUp(amount: string, expectedAmount?: string, call?: CallOptions): Promise<{
+  topup_id: number
+  checkout_url: string
+  reference: string
+  amount: string
+  credited: string
+}> {
+  if (!getToken()) throw new UserError("Log in required")
+  return withPriceCheck(() =>
+    apiAction("/ads/topups/", { method: "POST", body: JSON.stringify({ amount, expected_amount: expectedAmount }) }, call),
+  )
+}
+
+export async function confirmAdTopUp(reference: string, call?: CallOptions): Promise<{
+  ok: boolean
+  paid: boolean
+  credited?: string
+  balance?: string
+  error?: string
+}> {
+  return apiAction("/ads/topups/confirm/", { method: "POST", body: JSON.stringify({ reference }) }, call)
+}
+
+export async function getMyAds(): Promise<{ ads: AdData[]; books: { id: string; title: string; has_ad: boolean }[] }> {
+  return getOr("/ads/", { ads: [], books: [] }, { cache: "no-store" })
+}
+
+export async function createAd(input: AdInput, call?: CallOptions): Promise<AdData> {
+  return apiAction("/ads/", { method: "POST", body: JSON.stringify(input) }, call)
+}
+
+export async function updateAd(id: number, input: AdInput, call?: CallOptions): Promise<AdData> {
+  return apiAction(`/ads/${id}/`, { method: "PATCH", body: JSON.stringify(input) }, call)
+}
