@@ -172,6 +172,8 @@ function HomeInner() {
   // Ask for the banners now (in parallel with the books and sections),
   // not when the shelf first renders.
   useBannerData(category)
+  // A book opened from the grid then has its banners ready (no late jump).
+  useBannerData("", "book")
   // How many section rows this page had last time: that many same-size
   // skeletons hold their place while the sections load (no jump).
   const shapeKey = `plugyard_sections_count_v1:${category || "home"}`
