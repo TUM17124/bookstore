@@ -9,10 +9,6 @@ import {
   deletePayoutAccount,
   getMySales,
   getToken,
-  initBoost,
-  getBoostPrice,
-  ProductPriceChangedError,
-  type PromoQuote,
   myBoosts,
   myBooks,
   payoutAccount,
@@ -28,10 +24,9 @@ import { UserError } from "@/lib/user-error";
 import { broadcastAccountChange } from "@/lib/auth-client";
 import { useCurrency, useMoney } from "@/lib/money";
 import { CampaignsTab } from "./campaigns-tab";
+import { AdsTab } from "./ads-tab";
 import { Banners } from "@/components/offers/banners";
-import { PromoPrice } from "@/components/offers/promo-price";
-import { noteServerTime } from "@/components/offers/countdown";
-import { useFeature, useLimits, useOffMessage, useText } from "@/lib/site-config";
+import { useLimits, useText } from "@/lib/site-config";
 
 
 const SECTIONS = [
@@ -39,6 +34,7 @@ const SECTIONS = [
   { id: "payout", label: "Payout account" },
   { id: "books", label: "Your books" },
   { id: "campaigns", label: "Campaigns" },
+  { id: "ads", label: "Ads" },
 ] as const;
 
 type SectionId = (typeof SECTIONS)[number]["id"];
@@ -85,12 +81,6 @@ function cycleDate(c: any): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-let boostPricePromise: ReturnType<typeof getBoostPrice> | null = null;
-/** One boost-price request shared by every book card (fresh = ask again). */
-function loadBoostPrice(fresh = false) {
-  if (!boostPricePromise || fresh) boostPricePromise = getBoostPrice();
-  return boostPricePromise;
-}
 
 export default function DashboardPage() {
   // Part C: every amount uses the site currency setting.
@@ -335,6 +325,8 @@ export default function DashboardPage() {
 
     // Part C: notifications link to /dashboard?tab=campaigns
     if (params.get("tab") === "campaigns") setActive("campaigns");
+    // Part E: back from a Paystack ad top-up (and links to the Ads tab).
+    if (params.get("tab") === "ads" || params.get("ad_topup_ref")) setActive("ads");
 
     const editBookId = params.get("edit_book_id");
     if (editBookId) {
@@ -1140,6 +1132,8 @@ export default function DashboardPage() {
 
           {active === "campaigns" && <CampaignsTab />}
 
+          {active === "ads" && <AdsTab />}
+
           {active === "books" && (
             <section className="space-y-3">
               <h2 className="text-xl font-bold">
@@ -1157,6 +1151,7 @@ export default function DashboardPage() {
                 <BookBoostRow
                   key={book.id}
                   book={book}
+                  onPromote={() => setActive("ads")}
                   boost={
                     byBook[book.id]
                   }
@@ -1216,11 +1211,13 @@ function BookBoostRow({
   onUpdated,
   onRemoved,
   onFlash,
+  onPromote,
 }: {
   book: any;
   boost?: any;
   autoOpen?: boolean;
   attachEditorDocumentId?: string;
+  onPromote?: () => void;
   onUpdated: (book: any) => void;
   onRemoved: (
     id: string | number
@@ -1236,10 +1233,6 @@ function BookBoostRow({
       boost?.seconds_left || 0
     );
   // Part D: Site: Pricing → boost days; Site: Features → boosts.
-  const notBoosted = useText("boost.not_boosted");
-  const boostsOn = useFeature("boosts");
-  const boostsOff = useOffMessage("boosts");
-  const [boostDays, setBoostDays] = useState(7);
 
   const active = Boolean(
     boost?.is_active
@@ -1292,45 +1285,6 @@ function BookBoostRow({
     setEbookDownloadable(book.ebookDownloadable !== false);
     setAudiobookDownloadable(book.audiobookDownloadable !== false);
   }, [book]);
-
-  // The boost price this author pays now (a promotion may apply).
-  const [boostQuote, setBoostQuote] = useState<PromoQuote | null>(null);
-  const [boostNonce, setBoostNonce] = useState(0);
-  useEffect(() => {
-    let live = true;
-    loadBoostPrice(boostNonce > 0)
-      .then((p) => {
-        if (!live || !p) return;
-        noteServerTime(p.server_now);
-        setBoostQuote(p.quote);
-        if (p.days) setBoostDays(p.days);
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [boostNonce]);
-
-  // Boost = Paystack initialisation: retried only with ONE idempotency key.
-  // The price shown is sent along; a different price now is refused and
-  // shown instead (press Boost again to accept it).
-  const boostAction = useAsyncAction(
-    async (ctx, bookId: number) => {
-      const d = await initBoost("", bookId, boostDays, ctx, boostQuote?.final_amount);
-      if (!d.ok) throw new UserError(d.error || "Cannot boost yet");
-      if (!d.authorization_url) throw new UserError(d.error || "Cannot start Paystack checkout");
-      return d;
-    },
-    {
-      successMs: 60_000, // "Redirecting…" while leaving for Paystack
-      onSuccess: (d) => {
-        window.location.href = d.authorization_url;
-      },
-      onError: (err) => {
-        if (err instanceof ProductPriceChangedError) setBoostQuote(err.quote);
-      },
-    }
-  );
 
   const save = useAsyncAction(
     (ctx, fd: FormData) => updateMyBook(book.id, fd, ctx),
@@ -1423,7 +1377,7 @@ function BookBoostRow({
             </p>
           ) : (
             <p className="text-sm text-foreground/70">
-              {boostsOn ? notBoosted : boostsOff}
+              Reach more readers: promote this book with an ad (you pay per click).
             </p>
           )}
         </div>
@@ -1455,43 +1409,21 @@ function BookBoostRow({
             Delete
           </ActionButton>
 
-          <ActionButton
-            action={boostAction}
-            disabled={active || !boostsOn}
-            onClick={() => void boostAction.run(book.id)}
-            loadingLabel="Starting checkout…"
-            successLabel="Redirecting…"
-            errorPlacement="none"
-            retryPlacement="none"
-            className={`px-4 py-2 rounded-lg ${
-              active || !boostsOn
-                ? "bg-neutral-400 text-white cursor-not-allowed"
-                : "bg-foreground text-background"
-            }`}
-          >
-            {active
-              ? `Boosted · ${label}`
-              : boostsOn
-                ? "Boost now"
-                : "Boosts off"}
-          </ActionButton>
+          {!active && onPromote && (
+            <button
+              type="button"
+              onClick={onPromote}
+              className="px-4 py-2 rounded-lg bg-foreground text-background"
+            >
+              Promote with an ad
+            </button>
+          )}
         </div>
-        {!active && boostsOn && boostQuote ? (
-          <div className="flex w-full justify-end">
-            <PromoPrice
-              quote={boostQuote}
-              suffix={` for ${boostDays} days`}
-              size="sm"
-              onExpire={() => setBoostNonce((n) => n + 1)}
-              className="items-end text-right"
-            />
-          </div>
-        ) : null}
       </div>
-      <ActionStatus action={remove.state === "retrying" ? remove : boostAction} className="text-sm text-foreground/70" />
-      {remove.errorText || boostAction.errorText ? (
+      <ActionStatus action={remove} className="text-sm text-foreground/70" />
+      {remove.errorText ? (
         <p role="alert" className="text-sm text-red-600">
-          {remove.errorText || boostAction.errorText}
+          {remove.errorText}
         </p>
       ) : null}
 
