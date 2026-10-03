@@ -274,6 +274,15 @@ function CampaignCard({ c, onChanged }: { c: CampaignData; onChanged: () => void
         <div><dt className="inline text-foreground/55">Discount: </dt><dd className="inline">{c.min_discount_percent}–{c.max_discount_percent}% off</dd></div>
         <div><dt className="inline text-foreground/55">Books per author: </dt><dd className="inline">up to {c.max_books_per_author}</dd></div>
         <div><dt className="inline text-foreground/55">Categories: </dt><dd className="inline">{c.categories.length ? c.categories.map((x) => x.label).join(", ") : "All"}</dd></div>
+        <div className="sm:col-span-2">
+          <dt className="inline text-foreground/55">This campaign is shown to: </dt>
+          <dd className="inline font-semibold">{c.targeted && c.audience ? c.audience : "everyone"}</dd>
+          {c.targeted && (
+            <p className="mt-0.5 text-[12px] text-foreground/55">
+              Only these readers see your offer price. Everyone else sees your normal price.
+            </p>
+          )}
+        </div>
         {!c.admin_only && (
           <div className="sm:col-span-2">
             <dt className="inline text-foreground/55">Join, edit or withdraw until: </dt>
