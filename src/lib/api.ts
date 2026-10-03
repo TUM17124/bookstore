@@ -9,6 +9,9 @@ const API = process.env.NEXT_PUBLIC_API_URL!
 
 export type ApiBook = {
   id: string
+  /** Part E: set on a paid (sponsored) slot only; the token is signed by
+   * the server and sent back with the "seen" and "click" events. */
+  sponsored?: AdSlot | null
   title: string
   author: string
   year: string
@@ -77,7 +80,12 @@ export type Paginated<T> = {
   next: string | null
   previous: string | null
   results: T[]
+  /** Part E: a sponsored result on the first page of a search, kept apart
+   * from `results` (counts and pages stay honest). */
+  sponsored?: T[]
 }
+
+export type AdSlot = { token: string; label: string }
 
 export function asBookList(data: Paginated<ApiBook> | ApiBook[]): ApiBook[] {
   return Array.isArray(data) ? data : data.results ?? []
@@ -369,6 +377,8 @@ export async function getBooks(params?: {
   if (params?.pageSize) q.set("page_size", String(params.pageSize))
 
   const url = `${API}/books/${q.toString() ? `?${q}` : ""}`
+  // Part E: a search can carry a sponsored result, capped per browser.
+  const headers = params?.search ? visitorHeader() : undefined
   try {
     // Logged in: send the token, so the request counts against the user's
     // own limit, not the per-IP anonymous one shared by everyone behind a
@@ -376,10 +386,10 @@ export async function getBooks(params?: {
     // 401 falls back to the public (anonymous) request.
     let res: Response
     try {
-      res = await authFetch(url, { auth: !!getToken() })
+      res = await authFetch(url, { auth: !!getToken(), headers })
     } catch (err) {
       if (!(err instanceof AuthFetchError && err.status === 401)) throw err
-      res = await authFetch(url, { auth: false })
+      res = await authFetch(url, { auth: false, headers })
     }
     return await res.json()
   } catch {
@@ -747,6 +757,27 @@ function bannerHeaders(token: string | null): Record<string, string> {
   if (vid) h["X-Visitor-Id"] = vid
   if (token) h.Authorization = `Bearer ${token}`
   return h
+}
+
+function visitorHeader(): Record<string, string> {
+  const vid = getVisitorId()
+  return vid ? { "X-Visitor-Id": vid } : {}
+}
+
+/** Part E: a sponsored card was seen (half visible for a second) or
+ * clicked. Fire-and-forget; the server decides whether a click is charged. */
+export function sendAdEvent(kind: "seen" | "click", token: string) {
+  if (!API || !token) return
+  try {
+    void fetch(`${API}/ads/${kind}/`, {
+      method: "POST",
+      body: JSON.stringify({ token }),
+      headers: bannerHeaders(bannerToken()),
+      keepalive: true,
+    }).catch(() => {})
+  } catch {
+    // statistics and billing are server-side; never break the page
+  }
 }
 
 /** Fire-and-forget view / click / dismiss: frequency caps, per-audience
@@ -1410,6 +1441,7 @@ export async function getHomeSections(category?: string, call?: CallOptions): Pr
     api<HomeSectionsPage>(`/home/sections/${q}`, {
       auth,
       cache: "no-store",
+      headers: visitorHeader(),
       signal: call?.signal,
       onRetry: call?.onRetry,
     })
