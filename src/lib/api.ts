@@ -1,7 +1,8 @@
 // src/lib/api.ts
 import { splitName } from "@/lib/name"
 import { AuthFetchError, authFetch, type CallOptions, type RequestOptions } from "@/lib/auth-fetch"
-import { takePreloaded } from "@/lib/preload"
+import { peekPreloaded, takePreloaded } from "@/lib/preload"
+import { bannersPath, getVisitorId } from "@/lib/visitor"
 import { UserError } from "@/lib/user-error"
 
 const API = process.env.NEXT_PUBLIC_API_URL!
@@ -603,26 +604,70 @@ export type BannerData = {
   button_text_color: string
   overlay: "none" | "dark" | "light"
   overlay_strength: number
-  countdown: { label: "Ends in" | "Starts in"; target: string; ends_at: string } | null
+  /** Server time based; null when there is none or it has ended. */
+  countdown: { label: "Ends in" | "Starts in" | "Join closes in"; target: string } | null
+  /** The countdown is over and the banner stays with this message. */
+  ended?: boolean
+  ended_message?: string
+  /** At zero: hide the banner (else show ended_message). */
+  hide_when_ended?: boolean
+  dismissible?: boolean
 }
 
-export async function getBanners(category?: string): Promise<{ banners: BannerData[]; server_now?: string }> {
-  const q = category ? `?category=${encodeURIComponent(category)}` : ""
-  const pre = await takePreloaded<{ banners: BannerData[]; server_now?: string }>(`/banners/${q}`, null)
+export type BannerPlacement = "home" | "category" | "dashboard" | "book"
+export type BannersPage = {
+  banners: BannerData[]
+  settings?: { carousel: boolean; autoplay_seconds: number }
+  server_now?: string
+}
+
+function bannerToken(): string | null {
+  // An expired login gets the guest's banners (the server ignores it).
+  const t = getToken()
+  if (!t) return null
+  const left = tokenExpiresInMs(t)
+  return left == null || left > 5000 ? t : null
+}
+
+/** The banners THIS visitor sees on a page (audience, caps and rotation are
+ * decided by the server). Personal, so never cached. */
+export async function getBanners(placement: BannerPlacement, category = ""): Promise<BannersPage> {
+  const path = bannersPath(placement, category)
+  const token = bannerToken()
+  const pre = await takePreloaded<BannersPage>(path, token)
   if (pre && Array.isArray(pre.banners)) return pre
-  return getOr(`/banners/${q}`, { banners: [] }, { auth: false })
+  return getOr(path, { banners: [] }, { auth: false, headers: bannerHeaders(token) })
 }
 
-/** Fire-and-forget view/click count for the admin's banner stats. */
-export function sendBannerEvent(id: number, type: "view" | "click") {
+/** The preloaded answer if it has already arrived (first render), else undefined. */
+export function peekBanners(placement: BannerPlacement, category = ""): BannersPage | undefined {
+  const pre = peekPreloaded<BannersPage>(bannersPath(placement, category), bannerToken())
+  return pre && Array.isArray(pre.banners) ? pre : undefined
+}
+
+function bannerHeaders(token: string | null): Record<string, string> {
+  const h: Record<string, string> = { "Content-Type": "application/json" }
+  const vid = getVisitorId()
+  if (vid) h["X-Visitor-Id"] = vid
+  if (token) h.Authorization = `Bearer ${token}`
+  return h
+}
+
+/** Fire-and-forget view / click / dismiss: frequency caps, per-audience
+ * statistics and the event log. */
+export function sendBannerEvent(
+  id: number,
+  type: "view" | "click" | "dismiss",
+  where: { placement: BannerPlacement; position: number },
+) {
   if (!API) return
   try {
     // keepalive: still sent if the click navigates away. (sendBeacon can't
-    // send JSON to another origin, and the API may be one.)
+    // send JSON or headers to another origin, and the API may be one.)
     void fetch(`${API}/banners/${id}/event/`, {
       method: "POST",
-      body: JSON.stringify({ type }),
-      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, placement: where.placement, position: where.position }),
+      headers: bannerHeaders(bannerToken()),
       keepalive: true,
     }).catch(() => {})
   } catch {

@@ -24,6 +24,7 @@ import { UserError } from "@/lib/user-error";
 import { broadcastAccountChange } from "@/lib/auth-client";
 import { useCurrency, useMoney } from "@/lib/money";
 import { CampaignsTab } from "./campaigns-tab";
+import { Banners } from "@/components/offers/banners";
 
 const PAYOUT_EVERY_DAYS = 30;
 
@@ -593,6 +594,9 @@ export default function DashboardPage() {
           {msg}
         </div>
       )}
+
+      {/* Admin banners for this page (e.g. "Join the campaign" for authors). */}
+      <Banners placement="dashboard" className="" />
 
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
         {/* Mobile: shrinking horizontal tab strip */}

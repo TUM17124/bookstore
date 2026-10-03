@@ -36,6 +36,7 @@ function loadThree() {
 }
 import { useCurrency, formatMoney } from '@/lib/money';
 import { edgeMask, useScrollEdges } from '@/components/category-nav/use-scroll-edges';
+import { Banners } from '@/components/offers/banners';
 
 export interface BookCfg {
   id: string;
@@ -2597,6 +2598,11 @@ export function BooksShowcase({
         document.body,
       )}
 
+      {shelfActive && selectedCfg && (
+        <div className="w-full bg-[var(--bs-bg-light)] px-4 pt-6 dark:bg-[var(--bs-bg-dark)] sm:px-8">
+          <Banners placement="book" className="" />
+        </div>
+      )}
       {shelfActive && selectedCfg && <RecommendedBooks book={selectedCfg} />}
     </div>
     </div>
