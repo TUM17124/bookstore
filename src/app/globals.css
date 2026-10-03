@@ -178,6 +178,20 @@
   padding-top: 4rem;
 }
 
+/* Short pages (an empty dashboard, an empty library, an error): the footer
+   stays at the bottom of the screen, not in the middle. dvh follows phone
+   browser bars as they show and hide (vh is the fallback). Nav, modals and
+   pop-ups are position: fixed, so the column doesn't affect them. */
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+.site-main {
+  flex: 1 0 auto;
+}
+
 .home-shelf {
   display: flex;
   flex-direction: column;
