@@ -35,7 +35,12 @@ export function formatMoney(amount: number | string | null | undefined, cfg: Cur
   const n = Number(amount ?? 0)
   const value = Number.isFinite(n) ? n : 0
   const places = Math.max(0, Math.min(4, Number(cfg.decimals) || 0))
-  const fixed = Math.abs(value).toFixed(places)
+  // Same rule as the server (shop/pricing.py round_price): DOWN to the
+  // currency's precision, never rounded up, so the price shown is the price
+  // charged (KES 139.30 shows as KES 139, which is what is charged).
+  const factor = 10 ** places
+  const truncated = Math.trunc(Math.abs(value) * factor + 1e-6) / factor
+  const fixed = truncated.toFixed(places)
   const [whole, frac] = fixed.split(".")
   const grouped = cfg.thousands ? whole.replace(/\B(?=(\d{3})+(?!\d))/g, cfg.thousands) : whole
   const number = (value < 0 ? "-" : "") + grouped + (places ? `.${frac}` : "")
