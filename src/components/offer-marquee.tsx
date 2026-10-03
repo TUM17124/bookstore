@@ -1,69 +1,12 @@
 "use client"
 
-import { cachedResource } from "@/lib/cached-resource"
-import { getPromptContent } from "@/lib/prompts"
+import { useList } from "@/lib/site-config"
 
-/** Built-in default. The live list is admin-editable: Django admin → Site
- * copy → slug "offer-marquee", one item per line in the body (Part B).
- * This list shows when that row is missing or blank. */
-const DEFAULT_OFFERS = [
-  "Buy eBooks & Audiobooks — No Account Needed",
-  "Free In-Browser PDF Editor with Auto-Save",
-  "Smart Built-In PDF Reader",
-  "Instant Download After Purchase",
-  "Text-to-Speech Audio Narration",
-  "Agribusiness loan plans",
-  "County tender & RFQ templates",
-  "KRA tax & SME bookkeeping",
-  "NGO / CBO proposal frameworks",
-  "Hospitality SOPs & recipe costing",
-  "Chama constitutions",
-  "Kenyan lease & tenancy forms",
-  "Employment contracts",
-  "ATS CVs & cover letters",
-  "PSC interview prep",
-  "NGO & UN application packs",
-  "Remote work guides",
-  "LinkedIn optimization",
-  "TSC promotion notes",
-  "KASNEB / EBK / Cisco blueprints",
-  "CBC assessment notes",
-  "KCSE revision packs",
-  "Nursing attachment logbooks",
-  "KSL revision outlines",
-  "Set-book guides",
-  "CPA summaries",
-  "Land-buying due diligence",
-  "Ardhisasa manuals",
-  "Budget & debt planners",
-  "Importation blueprints",
-  "Nairobi side-hustle planners",
-  "Kenyan meal plans",
-  "Wedding & ruracio budgets",
-  "Apartment layout plans",
-  "Poultry health charts",
-  "Wellness workbooks",
-  "Phonics worksheets",
-  "Car maintenance logs",
-]
-
-const useOfferResource = cachedResource<string[]>(
-  "plugyard_offer_marquee_v1",
-  async () => {
-    const row = await getPromptContent("offer-marquee")
-    const lines = (row?.body || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
-    return lines.length ? lines : null
-  },
-  DEFAULT_OFFERS,
-  5 * 60_000,
-)
-
-function useOffers(): string[] {
-  return useOfferResource()[0]
-}
-
+/** The scrolling strip under the navbar. Admin-editable: Django admin →
+ * Site: General → "Scrolling strip under the navbar", one item per line
+ * (Part D). The built-in list lives in site-defaults.json. */
 export function OfferMarquee() {
-  const line = useOffers().join("  ·  ")
+  const line = useList("marquee.items").join("  ·  ")
 
   return (
     <div

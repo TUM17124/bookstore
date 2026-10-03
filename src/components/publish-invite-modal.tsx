@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getToken } from '@/lib/api'
 import { withReferralQuery } from '@/lib/referral'
+import { usePairs, useText } from '@/lib/site-config'
 
 const KEY = 'plugyard-publish-invite'
 const COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000
@@ -46,6 +47,11 @@ function shouldShow(): boolean {
 
 export function PublishInviteModal() {
   const [open, setOpen] = useState(false)
+  // Admin-editable (Django admin → Site: General → Account invite).
+  const title = useText('invite.title')
+  const intro = useText('invite.intro')
+  const points = usePairs('invite.points')
+  const cta = useText('invite.cta')
 
   useEffect(() => {
     let shown = false
@@ -98,7 +104,7 @@ export function PublishInviteModal() {
     <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 sm:items-center">
       <div className="w-full max-w-md rounded-2xl bg-background p-5 shadow-2xl">
         <div className="flex items-start justify-between gap-3">
-          <h2 className="text-lg font-bold">Why create a PlugYard account</h2>
+          <h2 className="text-lg font-bold">{title}</h2>
           <button
             type="button"
             onClick={dismiss}
@@ -108,28 +114,14 @@ export function PublishInviteModal() {
             ×
           </button>
         </div>
-        <p className="mt-2 text-sm leading-relaxed text-foreground/70">
-          Guests can browse. An account is how this library becomes yours —
-          and how a Kenyan author gets a book on the shelf.
-        </p>
+        <p className="mt-2 text-sm leading-relaxed text-foreground/70">{intro}</p>
         <ul className="mt-3 space-y-2 text-sm text-foreground/70">
-          <li>
-            <strong className="text-foreground">Keep your place.</strong> Page
-            47 of a statute, a bookmark, a paid file — they follow you to the
-            next phone instead of dying with this browser.
-          </li>
-          <li>
-            <strong className="text-foreground">Publish and earn.</strong>{' '}
-            Upload a PDF, set a price or mark it free. When it sells, the
-            publisher cut is yours. Boost and invite rewards only work on an
-            account, because we have to know the book is yours.
-          </li>
-          <li>
-            <strong className="text-foreground">Get notes meant for you.</strong>{' '}
-            We email and tap you when a title matches how you read, when you
-            leave a book unfinished, or when someone uses your invite — not a
-            blast to everyone.
-          </li>
+          {points.map((p, i) => (
+            <li key={`${i}-${p.label}`}>
+              <strong className="text-foreground">{p.label}</strong>
+              {p.value ? ` ${p.value}` : ''}
+            </li>
+          ))}
         </ul>
         <div className="mt-5 flex flex-col gap-2 sm:flex-row">
           <Link
@@ -137,7 +129,7 @@ export function PublishInviteModal() {
             onClick={dismiss}
             className="inline-flex flex-1 items-center justify-center rounded-full bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
           >
-            Create a free account
+            {cta}
           </Link>
           <Link
             href="/login?next=/publish"

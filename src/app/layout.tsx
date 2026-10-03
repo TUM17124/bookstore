@@ -14,10 +14,13 @@ import { LegalGate } from '@/components/legal-gate'
 import { InstallAndPush } from "@/components/install-and-push"
 import { PushPrompt } from "@/components/push-prompt"
 import { ReferralCapture } from "@/components/referral-capture"
+import { getSeo, seoList, seoText } from "@/lib/seo"
 
 const SITE = "https://plugyard.com"
 
-export const metadata: Metadata = {
+// Site-wide SEO texts (title, template, description, keywords, social
+// cards) come from Django admin → Site: SEO at build time; see generateMetadata.
+const baseMetadata: Metadata = {
   metadataBase: new URL(SITE),
   title: {
     default: "PlugYard — Buy or Sell eBooks & Audiobooks Online",
@@ -107,7 +110,28 @@ export const metadata: Metadata = {
   },
 }
 
-const jsonLd = {
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getSeo()
+  const title = seoText(t, "seo.default_title")
+  return {
+    ...baseMetadata,
+    title: { default: title, template: seoText(t, "seo.title_template") || "%s | PlugYard" },
+    description: seoText(t, "seo.description"),
+    keywords: seoList(t, "seo.keywords"),
+    openGraph: {
+      ...baseMetadata.openGraph,
+      title: seoText(t, "seo.og_title") || title,
+      description: seoText(t, "seo.og_description"),
+    },
+    twitter: {
+      ...baseMetadata.twitter,
+      title: seoText(t, "seo.twitter_title") || title,
+      description: seoText(t, "seo.twitter_description"),
+    },
+  }
+}
+
+const jsonLd = (websiteDescription: string) => ({
   "@context": "https://schema.org",
   "@graph": [
     {
@@ -115,7 +139,7 @@ const jsonLd = {
       "@id": `${SITE}/#website`,
       "url": SITE,
       "name": "PlugYard",
-      "description": "Kenya's eBook and audiobook marketplace — buy, publish, and sell digital titles online.",
+      "description": websiteDescription,
       "potentialAction": {
         "@type": "SearchAction",
         "target": { "@type": "EntryPoint", "urlTemplate": `${SITE}/?q={search_term_string}` },
@@ -141,13 +165,14 @@ const jsonLd = {
       },
     },
   ],
-}
+})
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const seo = await getSeo()
   return (
     <html lang="en-KE" suppressHydrationWarning>
       <head>
@@ -157,7 +182,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: preloadScript(process.env.NEXT_PUBLIC_API_URL || "") }} />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd(seoText(seo, "seo.website_description"))) }}
         />
       </head>
       <body className="antialiased">

@@ -11,15 +11,7 @@ import { useAsyncAction } from '@/hooks/use-async-action'
 import { ActionButton } from '@/components/ui/action-button'
 import { UserError } from '@/lib/user-error'
 import { getStoredUser, isLoggedIn } from '@/lib/auth-client'
-import { getPromptContent, type PromptCopy } from '@/lib/prompts'
-
-// Used only until the backend copy loads (or if it fails) — the editable
-// version lives in Django admin under Site copy, slug "checkout-email-notice".
-const FALLBACK_EMAIL_NOTICE: PromptCopy = {
-  slug: 'checkout-email-notice',
-  title: "You'll get a receipt by email",
-  body: "After payment, we email a full receipt to the address above — the book, amount paid, and your Paystack transaction details. Keep it; it's what we use to sort out any payment dispute.",
-}
+import { useFeature, useOffMessage, useText } from '@/lib/site-config'
 
 function rememberBook(bookId: string, title: string, email?: string) {
   if (typeof window === 'undefined') return
@@ -53,7 +45,18 @@ function CheckoutInner() {
   const [mounted, setMounted] = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
   const [termsAccepted, setTermsAccepted] = useState(false)
-  const [emailNotice, setEmailNotice] = useState<PromptCopy>(FALLBACK_EMAIL_NOTICE)
+  // Admin-editable texts (Django admin → Site: General → Checkout).
+  const emailTitle = useText('checkout.email_title')
+  const emailBody = useText('checkout.email_body')
+  const guestHeading = useText('checkout.guest_heading')
+  const guestWhy = useText('checkout.guest_why')
+  const accountTip = useText('checkout.account_tip')
+  const accountLinked = useText('checkout.account_linked')
+  const freeTitle = useText('checkout.free_title')
+  const freeBody = useText('checkout.free_body')
+  // Site: Features → guest checkout. The server refuses it too.
+  const guestCheckoutOn = useFeature('guest_checkout')
+  const guestCheckoutOff = useOffMessage('guest_checkout')
   // Part C: the server's price for this book right now (offer included).
   const [quote, setQuote] = useState<PriceQuote | null>(null)
   const [quoteError, setQuoteError] = useState('')
@@ -93,18 +96,6 @@ function CheckoutInner() {
     setPriceNotice('The offer has ended. The price below is now the normal price.')
     setQuoteNonce((n) => n + 1)
   }
-
-  useEffect(() => {
-    let cancelled = false
-    getPromptContent('checkout-email-notice')
-      .then((c) => {
-        if (!cancelled && c) setEmailNotice(c)
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const productLabel = type === 'ebook' ? 'ebook (PDF)' : 'audiobook'
   const checkoutPath = `/checkout?bookId=${bookId}&type=${type}&title=${encodeURIComponent(title)}`
@@ -164,7 +155,7 @@ function CheckoutInner() {
   function onPay(e: React.FormEvent) {
     e.preventDefault()
     if (!bookId || !email.trim()) return
-    if (!loggedIn && !termsAccepted) return
+    if (!loggedIn && (!termsAccepted || !guestCheckoutOn)) return
     setLegalRequired(false)
     void pay.run(email.trim().toLowerCase(), termsAccepted)
   }
@@ -179,10 +170,8 @@ function CheckoutInner() {
 
       {isFree ? (
         <div className="mt-6 rounded-3xl border border-emerald-500/25 bg-emerald-500/[0.06] p-6">
-          <p className="text-lg font-bold">This book is free</p>
-          <p className="mt-1 text-sm text-foreground/70">
-            There&apos;s nothing to pay. Open the book to read it.
-          </p>
+          <p className="text-lg font-bold">{freeTitle}</p>
+          <p className="mt-1 text-sm text-foreground/70">{freeBody}</p>
           <Link
             href={`/?book=${encodeURIComponent(bookId)}`}
             className="mt-4 inline-flex min-h-[44px] items-center rounded-full bg-foreground px-5 text-sm font-semibold text-background hover:bg-foreground/90"
@@ -261,28 +250,40 @@ function CheckoutInner() {
             ✉️
           </span>
           <p className="text-[13px] leading-relaxed text-foreground/60">
-            <span className="font-medium text-foreground/80">{emailNotice.title}</span>{' '}
-            {emailNotice.body}
+            <span className="font-medium text-foreground/80">{emailTitle}</span>{' '}
+            {emailBody}
           </p>
         </div>
 
-        {mounted && !loggedIn && (
+        {mounted && !loggedIn && !guestCheckoutOn && (
+          <div role="status" className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-4">
+            <p className="text-sm font-semibold text-foreground/90">Guest checkout is turned off</p>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-foreground/70">{guestCheckoutOff}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link
+                href={loginHref}
+                className="inline-flex items-center justify-center rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background hover:bg-foreground/90"
+              >
+                Log in
+              </Link>
+              <Link href={signupHref} className="inline-flex items-center justify-center rounded-full border px-4 py-2 text-sm font-semibold">
+                Create a free account
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {mounted && !loggedIn && guestCheckoutOn && (
           <div className="mt-4 space-y-3 rounded-2xl border border-foreground/10 bg-foreground/[0.03] px-4 py-4">
             <div>
-              <p className="text-sm font-medium text-foreground/90">You are not signed in — guest checkout</p>
+              <p className="text-sm font-medium text-foreground/90">{guestHeading}</p>
               <p className="mt-1.5 text-[13px] leading-relaxed text-foreground/60">
                 <strong className="font-semibold text-foreground/80">Why we need your email:</strong>{' '}
-                Your email is the only way to match your payment to your order if something
-                goes wrong (failed payment, missing download, support request). It also lets
-                you re-download your purchase later without paying again — just log in with
-                the same address.
+                {guestWhy}
               </p>
             </div>
             <div className="rounded-xl border border-foreground/10 bg-foreground/[0.03] px-3 py-3">
-              <p className="text-[13px] leading-relaxed text-foreground/70">
-                Optional: create a free account with this same email to save
-                bookmarks, leave reviews, and re-download later.
-              </p>
+              <p className="text-[13px] leading-relaxed text-foreground/70">{accountTip}</p>
               <Link
                 href={signupHref}
                 className="mt-3 inline-flex w-full items-center justify-center rounded-full bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition hover:bg-foreground/90"
@@ -346,9 +347,7 @@ function CheckoutInner() {
               <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
                 Signed in{email ? ` as ${email}` : ''}
               </p>
-              <p className="mt-0.5 text-[13px] text-foreground/60">
-                Your payment will be linked to this account automatically. Use this email to access your downloads any time.
-              </p>
+              <p className="mt-0.5 text-[13px] text-foreground/60">{accountLinked}</p>
             </div>
           </div>
         )}
@@ -356,7 +355,7 @@ function CheckoutInner() {
         <ActionButton
           type="submit"
           action={pay}
-          disabled={!email.trim() || !quote || (mounted && !loggedIn && !termsAccepted)}
+          disabled={!email.trim() || !quote || (mounted && !loggedIn && (!termsAccepted || !guestCheckoutOn))}
           loadingLabel="Starting payment…"
           // After a price change the button offers the NEW price, not "Try again".
           errorLabel={pay.error instanceof PriceChangedError && quote ? `Pay ${money(quote.price)}` : undefined}

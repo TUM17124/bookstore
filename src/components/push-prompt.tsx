@@ -14,22 +14,10 @@ import { useAsyncAction } from "@/hooks/use-async-action"
 import { ActionButton } from "@/components/ui/action-button"
 import { getStoredUser, isLoggedIn } from "@/lib/auth-client"
 import { withReferralQuery } from "@/lib/referral"
-import { getPromptContent, personalize, type PromptCopy } from "@/lib/prompts"
+import { personalize } from "@/lib/prompts"
+import { useText } from "@/lib/site-config"
 
 const API = process.env.NEXT_PUBLIC_API_URL!
-
-// Used only if the backend copy hasn't loaded yet (or fails to) — the
-// editable copy itself lives in Django admin under Prompt copy.
-const FALLBACK_GUEST: PromptCopy = {
-  slug: "push-prompt-guest",
-  title: "Hear about a title before it disappears into the shelf",
-  body: "Without an account, PlugYard cannot keep your place or email you. Allow alerts on this phone now, then create a free account so the same personal notes follow you — unfinished pages, titles in your category, and invite rewards — instead of a generic blast.",
-}
-const FALLBACK_ACCOUNT: PromptCopy = {
-  slug: "push-prompt-account",
-  title: "{name}, get a tap when a book is actually yours",
-  body: "Notifications are how PlugYard finds you after you close the site. We send a note written for you — here and by email — when you leave a page unfinished, when a new title matches how you read, or when someone uses your invite. That is the point of an account: the library can remember you.",
-}
 
 async function postPromptEvent(event: string) {
   try {
@@ -69,25 +57,12 @@ export function PushPrompt() {
   const [msgIsSoft, setMsgIsSoft] = useState(false)
   const [hasAccount, setHasAccount] = useState(false)
   const [name, setName] = useState("")
-  const [guestCopy, setGuestCopy] = useState<PromptCopy>(FALLBACK_GUEST)
-  const [accountCopy, setAccountCopy] = useState<PromptCopy>(FALLBACK_ACCOUNT)
-
-  useEffect(() => {
-    let cancelled = false
-    getPromptContent("push-prompt-guest")
-      .then((c) => {
-        if (!cancelled && c) setGuestCopy(c)
-      })
-      .catch(() => {})
-    getPromptContent("push-prompt-account")
-      .then((c) => {
-        if (!cancelled && c) setAccountCopy(c)
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  // Admin-editable (Django admin → Site: General → Push prompt).
+  const guestTitle = useText("push.guest_title")
+  const guestBody = useText("push.guest_body")
+  const accountTitle = useText("push.account_title")
+  const accountBody = useText("push.account_body")
+  const buttonLabel = useText("push.button")
 
   useEffect(() => {
     let cancelled = false
@@ -141,6 +116,7 @@ export function PushPrompt() {
         const promptData = await promptRes.json().catch(() => ({}))
         if (cancelled) return
         if (promptData.push_enabled === false) return
+        if (promptData.push_prompt === false) return // Site: Features → push prompt off
         if (promptData.installed) {
           await postPromptEvent("installed")
           return
@@ -207,9 +183,8 @@ export function PushPrompt() {
 
   if (!show) return null
 
-  const copy = hasAccount ? accountCopy : guestCopy
-  const title = personalize(copy.title, name)
-  const body = personalize(copy.body, name)
+  const title = personalize(hasAccount ? accountTitle : guestTitle, name)
+  const body = personalize(hasAccount ? accountBody : guestBody, name)
 
   return (
     <div className="fixed bottom-4 left-4 right-4 z-[69] mx-auto max-w-md rounded-2xl border bg-background p-4 shadow-lg">
@@ -232,11 +207,11 @@ export function PushPrompt() {
             void enable.run()
           }}
           loadingLabel="Enabling…"
-          errorLabel="Allow personal alerts"
+          errorLabel={buttonLabel}
           errorPlacement="none"
           className="flex-1 rounded-lg bg-foreground py-2 text-sm text-background disabled:opacity-50"
         >
-          Allow personal alerts
+          {buttonLabel}
         </ActionButton>
         {!hasAccount && (
           <Link

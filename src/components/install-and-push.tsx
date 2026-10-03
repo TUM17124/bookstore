@@ -6,6 +6,7 @@ import { Bookmark, Smartphone, UserPlus } from "lucide-react"
 import { getToken } from "@/lib/api"
 import { getStoredUser, isLoggedIn } from "@/lib/auth-client"
 import { withReferralQuery } from "@/lib/referral"
+import { fill, useText } from "@/lib/site-config"
 
 const API = process.env.NEXT_PUBLIC_API_URL!
 
@@ -33,6 +34,21 @@ function isAuthPath() {
 }
 
 export function InstallAndPush() {
+  // Admin-editable (Django admin → Site: General → Install prompt).
+  const t = {
+    titleGuest: useText("install.title_guest"),
+    titleAccount: useText("install.title_account"),
+    titleNamed: useText("install.title_account_named"),
+    introGuest: useText("install.intro_guest"),
+    introAccount: useText("install.intro_account"),
+    pointHome: useText("install.point_home"),
+    pointPlaceAccount: useText("install.point_place_account"),
+    pointPlaceGuest: useText("install.point_place_guest"),
+    pointAccount: useText("install.point_account"),
+    help: useText("install.help"),
+    button: useText("install.button"),
+    cta: useText("invite.cta"),
+  }
   const [ask, setAsk] = useState(false)
   const [signedIn, setSignedIn] = useState(false)
   const [name, setName] = useState("")
@@ -102,39 +118,27 @@ export function InstallAndPush() {
 
   if (!ask || isStandalone()) return null
 
-  const title = signedIn
-    ? name
-      ? `${name}, put PlugYard on this phone`
-      : "Put your shelf on this phone"
-    : "Don't lose this library in a tab"
+  const title = signedIn ? (name ? fill(t.titleNamed, { name }) : t.titleAccount) : t.titleGuest
 
   return (
     <div className="fixed bottom-4 inset-x-0 z-[70] mx-auto w-[min(92%,440px)] rounded-2xl border bg-background p-4 shadow-xl">
       <p className="text-sm font-semibold">{title}</p>
       <p className="mt-1 text-sm text-foreground/65">
-        {signedIn
-          ? "You already have an account. Install so PlugYard opens like an app — not a browser tab you swipe away and never find again."
-          : "A tab forgets you. Install PlugYard so the Kenyan library sits on your home screen. Then create a free account so your page, bookmarks, and purchases survive a new phone."}
+        {signedIn ? t.introAccount : t.introGuest}
       </p>
       <ul className="mt-3 space-y-1.5 text-sm text-foreground/70">
         <li className="flex gap-2">
           <Smartphone className="mt-0.5 h-4 w-4 shrink-0 opacity-70" />
-          <span>One tap from the home screen, even after you close Chrome or Safari.</span>
+          <span>{t.pointHome}</span>
         </li>
         <li className="flex gap-2">
           <Bookmark className="mt-0.5 h-4 w-4 shrink-0 opacity-70" />
-          <span>
-            {signedIn
-              ? "Your place in a book, bookmarks, and purchases stay one tap away."
-              : "Keep the page you were on and the books you saved — without hunting for the site."}
-          </span>
+          <span>{signedIn ? t.pointPlaceAccount : t.pointPlaceGuest}</span>
         </li>
         {!signedIn && (
           <li className="flex gap-2">
             <UserPlus className="mt-0.5 h-4 w-4 shrink-0 opacity-70" />
-            <span>
-              A free account moves that place to another device, unlocks publishing and invite rewards, and lets us email you when a title is actually for you.
-            </span>
+            <span>{t.pointAccount}</span>
           </li>
         )}
       </ul>
@@ -157,12 +161,10 @@ export function InstallAndPush() {
               setAsk(false)
               return
             }
-            setHint(
-              "On iPhone: tap Share, then Add to Home Screen. On Android: browser menu → Install app. That is how PlugYard stays on this phone.",
-            )
+            setHint(t.help)
           }}
         >
-          Install the app
+          {t.button}
         </button>
         {!signedIn && (
           <Link
@@ -170,7 +172,7 @@ export function InstallAndPush() {
             className="rounded-full border px-4 py-2 text-sm"
             onClick={() => pingInstallEvent("shown")}
           >
-            Create a free account
+            {t.cta}
           </Link>
         )}
         <button

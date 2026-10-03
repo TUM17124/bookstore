@@ -31,8 +31,8 @@ import { CampaignsTab } from "./campaigns-tab";
 import { Banners } from "@/components/offers/banners";
 import { PromoPrice } from "@/components/offers/promo-price";
 import { noteServerTime } from "@/components/offers/countdown";
+import { useFeature, useLimits, useOffMessage, useText } from "@/lib/site-config";
 
-const PAYOUT_EVERY_DAYS = 30;
 
 const SECTIONS = [
   { id: "sales", label: "Sales and cut" },
@@ -95,6 +95,8 @@ function loadBoostPrice(fresh = false) {
 export default function DashboardPage() {
   // Part C: every amount uses the site currency setting.
   const money = useMoney();
+  // Part D: Site: Limits → payout every N days (the server says the same).
+  const PAYOUT_EVERY_DAYS = useLimits().payout_every_days;
   const [loggedIn, setLoggedIn] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [active, setActive] = useState<SectionId>("sales");
@@ -205,7 +207,7 @@ export default function DashboardPage() {
     }
 
     return every;
-  }, [cycles, payout]);
+  }, [cycles, payout, PAYOUT_EVERY_DAYS]);
 
   useEffect(() => {
     const currentToken = getToken() || "";
@@ -452,7 +454,7 @@ export default function DashboardPage() {
         setMsg(
           hasAccount
             ? "Payout account updated."
-            : "Payout account saved. Earnings are sent every 30 days."
+            : `Payout account saved. Earnings are sent every ${payout?.payout_every_days || PAYOUT_EVERY_DAYS} days.`
         );
         broadcastAccountChange();
       },
@@ -1233,6 +1235,11 @@ function BookBoostRow({
     useCountdown(
       boost?.seconds_left || 0
     );
+  // Part D: Site: Pricing → boost days; Site: Features → boosts.
+  const notBoosted = useText("boost.not_boosted");
+  const boostsOn = useFeature("boosts");
+  const boostsOff = useOffMessage("boosts");
+  const [boostDays, setBoostDays] = useState(7);
 
   const active = Boolean(
     boost?.is_active
@@ -1296,6 +1303,7 @@ function BookBoostRow({
         if (!live || !p) return;
         noteServerTime(p.server_now);
         setBoostQuote(p.quote);
+        if (p.days) setBoostDays(p.days);
       })
       .catch(() => {});
     return () => {
@@ -1308,7 +1316,7 @@ function BookBoostRow({
   // shown instead (press Boost again to accept it).
   const boostAction = useAsyncAction(
     async (ctx, bookId: number) => {
-      const d = await initBoost("", bookId, 7, ctx, boostQuote?.final_amount);
+      const d = await initBoost("", bookId, boostDays, ctx, boostQuote?.final_amount);
       if (!d.ok) throw new UserError(d.error || "Cannot boost yet");
       if (!d.authorization_url) throw new UserError(d.error || "Cannot start Paystack checkout");
       return d;
@@ -1415,9 +1423,7 @@ function BookBoostRow({
             </p>
           ) : (
             <p className="text-sm text-foreground/70">
-              Not boosted. Pay with
-              Paystack to feature this
-              title.
+              {boostsOn ? notBoosted : boostsOff}
             </p>
           )}
         </div>
@@ -1451,28 +1457,30 @@ function BookBoostRow({
 
           <ActionButton
             action={boostAction}
-            disabled={active}
+            disabled={active || !boostsOn}
             onClick={() => void boostAction.run(book.id)}
             loadingLabel="Starting checkout…"
             successLabel="Redirecting…"
             errorPlacement="none"
             retryPlacement="none"
             className={`px-4 py-2 rounded-lg ${
-              active
+              active || !boostsOn
                 ? "bg-neutral-400 text-white cursor-not-allowed"
                 : "bg-foreground text-background"
             }`}
           >
             {active
               ? `Boosted · ${label}`
-              : "Boost now"}
+              : boostsOn
+                ? "Boost now"
+                : "Boosts off"}
           </ActionButton>
         </div>
-        {!active && boostQuote ? (
+        {!active && boostsOn && boostQuote ? (
           <div className="flex w-full justify-end">
             <PromoPrice
               quote={boostQuote}
-              suffix=" for 7 days"
+              suffix={` for ${boostDays} days`}
               size="sm"
               onExpire={() => setBoostNonce((n) => n + 1)}
               className="items-end text-right"
@@ -1737,22 +1745,24 @@ function BookBoostRow({
 
 /** Empty dashboard: an author with no books yet. */
 function NoBooksYet() {
+  // Django admin → Site: General → Empty pages.
+  const title = useText("empty.dashboard_title");
+  const body = useText("empty.dashboard_body");
+  const cta = useText("empty.dashboard_cta");
+  const browse = useText("empty.dashboard_browse");
   return (
     <section className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-foreground/20 px-6 py-10 text-center">
       <BookOpen className="h-10 w-10 text-foreground/40" aria-hidden />
-      <h2 className="text-lg font-bold">No books yet</h2>
-      <p className="max-w-sm text-sm text-foreground/70">
-        Publish your first book: upload a PDF, set a price (or make it free) and it appears here with its sales,
-        boosts and campaigns.
-      </p>
+      <h2 className="text-lg font-bold">{title}</h2>
+      <p className="max-w-sm text-sm text-foreground/70">{body}</p>
       <Link
         href="/publish"
         className="inline-flex min-h-[44px] items-center rounded-full bg-foreground px-5 text-sm font-bold text-background outline-none focus-visible:ring-2 focus-visible:ring-foreground/40"
       >
-        Publish your first book
+        {cta}
       </Link>
       <Link href="/" className="text-sm font-semibold underline underline-offset-2 text-foreground/70 hover:text-foreground">
-        Or browse books
+        {browse}
       </Link>
     </section>
   );

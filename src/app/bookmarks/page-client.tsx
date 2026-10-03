@@ -6,8 +6,10 @@ import { useBookmarks } from '@/components/bookmarks-context'
 import { BooksShowcase } from '@/components/ui/books-showcase'
 import { OfferMarquee } from '@/components/offer-marquee'
 import { getToken } from '@/lib/api'
+import { useText } from '@/lib/site-config'
 
 export default function BookmarksPage() {
+  const emptyText = useText('empty.bookmarks')
   const { bookmarks, loading } = useBookmarks()
   const [loggedIn, setLoggedIn] = useState(false)
 
@@ -31,7 +33,7 @@ export default function BookmarksPage() {
       <main className="flex min-h-[calc(100dvh-4rem)] flex-col">
         <OfferMarquee />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-foreground/60">
-          <p>No bookmarks yet. Save a book from the detail panel.</p>
+          <p>{emptyText}</p>
           {!loggedIn && (
             <p className="max-w-sm text-foreground/45">
               Guest saves stay on this device. Create an account so a

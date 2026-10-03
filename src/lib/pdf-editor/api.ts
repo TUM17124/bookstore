@@ -10,6 +10,8 @@ import { bakedElements, type BakedElement } from "./document-persistence";
 import type { DocumentObject } from "@giga-pdf/types";
 import { getAuthToken, invalidateAuthToken, ensureFreshAuthToken } from "./auth-token";
 import { authFetch, newIdempotencyKey } from "@/lib/auth-fetch";
+import { editorUploadProblem } from "@/lib/upload-limits";
+import { UserError } from "@/lib/user-error";
 import {
   uploadWithProgress,
   type UploadProgressEvent,
@@ -475,6 +477,9 @@ class APIClient {
     version_number: number;
     created_at: string;
   }> {
+    // Same limit as the server (80 MB), checked before uploading anything.
+    const tooBig = editorUploadProblem({ size: params.file.size, name: params.name });
+    if (tooBig) throw new UserError(tooBig);
     const fd = new FormData();
     fd.append("file", params.file);
     fd.append("name", params.name);

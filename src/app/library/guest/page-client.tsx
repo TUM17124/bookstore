@@ -18,6 +18,7 @@ import { AudioPlayer } from '@/components/audio-player'
 import { GuestLinkRequestForm } from '@/components/guest-link-request-form'
 import { useAsyncAction } from '@/hooks/use-async-action'
 import { ActionButton } from '@/components/ui/action-button'
+import { useText } from '@/lib/site-config'
 
 /** One item's download button (its own request state). Never auto-retried:
  * each completed download counts toward the limit. */
@@ -60,6 +61,7 @@ function GuestDownloadButton({
  * as the X-Guest-Token header. The server decides everything shown here.
  */
 function GuestLibraryInner() {
+  const emptyText = useText('empty.guest_library')
   const sp = useSearchParams()
   const router = useRouter()
   const [token, setToken] = useState<string | null>(null)
@@ -195,7 +197,7 @@ function GuestLibraryInner() {
               </li>
             ))}
             {lib.items.length === 0 ? (
-              <li className="text-sm text-foreground/60">No books are available on this link.</li>
+              <li className="text-sm text-foreground/60">{emptyText}</li>
             ) : null}
           </ul>
 

@@ -2,6 +2,7 @@
 
 import { useMoney } from "@/lib/money"
 import { useState } from "react"
+import { useFeature, useOffMessage } from "@/lib/site-config"
 
 export function AffiliateInvite({
   code,
@@ -12,6 +13,9 @@ export function AffiliateInvite({
 }) {
   const money = useMoney()
   const [copied, setCopied] = useState<"link" | "code" | "">("")
+  // Site: Features → invite rewards. Earned balances stay withdrawable.
+  const invitesOn = useFeature("affiliate")
+  const invitesOff = useOffMessage("affiliate")
   const origin =
     typeof window !== "undefined" ? window.location.origin : "https://plugyard.com"
   const link = `${origin}/signup?ref=${encodeURIComponent(code || "")}`
@@ -24,6 +28,14 @@ export function AffiliateInvite({
     } catch {
       setCopied("")
     }
+  }
+
+  if (!invitesOn) {
+    return (
+      <p role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-3 text-sm text-foreground/75">
+        {invitesOff}
+      </p>
+    )
   }
 
   return (
