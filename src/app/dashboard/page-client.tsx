@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { BookOpen } from "lucide-react";
 import {
   confirmBoost,
   deleteMyBook,
@@ -87,6 +88,7 @@ export default function DashboardPage() {
 
   const [token, setToken] = useState("");
   const [books, setBooks] = useState<any[]>([]);
+  const [booksLoaded, setBooksLoaded] = useState(false);
   const [boosts, setBoosts] = useState<any[]>([]);
   const [payout, setPayout] = useState<any>(null);
   const [banks, setBanks] = useState<{ name: string; code: string }[]>([]);
@@ -261,14 +263,16 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!token) return;
 
-    myBooks(token).then((d) =>
-      setBooks(
-        d.results ||
-          d.books ||
-          d ||
-          []
+    myBooks(token)
+      .then((d) =>
+        setBooks(
+          d.results ||
+            d.books ||
+            d ||
+            []
+        )
       )
-    );
+      .finally(() => setBooksLoaded(true));
 
     myBoosts(token).then((d) =>
       setBoosts(
@@ -636,6 +640,8 @@ export default function DashboardPage() {
 
         {/* Content */}
         <div className="min-w-0 flex-1 space-y-8">
+          {active === "sales" && booksLoaded && books.length === 0 && <NoBooksYet />}
+
           {active === "sales" && (
             <section className="rounded-2xl border p-4 space-y-3">
               <h2 className="text-xl font-bold">
@@ -1122,12 +1128,12 @@ export default function DashboardPage() {
                 Your books
               </h2>
 
-              {books.length === 0 && (
-                <p className="text-sm text-foreground/70">
-                  No books yet. Publish a title
-                  to manage it here.
+              {!booksLoaded && (
+                <p className="text-sm text-foreground/60" role="status">
+                  Loading your books…
                 </p>
               )}
+              {booksLoaded && books.length === 0 && <NoBooksYet />}
 
               {books.map((book) => (
                 <BookBoostRow
@@ -1677,5 +1683,28 @@ function BookBoostRow({
         </form>
       )}
     </div>
+  );
+}
+
+/** Empty dashboard: an author with no books yet. */
+function NoBooksYet() {
+  return (
+    <section className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-foreground/20 px-6 py-10 text-center">
+      <BookOpen className="h-10 w-10 text-foreground/40" aria-hidden />
+      <h2 className="text-lg font-bold">No books yet</h2>
+      <p className="max-w-sm text-sm text-foreground/70">
+        Publish your first book: upload a PDF, set a price (or make it free) and it appears here with its sales,
+        boosts and campaigns.
+      </p>
+      <Link
+        href="/publish"
+        className="inline-flex min-h-[44px] items-center rounded-full bg-foreground px-5 text-sm font-bold text-background outline-none focus-visible:ring-2 focus-visible:ring-foreground/40"
+      >
+        Publish your first book
+      </Link>
+      <Link href="/" className="text-sm font-semibold underline underline-offset-2 text-foreground/70 hover:text-foreground">
+        Or browse books
+      </Link>
+    </section>
   );
 }

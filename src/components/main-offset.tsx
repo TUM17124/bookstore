@@ -18,12 +18,12 @@ function MainOffsetInner({ children }: { children: React.ReactNode }) {
   // the top instead. The landing/upload prompt and My Documents are normal
   // site pages and keep the usual offset (redesign #5).
   const isEditor = useIsEditorFocusedRoute()
-  return <div className={isEditor ? undefined : "site-main-offset"}>{children}</div>
+  return <div className={isEditor ? "site-main" : "site-main site-main-offset"}>{children}</div>
 }
 
 export function MainOffset({ children }: { children: React.ReactNode }) {
   return (
-    <Suspense fallback={<div className="site-main-offset">{children}</div>}>
+    <Suspense fallback={<div className="site-main site-main-offset">{children}</div>}>
       <MainOffsetInner>{children}</MainOffsetInner>
     </Suspense>
   )
