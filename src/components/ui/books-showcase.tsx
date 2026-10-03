@@ -10,7 +10,7 @@ import { useBookmarks } from '@/components/bookmarks-context';
 import { useAsyncAction } from '@/hooks/use-async-action';
 import { ActionButton, ActionStatus } from '@/components/ui/action-button';
 import { createPortal } from 'react-dom';
-import { searchTrack, getRatings, getRelatedBooks, getBookAccess, downloadBook, type ApiBook, type ApiOffer, type BookAccess } from '@/lib/api';
+import { searchTrack, sendAdEvent, getRatings, getRelatedBooks, getBookAccess, downloadBook, type ApiBook, type ApiOffer, type BookAccess } from '@/lib/api';
 import { PriceTag } from '@/components/offers/price-tag';
 import dynamic from 'next/dynamic';
 
@@ -76,6 +76,44 @@ export interface BookCfg {
    * fetch it separately (one request per card). */
   ratingAvg?: number;
   ratingCount?: number;
+  /** Part E: a paid slot ("Sponsored" label, view and click events). */
+  sponsored?: { token: string; label: string } | null;
+}
+
+/** Part E: a sponsored card counts as seen once at least half of it has
+ * been on screen for one continuous second. Sent once per card. */
+function useAdViewability(token: string | undefined) {
+  const ref = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!token || !el || typeof IntersectionObserver === 'undefined') return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let sent = false;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (sent) return;
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+          if (!timer) {
+            timer = setTimeout(() => {
+              sent = true;
+              sendAdEvent('seen', token);
+              io.disconnect();
+            }, 1000);
+          }
+        } else if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      },
+      { threshold: [0, 0.5, 1] },
+    );
+    io.observe(el);
+    return () => {
+      if (timer) clearTimeout(timer);
+      io.disconnect();
+    };
+  }, [token]);
+  return ref;
 }
 
 /** Part B: one personalised/category section row. */
@@ -185,6 +223,8 @@ function GridBookCard({
   const [count, setCount] = useState(book.ratingCount || 0);
   const spineColor = book.spineBg || book.backBg || '#1c1f26';
   const pageColor = book.edge || '#eee4cf';
+  const adToken = book.sponsored?.token;
+  const adRef = useAdViewability(adToken);
 
   useEffect(() => {
     if (hasPayloadRating) return; // came with the section payload
@@ -208,10 +248,15 @@ function GridBookCard({
 
   return (
     <button
+      ref={adRef}
       type="button"
-      onClick={onOpen}
+      onClick={() => {
+        if (adToken) sendAdEvent('click', adToken);
+        onOpen();
+      }}
       disabled={spinning}
       className="group flex w-full flex-col text-left outline-none"
+      data-sponsored={adToken ? 'true' : undefined}
     >
       <div
         className={cn(
@@ -259,6 +304,11 @@ function GridBookCard({
       </div>
 
       <div className="mt-2.5 min-h-[var(--bs-card-meta,0px)] min-w-0">
+        {book.sponsored && (
+          <span className="mb-1 inline-block rounded border border-current/25 px-1.5 py-px text-[9.5px] font-bold uppercase tracking-[0.12em] text-current/70">
+            {book.sponsored.label || 'Sponsored'}
+          </span>
+        )}
         <div className="line-clamp-2 text-[13px] font-semibold leading-snug text-current">{book.title}</div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           <StarsRow value={avg} />

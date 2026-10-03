@@ -40,6 +40,8 @@ describe("preload inline script", () => {
       { url: "https://api.test/api" + bannersPath("home"), auth: `Bearer ${t}` },
     ])
     expect(calls[1].vid).toMatch(/^[A-Za-z0-9-]{16,64}$/)
+    // sections too: a sponsored slot is capped per browser (Part E)
+    expect(calls[0].vid).toBe(calls[1].vid)
     expect(await takePreloaded("/home/sections/", t)).toEqual({ sections: [] })
   })
 

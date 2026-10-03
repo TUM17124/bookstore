@@ -54,6 +54,7 @@ function toCfg(b: ApiBook): BookCfg {
     ratingAvg: (b as SectionBook).rating_avg,
     ratingCount: (b as SectionBook).rating_count,
     offers: b.offers ?? null,
+    sponsored: b.sponsored ?? null,
   }
 }
 
@@ -225,7 +226,11 @@ function HomeInner() {
           page: p,
           pageSize: phone ? 6 : 12,
         })
-        const list = asBookList(data).map(toCfg)
+        const organic = asBookList(data).map(toCfg)
+        // Part E: the sponsored search result goes first (page 1 only; the
+        // server already left it out of these results).
+        const paid = p === 1 && !Array.isArray(data) ? (data.sponsored ?? []).map(toCfg) : []
+        const list = [...paid, ...organic.filter((b) => !paid.some((s) => s.id === b.id))]
         const more =
           !Array.isArray(data) && !!(data as Paginated<ApiBook>).next
         hasMoreRef.current = more
