@@ -123,6 +123,45 @@ export class SessionEvictedError extends Error {
 
 /** Part C: the price changed since the page loaded (an offer ended or
  * started). Nothing was charged; show `quote` and let the buyer confirm. */
+/** Platform promotions: the price of one of PlugYard's own products (Pro,
+ * credit packs, boosts) for this visitor, as the server works it out. */
+export type PromoQuote = {
+  product: string
+  list_amount: string
+  discount: string
+  final_amount: string
+  currency: string
+  saving_percent: number
+  promotion: { id: number; label: string; starts_at: string; ends_at: string } | null
+}
+
+/** Checkout of a PlugYard product refused: the price is no longer the one
+ * shown (a promotion started or ended, or its limit filled). */
+export class ProductPriceChangedError extends UserError {
+  quote: PromoQuote
+  constructor(message: string, quote: PromoQuote) {
+    super(message)
+    this.name = "ProductPriceChangedError"
+    this.quote = quote
+  }
+}
+
+async function withPriceCheck<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run()
+  } catch (err) {
+    const body = (err as { body?: { code?: string; quote?: PromoQuote } }).body
+    if (body?.code === "price_changed" && body.quote) {
+      const q = body.quote
+      throw new ProductPriceChangedError(
+        `The price is now ${q.currency} ${Number(q.final_amount).toLocaleString()}. Check it and press again to continue.`,
+        q,
+      )
+    }
+    throw err
+  }
+}
+
 export class PriceChangedError extends UserError {
   quote: PriceQuote
   constructor(message: string, quote: PriceQuote) {
@@ -386,18 +425,24 @@ export async function getProStatus(): Promise<ProStatus> {
  * admin-configured price to logged-out visitors too. Never hardcode
  * this value in frontend code; SiteSettings.pro_price_monthly is the
  * single source of truth. */
-export async function getProPricing(): Promise<{ price_monthly: string }> {
-  return getOr("/pro/pricing/", { price_monthly: "0" }, { auth: false })
+export async function getProPricing(): Promise<{ price_monthly: string; quote?: PromoQuote; server_now?: string }> {
+  // With the login when there is one: promotions can be for some people only.
+  return getOr("/pro/pricing/", { price_monthly: "0" }, { auth: !!getToken(), cache: "no-store" })
 }
 
-export async function subscribePro(call?: CallOptions): Promise<{
+/** `expectedAmount`: the price the page showed - the server refuses to
+ * charge another (ProductPriceChangedError with the new price). */
+export async function subscribePro(expectedAmount?: string, call?: CallOptions): Promise<{
   subscription_id: number
   checkout_url: string
   reference: string
   amount: string
+  quote?: PromoQuote
 }> {
   if (!getToken()) throw new UserError("Log in required")
-  return apiAction("/pro/subscribe/", { method: "POST" }, call)
+  return withPriceCheck(() =>
+    apiAction("/pro/subscribe/", { method: "POST", body: JSON.stringify({ expected_amount: expectedAmount }) }, call),
+  )
 }
 
 export async function cancelProSubscription(subscriptionId: number, call?: CallOptions): Promise<{
@@ -456,6 +501,8 @@ export type TtsCreditQuote = {
   chars_per_kes: number
   volume_bonus_percent: number
   example_double_chars: number
+  /** What this visitor pays for these credits now (platform promotion). */
+  quote?: PromoQuote
 }
 
 export type TtsResult = {
@@ -520,21 +567,33 @@ export async function getTtsUsage(): Promise<TtsUsageSnapshot | null> {
 
 export async function quoteTtsCredits(amount?: string | number): Promise<TtsCreditQuote | null> {
   const q = amount != null ? `?amount=${encodeURIComponent(String(amount))}` : ""
-  return getOr<TtsCreditQuote | null>(`/tts/credits/quote/${q}${q ? "&" : "?"}_=${Date.now()}`, null, { auth: false })
+  return getOr<TtsCreditQuote | null>(`/tts/credits/quote/${q}${q ? "&" : "?"}_=${Date.now()}`, null, { auth: !!getToken() })
 }
 
-export async function buyTtsCredits(amount: string | number, next = "", call?: CallOptions): Promise<{
+export async function buyTtsCredits(
+  amount: string | number,
+  next = "",
+  call?: CallOptions,
+  expectedAmount?: string,
+): Promise<{
   purchase_id: number
   checkout_url: string
   reference: string
   amount: string
   chars: number
+  quote?: PromoQuote
 }> {
   if (!getToken()) throw new UserError("Log in required")
-  return apiAction(
-    "/tts/credits/buy/",
-    { method: "POST", body: JSON.stringify({ amount: String(amount), next }), cache: "no-store" },
-    call,
+  return withPriceCheck(() =>
+    apiAction(
+      "/tts/credits/buy/",
+      {
+        method: "POST",
+        body: JSON.stringify({ amount: String(amount), next, expected_amount: expectedAmount }),
+        cache: "no-store",
+      },
+      call,
+    ),
   )
 }
 
@@ -1152,8 +1211,20 @@ export async function deleteMyBook(bookId: string | number, call?: CallOptions) 
   return apiAction(`/me/books/${bookId}/`, { method: "DELETE" }, call)
 }
 
-export async function initBoost(_token: string, bookId: number, days = 7, call?: CallOptions) {
-  return apiAction("/me/boost/init/", { method: "POST", body: JSON.stringify({ book_id: bookId, days }) }, call)
+/** The boost price this author pays now (with any promotion). */
+export async function getBoostPrice(): Promise<{ quote: PromoQuote; days: number; server_now?: string } | null> {
+  if (!getToken()) return null
+  return getOr("/me/boost/price/", null, { cache: "no-store" })
+}
+
+export async function initBoost(_token: string, bookId: number, days = 7, call?: CallOptions, expectedAmount?: string) {
+  return withPriceCheck(() =>
+    apiAction(
+      "/me/boost/init/",
+      { method: "POST", body: JSON.stringify({ book_id: bookId, days, expected_amount: expectedAmount }) },
+      call,
+    ),
+  )
 }
 
 export async function confirmBoost(_token: string, reference: string, call?: CallOptions) {

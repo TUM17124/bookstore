@@ -11,9 +11,13 @@ import {
   subscribePro,
   confirmProPayment,
   type ProStatus,
+  ProductPriceChangedError,
+  type PromoQuote,
 } from '@/lib/api'
 import { broadcastAccountChange, isLoggedIn } from '@/lib/auth-client'
 import { useAsyncAction } from '@/hooks/use-async-action'
+import { PromoPrice } from '@/components/offers/promo-price'
+import { noteServerTime } from '@/components/offers/countdown'
 import { ActionButton } from '@/components/ui/action-button'
 
 const BENEFITS = [
@@ -42,6 +46,8 @@ function ProInner() {
   const [mounted, setMounted] = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
   const [price, setPrice] = useState('')
+  const [quote, setQuote] = useState<PromoQuote | null>(null)
+  const [pricingNonce, setPricingNonce] = useState(0)
   const [status, setStatus] = useState<ProStatus | null>(null)
   const [cancelConfirmed, setCancelConfirmed] = useState(false)
   const [error, setError] = useState('')
@@ -51,9 +57,32 @@ function ProInner() {
   useEffect(() => {
     setMounted(true)
     setLoggedIn(isLoggedIn())
+  }, [])
+
+  // The price for THIS visitor (a promotion may be for some people only);
+  // asked again on login/logout and when a promotion's countdown ends.
+  useEffect(() => {
+    let live = true
     getProPricing()
-      .then((p) => setPrice(p.price_monthly))
+      .then((p) => {
+        if (!live) return
+        noteServerTime(p.server_now)
+        setPrice(p.price_monthly)
+        setQuote(p.quote ?? null)
+      })
       .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [pricingNonce, loggedIn])
+
+  useEffect(() => {
+    const again = () => {
+      setLoggedIn(isLoggedIn())
+      setPricingNonce((n) => n + 1)
+    }
+    window.addEventListener('auth-changed', again)
+    return () => window.removeEventListener('auth-changed', again)
   }, [])
 
   useEffect(() => {
@@ -86,11 +115,17 @@ function ProInner() {
 
   // Payment initialisation: retried only with ONE idempotency key, so a
   // connection drop can't open two subscriptions / payment sessions.
-  const upgrade = useAsyncAction((ctx) => subscribePro(ctx), {
+  // The price shown is sent along: if it is no longer the price (a
+  // promotion just started/ended or filled up), nothing is charged and the
+  // new price is shown for the user to confirm with another press.
+  const upgrade = useAsyncAction((ctx) => subscribePro(quote?.final_amount ?? (price || undefined), ctx), {
     successMs: 60_000, // "Redirecting…" while the browser leaves for Paystack
     errorFallback: 'Could not start checkout. Please try again.',
     onSuccess: (res) => {
       if (res?.checkout_url) window.location.href = res.checkout_url
+    },
+    onError: (err) => {
+      if (err instanceof ProductPriceChangedError) setQuote(err.quote)
     },
   })
 
@@ -129,18 +164,19 @@ function ProInner() {
           ★ PlugYard Pro
         </span>
         <h1 className="mt-4 text-3xl font-bold sm:text-4xl">Read and listen without limits</h1>
-        <p className="mt-3 text-foreground/60">
+        <div className="mt-3 flex justify-center text-foreground/60">
           {price ? (
-            <>
-              <span className="text-2xl font-extrabold text-foreground">
-                {money(price)}
-              </span>
-              <span className="text-sm"> / month</span>
-            </>
+            <PromoPrice
+              quote={quote}
+              fallback={price}
+              suffix=" / month"
+              onExpire={() => setPricingNonce((n) => n + 1)}
+              className="items-center text-foreground"
+            />
           ) : (
             'Loading price…'
           )}
-        </p>
+        </div>
       </div>
 
       {justSubscribed && (
@@ -235,7 +271,7 @@ function ProInner() {
             errorClassName="mt-3 text-center text-sm text-red-700"
             className="w-full rounded-full bg-[#d4af37] px-4 py-3.5 text-center text-base font-bold text-[#3a2e08] disabled:opacity-60 aria-busy:opacity-80"
           >
-            {`Upgrade to Pro — ${price ? money(price) : '…'}/month`}
+            {`Upgrade to Pro — ${price ? money(quote?.final_amount ?? price) : '…'}/month`}
           </ActionButton>
         )}
       </div>

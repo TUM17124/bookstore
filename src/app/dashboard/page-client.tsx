@@ -10,6 +10,9 @@ import {
   getMySales,
   getToken,
   initBoost,
+  getBoostPrice,
+  ProductPriceChangedError,
+  type PromoQuote,
   myBoosts,
   myBooks,
   payoutAccount,
@@ -26,6 +29,8 @@ import { broadcastAccountChange } from "@/lib/auth-client";
 import { useCurrency, useMoney } from "@/lib/money";
 import { CampaignsTab } from "./campaigns-tab";
 import { Banners } from "@/components/offers/banners";
+import { PromoPrice } from "@/components/offers/promo-price";
+import { noteServerTime } from "@/components/offers/countdown";
 
 const PAYOUT_EVERY_DAYS = 30;
 
@@ -78,6 +83,13 @@ function cycleDate(c: any): Date | null {
   const d = new Date(raw);
 
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+let boostPricePromise: ReturnType<typeof getBoostPrice> | null = null;
+/** One boost-price request shared by every book card (fresh = ask again). */
+function loadBoostPrice(fresh = false) {
+  if (!boostPricePromise || fresh) boostPricePromise = getBoostPrice();
+  return boostPricePromise;
 }
 
 export default function DashboardPage() {
@@ -1274,10 +1286,29 @@ function BookBoostRow({
     setAudiobookDownloadable(book.audiobookDownloadable !== false);
   }, [book]);
 
+  // The boost price this author pays now (a promotion may apply).
+  const [boostQuote, setBoostQuote] = useState<PromoQuote | null>(null);
+  const [boostNonce, setBoostNonce] = useState(0);
+  useEffect(() => {
+    let live = true;
+    loadBoostPrice(boostNonce > 0)
+      .then((p) => {
+        if (!live || !p) return;
+        noteServerTime(p.server_now);
+        setBoostQuote(p.quote);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [boostNonce]);
+
   // Boost = Paystack initialisation: retried only with ONE idempotency key.
+  // The price shown is sent along; a different price now is refused and
+  // shown instead (press Boost again to accept it).
   const boostAction = useAsyncAction(
     async (ctx, bookId: number) => {
-      const d = await initBoost("", bookId, 7, ctx);
+      const d = await initBoost("", bookId, 7, ctx, boostQuote?.final_amount);
       if (!d.ok) throw new UserError(d.error || "Cannot boost yet");
       if (!d.authorization_url) throw new UserError(d.error || "Cannot start Paystack checkout");
       return d;
@@ -1286,6 +1317,9 @@ function BookBoostRow({
       successMs: 60_000, // "Redirecting…" while leaving for Paystack
       onSuccess: (d) => {
         window.location.href = d.authorization_url;
+      },
+      onError: (err) => {
+        if (err instanceof ProductPriceChangedError) setBoostQuote(err.quote);
       },
     }
   );
@@ -1434,6 +1468,17 @@ function BookBoostRow({
               : "Boost now"}
           </ActionButton>
         </div>
+        {!active && boostQuote ? (
+          <div className="flex w-full justify-end">
+            <PromoPrice
+              quote={boostQuote}
+              suffix=" for 7 days"
+              size="sm"
+              onExpire={() => setBoostNonce((n) => n + 1)}
+              className="items-end text-right"
+            />
+          </div>
+        ) : null}
       </div>
       <ActionStatus action={remove.state === "retrying" ? remove : boostAction} className="text-sm text-foreground/70" />
       {remove.errorText || boostAction.errorText ? (
