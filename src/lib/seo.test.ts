@@ -11,6 +11,19 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
+describe("pageTitle", () => {
+  it("never doubles the site name", async () => {
+    const { pageTitle } = await import("./seo")
+    expect(pageTitle("Log In | PlugYard", "%s | PlugYard")).toEqual({ absolute: "Log In | PlugYard" })
+    expect(pageTitle("Sign Up — Create a Free Account | plugyard", "%s | PlugYard")).toEqual({
+      absolute: "Sign Up — Create a Free Account | plugyard",
+    })
+    expect(pageTitle("Checkout", "%s | PlugYard")).toBe("Checkout")
+    expect(pageTitle("Checkout", "%s · My Shop")).toBe("Checkout")
+    expect(pageTitle("Checkout · My Shop", "%s · My Shop")).toEqual({ absolute: "Checkout · My Shop" })
+  })
+})
+
 describe("pageMetadata", () => {
   it("falls back to the built-in texts when the API is down", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("down")))

@@ -56,5 +56,20 @@ export async function pageMetadata(page: string, base: Metadata = {}): Promise<M
   const t = await getSeo()
   const title = seoText(t, `seo.page.${page}.title`)
   const description = seoText(t, `seo.page.${page}.description`) || seoText(t, "seo.description")
-  return { ...base, ...(title ? { title } : {}), ...(description ? { description } : {}) }
+  return {
+    ...base,
+    ...(title ? { title: pageTitle(title, seoText(t, "seo.title_template")) } : {}),
+    ...(description ? { description } : {}),
+  }
+}
+
+/** A page title through the site's template ("%s | PlugYard"), except when
+ * it already ends with the template's ending: then it is used as typed, so
+ * "Log In | PlugYard" never becomes "Log In | PlugYard | PlugYard". */
+export function pageTitle(title: string, template: string): string | { absolute: string } {
+  const tpl = template || "%s | PlugYard"
+  const at = tpl.indexOf("%s")
+  const suffix = at >= 0 ? tpl.slice(at + 2).trim() : ""
+  if (suffix && title.trim().toLowerCase().endsWith(suffix.toLowerCase())) return { absolute: title.trim() }
+  return title
 }
