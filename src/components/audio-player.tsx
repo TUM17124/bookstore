@@ -17,6 +17,7 @@ import {
 } from '@/lib/api'
 import { usePictureInPicture } from '@/lib/pip'
 import { ProGateModal } from '@/components/pro-gate-modal'
+import { useReadingTime } from '@/hooks/use-reading-time'
 
 function fmt(sec: number) {
   if (!Number.isFinite(sec) || sec < 0) return '0:00'
@@ -234,6 +235,8 @@ export function AudioPlayer({
   const [status, setStatus] = useState('Buffering…')
   const [ready, setReady] = useState(false)
   const [playing, setPlaying] = useState(false)
+  // Part E (PR 3): listening time for the interaction signals.
+  useReadingTime(bookId, playing, 'audio')
   const [t, setT] = useState(0)
   const [dur, setDur] = useState(0)
   const [buffered, setBuffered] = useState(0)

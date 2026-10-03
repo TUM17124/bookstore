@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import {
   confirmAdTopUp,
   createAd,
+  downloadAdStatement,
   getAdAccount,
   getMyAds,
   ProductPriceChangedError,
@@ -18,11 +19,13 @@ import { useAsyncAction } from "@/hooks/use-async-action"
 import { ActionButton } from "@/components/ui/action-button"
 import { useMoney } from "@/lib/money"
 import { errorMessage } from "@/lib/auth-fetch"
+import { AdStatsPanel, AdTotalsLine } from "./ad-stats"
 
 /**
  * Part E: the author's Ads tab - ad balance and top-ups (Paystack), and
  * ads (one per book) charged per valid click: you pay exactly your bid,
- * never more than your balance or your daily budget.
+ * never more than your balance or your daily budget. PR 3: today's spend,
+ * balance warnings, the CSV statement and each ad's results.
  */
 
 const STATUS: Record<AdData["status"], { label: string; cls: string }> = {
@@ -100,6 +103,10 @@ export function AdsTab() {
     return () => window.clearTimeout(t)
   }, [amount, account])
 
+  const statement = useAsyncAction(() => downloadAdStatement(), {
+    errorFallback: "Couldn't download the statement. Please try again.",
+  })
+
   const topUp = useAsyncAction(
     (ctx) => startAdTopUp(amount, quote?.final_amount, ctx),
     {
@@ -138,8 +145,22 @@ export function AdsTab() {
           <h2 className="text-lg font-bold">Ad balance</h2>
           <p className="text-2xl font-bold tabular-nums">{money(account.balance)}</p>
         </div>
-        {account.low_balance && Number(account.balance) > 0 && (
-          <p className="text-sm text-amber-700 dark:text-amber-300">Your balance is low. Top up so your ads keep running.</p>
+        <p className="text-sm text-foreground/70 tabular-nums">
+          Spent today: <b>{money(account.today_spend)}</b> · {account.active_ads} active{" "}
+          {account.active_ads === 1 ? "ad" : "ads"}
+        </p>
+        {account.stalled_for_balance ? (
+          <p role="alert" className="rounded-xl border border-amber-500/40 bg-amber-500/[0.08] p-3 text-sm">
+            <b>Your ads have stopped.</b> Your balance is below your price per click, so they aren&apos;t showing and
+            nothing is charged. Top up and they start again on their own.
+          </p>
+        ) : (
+          account.low_balance &&
+          Number(account.balance) > 0 && (
+            <p className="text-sm text-amber-700 dark:text-amber-300">
+              Your balance is below {money(account.low_balance_warning)}. Top up so your ads keep running.
+            </p>
+          )
         )}
         <p className="text-sm text-foreground/70">
           You pay only when a reader clicks your ad, exactly your price per click, and never more than your balance or
@@ -184,6 +205,16 @@ export function AdsTab() {
           <summary className="cursor-pointer font-medium">Refund policy</summary>
           <p className="mt-2 text-foreground/70">{account.refund_policy}</p>
         </details>
+        <ActionButton
+          action={statement}
+          onClick={() => void statement.run()}
+          loadingLabel="Preparing…"
+          successLabel="Downloaded"
+          errorClassName="text-sm text-red-600"
+          className="rounded-full border px-4 py-2 text-sm"
+        >
+          Download statement (CSV)
+        </ActionButton>
       </section>
 
       {account.enabled && <NewAd account={account} books={books.filter((b) => !b.has_ad)} onCreated={reload} />}
@@ -283,6 +314,7 @@ function AdRow({ ad, account, onChanged }: { ad: AdData; account: AdAccount; onC
   const [budget, setBudget] = useState(ad.daily_budget)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [confirmStop, setConfirmStop] = useState(false)
+  const [showStats, setShowStats] = useState(false)
   const run = useAsyncAction((ctx, input: AdInput) => updateAd(ad.id, input, ctx), {
     errorFallback: "Could not update the ad. Please try again.",
     onSuccess: () => {
@@ -304,6 +336,16 @@ function AdRow({ ad, account, onChanged }: { ad: AdData; account: AdAccount; onC
       <p className="text-sm text-foreground/70 tabular-nums">
         {money(ad.bid)} per click · {money(ad.daily_budget)} a day{ad.ends_on ? ` · until ${ad.ends_on}` : ""}
       </p>
+      <AdTotalsLine totals={ad.totals} />
+      <button
+        type="button"
+        aria-expanded={showStats}
+        onClick={() => setShowStats((v) => !v)}
+        className="text-sm font-semibold underline underline-offset-2"
+      >
+        {showStats ? "Hide results" : "See results"}
+      </button>
+      {showStats && <AdStatsPanel adId={ad.id} />}
       {editing && (
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm font-medium" htmlFor={`bid-${ad.id}`}>

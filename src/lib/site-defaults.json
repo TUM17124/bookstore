@@ -54,7 +54,7 @@
     "seo.page.publish.title": "Publish a Book",
     "seo.page.purchases.description": "",
     "seo.page.purchases.title": "Your Purchases",
-    "seo.page.refund_policy.description": "PlugYard's refund policy for digital ebook and audiobook purchases, including Boost ads and how to request a refund.",
+    "seo.page.refund_policy.description": "PlugYard's refund policy for digital ebook and audiobook purchases, including ad balance top-ups and how to request a refund.",
     "seo.page.refund_policy.title": "Refund Policy",
     "seo.page.reset_password.description": "",
     "seo.page.reset_password.title": "Reset Password",
@@ -74,7 +74,6 @@
     "seo.website_description": "Kenya's eBook and audiobook marketplace — buy, publish, and sell digital titles online."
   },
   "texts": {
-    "boost.not_boosted": "Not boosted. Pay with Paystack to feature this title.",
     "checkout.account_linked": "Your payment will be linked to this account automatically. Use this email to access your downloads any time.",
     "checkout.account_tip": "Optional: create a free account with this same email to save bookmarks, leave reviews, and re-download later.",
     "checkout.email_body": "After payment, we email a full receipt to the address above — the book, amount paid, and your Paystack transaction details. Keep it; it's what we use to sort out any payment dispute.",
@@ -85,7 +84,7 @@
     "checkout.guest_why": "Your email is the only way to match your payment to your order if something goes wrong (failed payment, missing download, support request). It also lets you re-download your purchase later without paying again — just log in with the same address.",
     "empty.bookmarks": "No bookmarks yet. Save a book from the detail panel.",
     "empty.category": "No books in this category yet. Check back soon.",
-    "empty.dashboard_body": "Publish your first book: upload a PDF, set a price (or make it free) and it appears here with its sales, boosts and campaigns.",
+    "empty.dashboard_body": "Publish your first book: upload a PDF, set a price (or make it free) and it appears here with its sales, ads and campaigns.",
     "empty.dashboard_browse": "Or browse books",
     "empty.dashboard_cta": "Publish your first book",
     "empty.dashboard_title": "No books yet",
@@ -168,7 +167,7 @@
       },
       {
         "label": "Publish and earn.",
-        "value": "Upload a PDF, set a price or mark it free. When it sells, the publisher cut is yours. Boost and invite rewards only work on an account, because we have to know the book is yours."
+        "value": "Upload a PDF, set a price or mark it free. When it sells, the publisher cut is yours. Ads and invite rewards only work on an account, because we have to know the book is yours."
       },
       {
         "label": "Get notes meant for you.",

@@ -10,7 +10,7 @@ import { useBookmarks } from '@/components/bookmarks-context';
 import { useAsyncAction } from '@/hooks/use-async-action';
 import { ActionButton, ActionStatus } from '@/components/ui/action-button';
 import { createPortal } from 'react-dom';
-import { searchTrack, sendAdEvent, getRatings, getRelatedBooks, getBookAccess, downloadBook, type ApiBook, type ApiOffer, type BookAccess } from '@/lib/api';
+import { searchTrack, sendAdEvent, queueSignal, currentPlacement, getRatings, getRelatedBooks, getBookAccess, downloadBook, type ApiBook, type ApiOffer, type BookAccess } from '@/lib/api';
 import { PriceTag } from '@/components/offers/price-tag';
 import dynamic from 'next/dynamic';
 
@@ -80,13 +80,25 @@ export interface BookCfg {
   sponsored?: { token: string; label: string } | null;
 }
 
-/** Part E: a sponsored card counts as seen once at least half of it has
- * been on screen for one continuous second. Sent once per card. */
-function useAdViewability(token: string | undefined) {
+/** Where a card sits, for the interaction signals (Part E, PR 3). */
+export type CardSlot = { placement?: string; sectionId?: number | null; position?: number };
+
+/** Part E: a card counts as seen once at least half of it has been on
+ * screen for one continuous second, sent once per card. A sponsored card
+ * reports to the ad server (its signed token); any other card queues an
+ * impression signal. */
+function useCardViewability(bookId: string, token: string | undefined, slot: CardSlot | undefined) {
   const ref = useRef<HTMLButtonElement | null>(null);
+  const placement = slot?.placement;
+  const sectionId = slot?.sectionId ?? null;
+  const position = slot?.position ?? null;
   useEffect(() => {
     const el = ref.current;
-    if (!token || !el || typeof IntersectionObserver === 'undefined') return;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const report = () =>
+      token
+        ? sendAdEvent('seen', token)
+        : queueSignal({ kind: 'impression', book_id: bookId, placement: placement || currentPlacement(), section_id: sectionId, position });
     let timer: ReturnType<typeof setTimeout> | null = null;
     let sent = false;
     const io = new IntersectionObserver(
@@ -96,7 +108,7 @@ function useAdViewability(token: string | undefined) {
           if (!timer) {
             timer = setTimeout(() => {
               sent = true;
-              sendAdEvent('seen', token);
+              report();
               io.disconnect();
             }, 1000);
           }
@@ -112,7 +124,7 @@ function useAdViewability(token: string | undefined) {
       if (timer) clearTimeout(timer);
       io.disconnect();
     };
-  }, [token]);
+  }, [bookId, token, placement, sectionId, position]);
   return ref;
 }
 
@@ -208,8 +220,11 @@ function GridBookCard({
   onOpen,
   spinning,
   eager = false,
+  slot,
 }: {
   book: BookCfg;
+  /** Where the card is (section, position) for the interaction signals. */
+  slot?: CardSlot;
   onOpen: () => void;
   spinning?: boolean;
   /** Perf Step 2: covers in the first row load at once; the rest when near the screen. */
@@ -224,7 +239,7 @@ function GridBookCard({
   const spineColor = book.spineBg || book.backBg || '#1c1f26';
   const pageColor = book.edge || '#eee4cf';
   const adToken = book.sponsored?.token;
-  const adRef = useAdViewability(adToken);
+  const adRef = useCardViewability(book.id, adToken, slot);
 
   useEffect(() => {
     if (hasPayloadRating) return; // came with the section payload
@@ -251,7 +266,17 @@ function GridBookCard({
       ref={adRef}
       type="button"
       onClick={() => {
+        // A sponsored click goes to the ad server (charging, fraud checks);
+        // it logs the signal itself, marked sponsored.
         if (adToken) sendAdEvent('click', adToken);
+        else
+          queueSignal({
+            kind: 'click',
+            book_id: book.id,
+            placement: slot?.placement || currentPlacement(),
+            section_id: slot?.sectionId ?? null,
+            position: slot?.position ?? null,
+          });
         onOpen();
       }}
       disabled={spinning}
@@ -405,7 +430,8 @@ function SectionRow({
       >
         {section.books.map((book, i) => (
           <li key={book.id} className="w-[44%] shrink-0 snap-start @min-[520px]:w-[30%] @min-[768px]:w-[200px]">
-            <GridBookCard book={book} eager={first && i < 6} spinning={spinningId === book.id} onOpen={() => onOpen(book)} />
+            <GridBookCard book={book} eager={first && i < 6} spinning={spinningId === book.id} onOpen={() => onOpen(book)}
+              slot={{ sectionId: section.id, position: i }} />
           </li>
         ))}
       </ul>
@@ -584,10 +610,11 @@ function RecommendedBooks({ book }: { book: BookCfg }) {
         ref={scrollRef}
         className="flex gap-4 overflow-x-auto px-4 py-5 sm:px-8 [scrollbar-width:thin]"
       >
-        {items.map((b) => (
+        {items.map((b, i) => (
           <div key={b.id} className="w-[132px] shrink-0 @min-[768px]:w-[240px]">
             <GridBookCard
               book={b}
+              slot={{ placement: 'related', position: i }}
               spinning={openingId === b.id}
               onOpen={() => {
                 setOpeningId(b.id);
@@ -724,6 +751,9 @@ export function BooksShowcase({
 
   useEffect(() => {
     if (uiMode !== 'detail' || !selectedCfg?.id) return;
+    // Part E: a book opened from a paid slot is not organic interest, so it
+    // never feeds the trending counts (the ad server records that click).
+    if (selectedCfg.sponsored) return;
     void searchTrack({
       event_type: 'click',
       book_id: selectedCfg.id,
@@ -2281,10 +2311,11 @@ export function BooksShowcase({
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-x-4 gap-y-7 @min-[768px]:grid-cols-4 @min-[768px]:gap-x-5 @min-[768px]:gap-y-8">
-              {books.map((book) => (
+              {books.map((book, i) => (
                 <GridBookCard
                   key={book.id}
                   book={book}
+                  slot={{ position: i }}
                   spinning={uiMode === 'opening' && selectedCfg?.id === book.id}
                   onOpen={() => openFromGrid(book)}
                 />

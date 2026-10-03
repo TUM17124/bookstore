@@ -38,6 +38,7 @@ import {
 import { usePictureInPicture } from '@/lib/pip'
 import { ProGateModal } from '@/components/pro-gate-modal'
 import { PromoPrice } from '@/components/offers/promo-price'
+import { useReadingTime } from '@/hooks/use-reading-time'
 
 function markKey(url: string) {
   return `plugyard-read-mark:${url.split('?')[0]}`
@@ -273,6 +274,8 @@ export function PdfReader({
   const loadingPage = useRef<Set<number>>(new Set())
   const lastSave = useRef(0)
   const loggedIn = !!getToken()
+  // Part E (PR 3): reading time for the interaction signals (no access error: really reading).
+  useReadingTime(bookId, !accessError, 'reader')
 
   const [status, setStatus] = useState('Opening…')
   const [total, setTotal] = useState(0)

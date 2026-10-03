@@ -50,7 +50,7 @@ export function LegalAcceptTick({
         </Link>
         . This includes uploading ebooks, audiobooks, covers and spines, how
         you are paid when a title sells, PlugYard’s cut (set by the admin),
-        buying Boost ads, and the affiliate programme (invite links, rewards
+        buying ads, and the affiliate programme (invite links, rewards
         when referred authors are published, and withdrawals).
       </span>
     </label>
