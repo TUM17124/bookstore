@@ -18,7 +18,9 @@ async function load(): Promise<SeoTexts> {
   const base = process.env.NEXT_PUBLIC_API_URL
   if (!base) return FALLBACK
   try {
-    const res = await fetch(`${base}/site/seo/`, { cache: "force-cache", signal: AbortSignal.timeout(10_000) })
+    // No cache option: fetched fresh by every build (force-cache would reuse an
+    // older build's answer from .next/cache).
+    const res = await fetch(`${base}/site/seo/`, { signal: AbortSignal.timeout(10_000) })
     if (!res.ok) return FALLBACK
     const live = ((await res.json()) as { texts?: SeoTexts })?.texts || {}
     const out: SeoTexts = { ...FALLBACK }
