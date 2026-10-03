@@ -11,6 +11,7 @@ import { Banners, useBannerData } from "@/components/offers/banners"
 import { CategoryBar } from "@/components/category-nav/category-bar"
 import { errorMessage } from "@/lib/auth-fetch"
 import { OfferMarquee } from "@/components/offer-marquee"
+import { useText } from "@/lib/site-config"
 import { searchTrack } from '@/lib/api'
 
 function toCfg(b: ApiBook): BookCfg {
@@ -154,6 +155,11 @@ function queryFor(q: string, category: string) {
 }
 
 function HomeInner() {
+  // Django admin → Site: General → Empty pages.
+  const emptyLoadError = useText("empty.load_error")
+  const emptySearch = useText("empty.search")
+  const emptyCategory = useText("empty.category")
+  const emptyHome = useText("empty.home")
   const router = useRouter()
   const sp = useSearchParams()
   const q = (sp.get("q") || "").trim()
@@ -382,13 +388,7 @@ function HomeInner() {
         {topSlot ? <div className="px-[clamp(16px,4vw,36px)] pt-3">{topSlot}</div> : null}
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
           <p>
-            {error
-              ? "Could not load books. Is the API up?"
-              : q
-                ? `No books found for “${q}”.`
-                : category
-                  ? `No books in ${catInfo?.label || category} yet.`
-                  : "No books yet. Add featured books in Django admin."}
+            {error ? emptyLoadError : q ? emptySearch : category ? emptyCategory : emptyHome}
           </p>
           {q || category ? (
             <a href="/" className="text-foreground underline hover:no-underline">

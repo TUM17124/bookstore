@@ -1,6 +1,7 @@
 'use client'
 
 import { useCurrency } from '@/lib/money'
+import { useFeature, useLimits, useOffMessage, useText } from '@/lib/site-config'
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -16,6 +17,14 @@ import { useCategories } from '@/lib/categories'
 function PublishPageInner() {
   const currency = useCurrency()
   const searchParams = useSearchParams()
+  // Admin-editable (Django admin → Site: General → Publish page; Site: Limits;
+  // Site: Features → publishing).
+  const guestIntro = useText('publish.guest_intro')
+  const intro = useText('publish.intro')
+  const sneakHelp = useText('publish.sneak_help')
+  const { default_preview_pages: previewDefault } = useLimits()
+  const publishingOn = useFeature('publishing')
+  const publishingOff = useOffMessage('publishing')
   const editorDocumentId = searchParams.get('editor_document_id') || ''
 
   const [loggedIn, setLoggedIn] = useState(false)
@@ -112,13 +121,7 @@ function PublishPageInner() {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
         <h1 className="text-2xl font-bold">Publish a book</h1>
-        <p className="mt-3 text-sm leading-relaxed text-foreground/65">
-          Publishing needs an account so the title, the payout, and the
-          invite reward attach to a real person — not a browser tab.
-          Create one to upload a PDF, set a price or mark it free, and
-          earn when readers buy. Install PlugYard afterwards if you want
-          to check sales and reviews from your home screen.
-        </p>
+        <p className="mt-3 text-sm leading-relaxed text-foreground/65">{guestIntro}</p>
         <p className="mt-6 text-sm">
           <Link href="/login?next=/publish" className="underline">Log in</Link>
           {' · '}
@@ -128,12 +131,25 @@ function PublishPageInner() {
     )
   }
 
+  if (!publishingOn) {
+    return (
+      <main className="mx-auto max-w-lg px-4 py-16">
+        <h1 className="text-2xl font-bold">Publish a book</h1>
+        <div role="status" className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] p-4">
+          <p className="text-sm font-semibold">Publishing is turned off</p>
+          <p className="mt-1 text-sm leading-relaxed text-foreground/70">{publishingOff}</p>
+        </div>
+        <p className="mt-6 text-sm">
+          <Link href="/dashboard" className="underline">Go to your dashboard</Link>
+        </p>
+      </main>
+    )
+  }
+
   return (
     <main className="mx-auto max-w-lg px-4 py-12">
       <h1 className="text-2xl font-bold">Publish a book</h1>
-      <p className="mt-2 text-sm text-foreground/60">
-        Required: front, spine, back, and PDF. Audio is optional. An admin reviews before it goes on the shelf.
-      </p>
+      <p className="mt-2 text-sm text-foreground/60">{intro}</p>
       <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-foreground/70">
         <li>Front: 1600 × 2400 px</li>
         <li>Back: 1600 × 2400 px</li>
@@ -223,13 +239,11 @@ function PublishPageInner() {
           type="number"
           min="0"
           max="20"
-          defaultValue={4}
+          key={previewDefault}
+          defaultValue={previewDefault}
           className="rounded-lg border border-foreground/15 bg-transparent px-3 py-2"
         />
-        <p className="text-[13px] text-foreground/55">
-          Sneak view is the number of pages a visitor can read before buying.
-          Example: 4 means the first four pages only. Use 0 to turn sneak view off.
-        </p>
+        <p className="text-[13px] text-foreground/55">{sneakHelp}</p>
 
         {error && (
           <p

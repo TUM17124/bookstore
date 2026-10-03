@@ -10,6 +10,7 @@ import {
   postComment,
 } from '@/lib/api';
 import { useAsyncAction } from '@/hooks/use-async-action';
+import { useFeature, useOffMessage } from '@/lib/site-config';
 import { ActionButton, ActionStatus, retryLabel } from '@/components/ui/action-button';
 
 type User = {
@@ -117,6 +118,9 @@ export function BookReviews({
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
   const [error, setError] = useState('');
   const [auth, setAuth] = useState(false);
+  // Site: Features → reviews. Existing ratings and comments stay visible.
+  const reviewsOn = useFeature('reviews');
+  const reviewsOff = useOffMessage('reviews');
 
   const loginHref = authHref('login', bookId)
   const signupHref = authHref('signup', bookId)
@@ -198,6 +202,10 @@ export function BookReviews({
   const busy = rateAction.busy || commentAction.busy;
 
   function rate(value: number) {
+    if (!reviewsOn) {
+      setError(reviewsOff);
+      return;
+    }
     if (!getToken()) {
       window.location.href = authHref('login', bookId);
       return;
@@ -386,7 +394,11 @@ export function BookReviews({
             </div>
           )}
 
-          {!auth ? (
+          {!reviewsOn ? (
+            <p role="status" className="py-2 text-center text-[14px] text-foreground/60">
+              {reviewsOff}
+            </p>
+          ) : !auth ? (
             <p className="py-2 text-center text-[14px] text-foreground/55">
               <Link
                 href={loginHref}

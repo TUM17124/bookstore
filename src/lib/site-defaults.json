@@ -1,0 +1,250 @@
+{
+  "seo": {
+    "seo.default_title": "PlugYard — Buy or Sell eBooks & Audiobooks Online",
+    "seo.description": "PlugYard — Kenya's eBook and audiobook marketplace. Buy, read, and listen instantly — no account required. Publish your own eBooks and audiobooks, set your price, and get paid. AI-powered narration. Free in-browser PDF editor. Business, career, academic, personal finance, and lifestyle.",
+    "seo.keywords": [
+      "PlugYard",
+      "ebook Kenya",
+      "audiobook Kenya",
+      "buy ebook without account",
+      "digital bookstore Kenya",
+      "free PDF editor online",
+      "PDF reader online",
+      "edit PDF online",
+      "instant ebook download Kenya",
+      "business guides Kenya",
+      "academic ebooks Kenya",
+      "career guides Kenya",
+      "personal finance Kenya",
+      "lifestyle ebooks Kenya",
+      "PlugYard Pro",
+      "text to speech ebooks Kenya",
+      "KRA tax guide",
+      "KASNEB study notes",
+      "CBC study materials",
+      "employment contract Kenya",
+      "sign up PlugYard",
+      "login PlugYard"
+    ],
+    "seo.og_description": "Buy eBooks and audiobooks instantly — no account needed. Publish your content, set your price, and get paid. AI narration on every title. Free PDF editor with auto-save.",
+    "seo.og_title": "PlugYard — Buy or Sell eBooks & Audiobooks Online",
+    "seo.page.bookmarks.description": "",
+    "seo.page.bookmarks.title": "Your Bookmarks",
+    "seo.page.checkout.description": "",
+    "seo.page.checkout.title": "Checkout",
+    "seo.page.checkout_success.description": "",
+    "seo.page.checkout_success.title": "Order Confirmed",
+    "seo.page.dashboard.description": "",
+    "seo.page.dashboard.title": "Publisher Dashboard",
+    "seo.page.forgot_password.description": "",
+    "seo.page.forgot_password.title": "Forgot Password",
+    "seo.page.home.description": "Kenya's eBook and audiobook marketplace. Buy and instantly read or listen — no account required. Publish your own titles, set your price, and get paid directly. AI-powered narration on every eBook. Free built-in PDF editor with auto-save. Sign up to track purchases and sync reading progress.",
+    "seo.page.home.title": "PlugYard — Buy or Sell eBooks & Audiobooks | No Account Needed to Buy",
+    "seo.page.library_guest.description": "",
+    "seo.page.library_guest.title": "Your books",
+    "seo.page.login.description": "Log in to your PlugYard account to manage your published eBooks and audiobooks, track sales, access your purchases, and open the PDF editor.",
+    "seo.page.login.title": "Log In | PlugYard",
+    "seo.page.pdf_editor.description": "Edit, annotate, and save PDFs directly in your browser — free, with auto-save. Add text, images, signatures, and shapes. No software to install. Sign in to access your documents.",
+    "seo.page.pdf_editor.title": "Free PDF Editor",
+    "seo.page.privacy.description": "How PlugYard collects, uses, shares, and protects your personal data, and the choices available to you.",
+    "seo.page.privacy.title": "Privacy Policy",
+    "seo.page.pro.description": "",
+    "seo.page.pro.title": "PlugYard Pro",
+    "seo.page.publish.description": "",
+    "seo.page.publish.title": "Publish a Book",
+    "seo.page.purchases.description": "",
+    "seo.page.purchases.title": "Your Purchases",
+    "seo.page.refund_policy.description": "PlugYard's refund policy for digital ebook and audiobook purchases, including Boost ads and how to request a refund.",
+    "seo.page.refund_policy.title": "Refund Policy",
+    "seo.page.reset_password.description": "",
+    "seo.page.reset_password.title": "Reset Password",
+    "seo.page.settings.description": "",
+    "seo.page.settings.title": "Account Settings",
+    "seo.page.signup.description": "Create a free PlugYard account to publish and sell your eBooks and audiobooks, access the PDF editor, save bookmarks, and track your purchases across devices.",
+    "seo.page.signup.title": "Sign Up — Create a Free Account | PlugYard",
+    "seo.page.terms.description": "Read PlugYard's Terms & Conditions: account use, free and paid titles, payments, delivery, and publishing on the platform.",
+    "seo.page.terms.title": "Terms & Conditions",
+    "seo.page.terms_of_use.description": "PlugYard's Terms of Use: rules for accessing the catalogue, paid ebooks and audiobooks, and publisher tools.",
+    "seo.page.terms_of_use.title": "Terms of Use",
+    "seo.page.verify_email.description": "",
+    "seo.page.verify_email.title": "Verify Your Email",
+    "seo.title_template": "%s | PlugYard",
+    "seo.twitter_description": "Buy or sell eBooks & audiobooks online. No account to purchase. Publish content and get paid. AI narration. Free PDF editor.",
+    "seo.twitter_title": "PlugYard — Buy eBooks & Audiobooks Online",
+    "seo.website_description": "Kenya's eBook and audiobook marketplace — buy, publish, and sell digital titles online."
+  },
+  "texts": {
+    "boost.not_boosted": "Not boosted. Pay with Paystack to feature this title.",
+    "checkout.account_linked": "Your payment will be linked to this account automatically. Use this email to access your downloads any time.",
+    "checkout.account_tip": "Optional: create a free account with this same email to save bookmarks, leave reviews, and re-download later.",
+    "checkout.email_body": "After payment, we email a full receipt to the address above — the book, amount paid, and your Paystack transaction details. Keep it; it's what we use to sort out any payment dispute.",
+    "checkout.email_title": "You'll get a receipt by email",
+    "checkout.free_body": "There's nothing to pay. Open the book to read it.",
+    "checkout.free_title": "This book is free",
+    "checkout.guest_heading": "You are not signed in — guest checkout",
+    "checkout.guest_why": "Your email is the only way to match your payment to your order if something goes wrong (failed payment, missing download, support request). It also lets you re-download your purchase later without paying again — just log in with the same address.",
+    "empty.bookmarks": "No bookmarks yet. Save a book from the detail panel.",
+    "empty.category": "No books in this category yet. Check back soon.",
+    "empty.dashboard_body": "Publish your first book: upload a PDF, set a price (or make it free) and it appears here with its sales, boosts and campaigns.",
+    "empty.dashboard_browse": "Or browse books",
+    "empty.dashboard_cta": "Publish your first book",
+    "empty.dashboard_title": "No books yet",
+    "empty.guest_library": "No books are available on this link.",
+    "empty.home": "No books on the shelf yet. Check back soon.",
+    "empty.load_error": "We couldn't load the books. Check your connection and try again.",
+    "empty.purchases_audio": "No audiobook purchases yet.",
+    "empty.purchases_ebooks": "No ebook purchases yet.",
+    "empty.search": "No books match your search. Try another word.",
+    "footer.account_heading": "Account",
+    "footer.account_links": [
+      {
+        "label": "Sign up",
+        "value": "/signup"
+      },
+      {
+        "label": "Log in",
+        "value": "/login"
+      },
+      {
+        "label": "Publish",
+        "value": "/publish"
+      },
+      {
+        "label": "Dashboard",
+        "value": "/dashboard"
+      },
+      {
+        "label": "Settings",
+        "value": "/settings"
+      },
+      {
+        "label": "Bookmarks",
+        "value": "/bookmarks"
+      }
+    ],
+    "footer.app_badges": [],
+    "footer.copyright": "© {year} PlugYard. All rights reserved.",
+    "footer.legal_heading": "Legal",
+    "footer.motto": "Read more. Worry less.",
+    "footer.social_links": [],
+    "footer.tagline_long": "Kenya's digital bookstore. Buy eBooks & audiobooks instantly — no account needed. Free PDF editor with auto-save included.",
+    "footer.tagline_short": "Kenya's digital bookstore",
+    "footer.tools_heading": "Tools & Pro",
+    "footer.tools_links": [
+      {
+        "label": "★ PlugYard Pro",
+        "value": "/pro"
+      },
+      {
+        "label": "Free PDF Editor",
+        "value": "/tools/pdf-editor"
+      },
+      {
+        "label": "My Purchases",
+        "value": "/purchases"
+      },
+      {
+        "label": "Bookmarks",
+        "value": "/bookmarks"
+      }
+    ],
+    "install.button": "Install the app",
+    "install.help": "On iPhone: tap Share, then Add to Home Screen. On Android: browser menu → Install app. That is how PlugYard stays on this phone.",
+    "install.intro_account": "You already have an account. Install so PlugYard opens like an app — not a browser tab you swipe away and never find again.",
+    "install.intro_guest": "A tab forgets you. Install PlugYard so the Kenyan library sits on your home screen. Then create a free account so your page, bookmarks, and purchases survive a new phone.",
+    "install.point_account": "A free account moves that place to another device, unlocks publishing and invite rewards, and lets us email you when a title is actually for you.",
+    "install.point_home": "One tap from the home screen, even after you close Chrome or Safari.",
+    "install.point_place_account": "Your place in a book, bookmarks, and purchases stay one tap away.",
+    "install.point_place_guest": "Keep the page you were on and the books you saved — without hunting for the site.",
+    "install.title_account": "Put your shelf on this phone",
+    "install.title_account_named": "{name}, put PlugYard on this phone",
+    "install.title_guest": "Don't lose this library in a tab",
+    "invite.cta": "Create a free account",
+    "invite.intro": "Guests can browse. An account is how this library becomes yours — and how a Kenyan author gets a book on the shelf.",
+    "invite.points": [
+      {
+        "label": "Keep your place.",
+        "value": "Page 47 of a statute, a bookmark, a paid file — they follow you to the next phone instead of dying with this browser."
+      },
+      {
+        "label": "Publish and earn.",
+        "value": "Upload a PDF, set a price or mark it free. When it sells, the publisher cut is yours. Boost and invite rewards only work on an account, because we have to know the book is yours."
+      },
+      {
+        "label": "Get notes meant for you.",
+        "value": "We email and tap you when a title matches how you read, when you leave a book unfinished, or when someone uses your invite — not a blast to everyone."
+      }
+    ],
+    "invite.title": "Why create a PlugYard account",
+    "marquee.items": [
+      "Buy eBooks & Audiobooks — No Account Needed",
+      "Free In-Browser PDF Editor with Auto-Save",
+      "Smart Built-In PDF Reader",
+      "Instant Download After Purchase",
+      "Text-to-Speech Audio Narration",
+      "Agribusiness loan plans",
+      "County tender & RFQ templates",
+      "KRA tax & SME bookkeeping",
+      "NGO / CBO proposal frameworks",
+      "Hospitality SOPs & recipe costing",
+      "Chama constitutions",
+      "Kenyan lease & tenancy forms",
+      "Employment contracts",
+      "ATS CVs & cover letters",
+      "PSC interview prep",
+      "NGO & UN application packs",
+      "Remote work guides",
+      "LinkedIn optimization",
+      "TSC promotion notes",
+      "KASNEB / EBK / Cisco blueprints",
+      "CBC assessment notes",
+      "KCSE revision packs",
+      "Nursing attachment logbooks",
+      "KSL revision outlines",
+      "Set-book guides",
+      "CPA summaries",
+      "Land-buying due diligence",
+      "Ardhisasa manuals",
+      "Budget & debt planners",
+      "Importation blueprints",
+      "Nairobi side-hustle planners",
+      "Kenyan meal plans",
+      "Wedding & ruracio budgets",
+      "Apartment layout plans",
+      "Poultry health charts",
+      "Wellness workbooks",
+      "Phonics worksheets",
+      "Car maintenance logs"
+    ],
+    "notfound.body": "The link may be old or mistyped. The shelf is still open.",
+    "notfound.cta": "Back to the books",
+    "notfound.title": "This page isn't here",
+    "off.affiliate": "Invite rewards are paused for now. Rewards already earned stay in your wallet.",
+    "off.boosts": "Boosts are paused for now. Boosts already running finish as paid.",
+    "off.guest_checkout": "Buying without an account is paused for now. Sign in or create a free account to buy. Earlier guest purchases still open from their email link.",
+    "off.pro_signups": "New Pro subscriptions are paused for now. If you already have Pro, it keeps working until it ends.",
+    "off.publishing": "Publishing new books is paused for now. Your published books stay on sale.",
+    "off.reviews": "New ratings and comments are paused for now.",
+    "pro.benefits": [
+      {
+        "label": "Floating pop-out reader & player",
+        "value": "Keep your audiobook playing and your page floating even when you switch apps or minimize the browser. Audio continues in the background — close or navigate away from the tab to stop it."
+      },
+      {
+        "label": "AI narration, any page",
+        "value": "Have any page read aloud in a natural voice — pick from four distinct voices, control speed, and follow along with auto-scroll and sentence highlighting as it reads. Narration stops automatically when you close or navigate away from the tab."
+      }
+    ],
+    "pro.headline": "Read and listen without limits",
+    "publish.guest_intro": "Publishing needs an account so the title, the payout, and the invite reward attach to a real person — not a browser tab. Create one to upload a PDF, set a price or mark it free, and earn when readers buy. Install PlugYard afterwards if you want to check sales and reviews from your home screen.",
+    "publish.intro": "Required: front, spine, back, and PDF. Audio is optional. An admin reviews before it goes on the shelf.",
+    "publish.sneak_help": "Sneak view is the number of pages a visitor can read before buying. Example: 4 means the first four pages only. Use 0 to turn sneak view off.",
+    "purchases.guest_body": "Enter the email you used at checkout and we'll email you a fresh secure link to your books. Your purchases never expire — only the link does.",
+    "purchases.guest_title": "Bought without an account?",
+    "push.account_body": "Notifications are how PlugYard finds you after you close the site. We send a note written for you — here and by email — when you leave a page unfinished, when a new title matches how you read, or when someone uses your invite. That is the point of an account: the library can remember you.",
+    "push.account_title": "{name}, get a tap when a book is actually yours",
+    "push.button": "Allow personal alerts",
+    "push.guest_body": "Without an account, PlugYard cannot keep your place or email you. Allow alerts on this phone now, then create a free account so the same personal notes follow you — unfinished pages, titles in your category, and invite rewards — instead of a generic blast.",
+    "push.guest_title": "Hear about a title before it disappears into the shelf"
+  }
+}

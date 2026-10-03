@@ -6,6 +6,7 @@ import { BookOpen, ChevronDown, Mail } from "lucide-react"
 import { useIsEditorFocusedRoute } from "@/lib/pdf-editor/use-is-editor-focused-route"
 import { categoryHref, useCategories } from "@/lib/categories"
 import { BrandLogo } from "@/components/brand-logo"
+import { fill, usePairs, useSupportEmail, useText, type LinkPair } from "@/lib/site-config"
 
 const policyLinks = [
   { href: "/terms", label: "Terms & Conditions" },
@@ -15,24 +16,69 @@ const policyLinks = [
 ]
 
 
-const accountLinks = [
-  { href: "/signup", label: "Sign up" },
-  { href: "/login", label: "Log in" },
-  { href: "/publish", label: "Publish" },
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/settings", label: "Settings" },
-  { href: "/bookmarks", label: "Bookmarks" },
-]
+type FooterLink = { href: string; label: string }
 
-const toolLinks = [
-  { href: "/pro", label: "★ PlugYard Pro" },
-  { href: "/tools/pdf-editor", label: "Free PDF Editor" },
-  { href: "/purchases", label: "My Purchases" },
-  { href: "/bookmarks", label: "Bookmarks" },
-]
+/** Admin "Label | /path or https://…" lines -> links. */
+function toLinks(pairs: LinkPair[]): FooterLink[] {
+  return pairs.filter((p) => p.label && p.value).map((p) => ({ href: p.value, label: p.label }))
+}
+
+/** A site page uses next/link; a full https:// link opens in a new tab. */
+function FooterLinkItem({ link, className }: { link: FooterLink; className: string }) {
+  if (/^https?:\/\//.test(link.href)) {
+    return (
+      <a href={link.href} target="_blank" rel="noopener noreferrer" className={className}>
+        {link.label}
+      </a>
+    )
+  }
+  return (
+    <Link href={link.href} className={className}>
+      {link.label}
+    </Link>
+  )
+}
+
+/** Footer texts and links (Django admin → Site: Footer). */
+function useFooter() {
+  return {
+    toolsHeading: useText("footer.tools_heading"),
+    toolLinks: toLinks(usePairs("footer.tools_links")),
+    accountHeading: useText("footer.account_heading"),
+    accountLinks: toLinks(usePairs("footer.account_links")),
+    legalHeading: useText("footer.legal_heading"),
+    taglineLong: useText("footer.tagline_long"),
+    taglineShort: useText("footer.tagline_short"),
+    copyright: useText("footer.copyright"),
+    motto: useText("footer.motto"),
+    social: toLinks(usePairs("footer.social_links")),
+    apps: toLinks(usePairs("footer.app_badges")),
+    supportEmail: useSupportEmail(),
+  }
+}
+
+type Footer = ReturnType<typeof useFooter>
+
+/** Social links and app-store links, only when the admin added some. */
+function ExtraLinks({ f, className }: { f: Footer; className: string }) {
+  const links = [...f.social, ...f.apps]
+  if (!links.length) return null
+  return (
+    <ul className={className}>
+      {links.map((l) => (
+        <li key={`${l.label}-${l.href}`}>
+          <FooterLinkItem
+            link={l}
+            className="inline-flex min-h-[32px] items-center text-xs font-medium text-foreground/60 underline-offset-2 hover:text-foreground hover:underline"
+          />
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 /** Phones: one footer column as a collapsed accordion row. */
-function FooterAccordion({ title, links }: { title: string; links: { href: string; label: string }[] }) {
+function FooterAccordion({ title, links }: { title: string; links: FooterLink[] }) {
   const [open, setOpen] = useState(false)
   const id = useId()
   return (
@@ -60,13 +106,11 @@ function FooterAccordion({ title, links }: { title: string; links: { href: strin
       >
         <ul className="grid min-h-0 grid-cols-2 gap-x-4 overflow-hidden">
           {links.map((l) => (
-            <li key={l.href} className="min-w-0">
-              <Link
-                href={l.href}
+            <li key={`${l.label}-${l.href}`} className="min-w-0">
+              <FooterLinkItem
+                link={l}
                 className="flex min-h-[44px] items-center text-sm text-foreground/70 hover:text-foreground"
-              >
-                {l.label}
-              </Link>
+              />
             </li>
           ))}
           <li className="col-span-2 h-2" aria-hidden />
@@ -79,26 +123,27 @@ function FooterAccordion({ title, links }: { title: string; links: { href: strin
 /** Phones (under 768px): accordions + one compact brand/legal block. The
  * categories are left out here - they're already in the navbar chips and
  * the "All" sheet. Desktop/tablet keep the full footer below. */
-function PhoneFooter({ year }: { year: number }) {
+function PhoneFooter({ year, f }: { year: number; f: Footer }) {
   return (
     <div className="px-4 pb-[max(20px,env(safe-area-inset-bottom))] pt-2 md:hidden">
       <nav aria-label="Footer">
-        <FooterAccordion title="Tools & Pro" links={toolLinks} />
-        <FooterAccordion title="Account" links={accountLinks} />
+        <FooterAccordion title={f.toolsHeading} links={f.toolLinks} />
+        <FooterAccordion title={f.accountHeading} links={f.accountLinks} />
       </nav>
       <div className="mt-5 space-y-3">
         <Link href="/" className="inline-flex items-center gap-2">
           <BrandLogo size={28} className="h-7 w-7 rounded-md object-contain" />
           <span className="text-sm font-semibold text-foreground">PlugYard</span>
-          <span className="text-xs text-foreground/50">· Kenya&apos;s digital bookstore</span>
+          <span className="text-xs text-foreground/50">· {f.taglineShort}</span>
         </Link>
         <a
-          href="mailto:contact@plugyard.com"
+          href={`mailto:${f.supportEmail}`}
           className="flex min-h-[44px] w-fit items-center gap-2 text-sm font-medium text-foreground underline-offset-2 hover:underline"
         >
           <Mail className="h-4 w-4" aria-hidden />
-          contact@plugyard.com
+          {f.supportEmail}
         </a>
+        <ExtraLinks f={f} className="flex flex-wrap gap-x-4" />
         <p className="text-xs leading-relaxed text-foreground/45">
           © {year} PlugYard ·{" "}
           {policyLinks.map((l, i) => (
@@ -121,6 +166,7 @@ function SiteFooterInner() {
   // Admin-defined categories (same list as the navbar), not a fixed list.
   const { navbar } = useCategories()
   const browseLinks = navbar.map((c) => ({ href: categoryHref(c.slug), label: c.label }))
+  const f = useFooter()
 
   // The focused editor view is a full-screen app-like tool (own fixed
   // toolbar, fills exactly the viewport below the nav) - the marketing
@@ -136,7 +182,7 @@ function SiteFooterInner() {
         aria-hidden
       />
 
-      <PhoneFooter year={year} />
+      <PhoneFooter year={year} f={f} />
 
       <div className="mx-auto hidden max-w-6xl px-4 py-12 sm:px-6 md:block lg:px-8">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-5">
@@ -148,14 +194,11 @@ function SiteFooterInner() {
                 PlugYard
               </span>
             </Link>
-            <p className="mt-3 max-w-xs text-sm leading-relaxed text-foreground/55">
-              Kenya's digital bookstore. Buy eBooks &amp; audiobooks instantly — no
-              account needed. Free PDF editor with auto-save included.
-            </p>
+            <p className="mt-3 max-w-xs text-sm leading-relaxed text-foreground/55">{f.taglineLong}</p>
 
             {/* Contact — visible */}
             <a
-              href="mailto:contact@plugyard.com"
+              href={`mailto:${f.supportEmail}`}
               className="
                 mt-5 inline-flex max-w-full items-center gap-2.5
                 rounded-2xl border border-foreground/10
@@ -173,10 +216,11 @@ function SiteFooterInner() {
                   Contact
                 </span>
                 <span className="block truncate font-semibold text-foreground underline-offset-2 hover:underline">
-                  contact@plugyard.com
+                  {f.supportEmail}
                 </span>
               </span>
             </a>
+            <ExtraLinks f={f} className="mt-4 flex flex-wrap gap-x-4 gap-y-1" />
           </div>
 
           {/* Browse */}
@@ -201,17 +245,12 @@ function SiteFooterInner() {
           {/* Tools & Pro */}
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/40">
-              Tools & Pro
+              {f.toolsHeading}
             </h3>
             <ul className="mt-4 space-y-2.5">
-              {toolLinks.map((l) => (
-                <li key={l.href}>
-                  <Link
-                    href={l.href}
-                    className="text-sm text-foreground/70 transition-colors hover:text-foreground"
-                  >
-                    {l.label}
-                  </Link>
+              {f.toolLinks.map((l) => (
+                <li key={`${l.label}-${l.href}`}>
+                  <FooterLinkItem link={l} className="text-sm text-foreground/70 transition-colors hover:text-foreground" />
                 </li>
               ))}
             </ul>
@@ -220,17 +259,12 @@ function SiteFooterInner() {
           {/* Account */}
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/40">
-              Account
+              {f.accountHeading}
             </h3>
             <ul className="mt-4 space-y-2.5">
-              {accountLinks.map((l) => (
-                <li key={l.href}>
-                  <Link
-                    href={l.href}
-                    className="text-sm text-foreground/70 transition-colors hover:text-foreground"
-                  >
-                    {l.label}
-                  </Link>
+              {f.accountLinks.map((l) => (
+                <li key={`${l.label}-${l.href}`}>
+                  <FooterLinkItem link={l} className="text-sm text-foreground/70 transition-colors hover:text-foreground" />
                 </li>
               ))}
             </ul>
@@ -239,7 +273,7 @@ function SiteFooterInner() {
           {/* Legal */}
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/40">
-              Legal
+              {f.legalHeading}
             </h3>
             <ul className="mt-4 space-y-2.5">
               {policyLinks.map((l) => (
@@ -258,18 +292,16 @@ function SiteFooterInner() {
 
         {/* Bottom bar */}
         <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-foreground/5 pt-6 sm:flex-row sm:items-center">
-          <p className="text-xs text-foreground/45">
-            © {year} PlugYard. All rights reserved.
-          </p>
+          <p className="text-xs text-foreground/45">{fill(f.copyright, { year })}</p>
           <a
-            href="mailto:contact@plugyard.com"
+            href={`mailto:${f.supportEmail}`}
             className="text-xs font-medium text-foreground/70 hover:text-foreground hover:underline"
           >
-            contact@plugyard.com
+            {f.supportEmail}
           </a>
           <p className="inline-flex items-center gap-1.5 text-xs text-foreground/40">
             <BookOpen className="h-3.5 w-3.5 opacity-70" />
-            Read more. Worry less.
+            {f.motto}
           </p>
         </div>
       </div>

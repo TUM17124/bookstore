@@ -1,24 +1,13 @@
 "use client"
 
-import { cachedResource } from "@/lib/cached-resource"
+import { useSiteConfig, type CurrencyConfig } from "@/lib/site-config"
 
 /**
- * Part C: one currency setting for the whole site (Django admin → Site
- * settings → Currency). Every price on the page goes through formatMoney /
+ * Part C: one currency setting for the whole site (Django admin → Site:
+ * Pricing → Currency). Every price on the page goes through formatMoney /
  * useMoney, so changing the setting changes them all.
  */
-export type CurrencyConfig = {
-  code: string
-  symbol: string
-  position: "before" | "after"
-  space: boolean
-  decimals: number
-  thousands: string
-  /** Admin's approximate rate for the "≈ $x" hint; 0/empty hides it. */
-  approx_usd_rate?: string | number
-}
-
-export type SiteConfig = { currency: CurrencyConfig; server_now: string }
+export type { CurrencyConfig, SiteConfig } from "@/lib/site-config"
 
 /** Used until the setting loads (and if it can't): today's KES format. */
 export const DEFAULT_CURRENCY: CurrencyConfig = {
@@ -48,19 +37,8 @@ export function formatMoney(amount: number | string | null | undefined, cfg: Cur
   return cfg.position === "after" ? `${number}${gap}${cfg.symbol}` : `${cfg.symbol}${gap}${number}`
 }
 
-async function loadSiteConfig(): Promise<SiteConfig | null> {
-  const base = process.env.NEXT_PUBLIC_API_URL
-  if (!base) return null
-  const res = await fetch(`${base}/site/config/`, { cache: "no-store" })
-  if (!res.ok) return null
-  const data = (await res.json()) as SiteConfig
-  return data?.currency ? data : null
-}
-
-const useSiteConfigResource = cachedResource<SiteConfig | null>("plugyard_site_config_v1", loadSiteConfig, null, 5 * 60_000)
-
 export function useCurrency(): CurrencyConfig {
-  const [cfg] = useSiteConfigResource()
+  const [cfg] = useSiteConfig()
   return cfg?.currency ?? DEFAULT_CURRENCY
 }
 

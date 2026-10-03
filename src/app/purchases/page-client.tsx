@@ -10,6 +10,7 @@ import { GuestLinkRequestForm } from '@/components/guest-link-request-form'
 import { useLoggedIn } from '@/lib/use-logged-in'
 import { useAsyncAction } from '@/hooks/use-async-action'
 import { ActionButton } from '@/components/ui/action-button'
+import { useText } from '@/lib/site-config'
 
 function Row({
   p,
@@ -76,6 +77,11 @@ function Row({
 }
 
 export default function PurchasesPage() {
+  // Django admin → Site: General → Empty pages / Purchases.
+  const emptyEbooks = useText('empty.purchases_ebooks')
+  const emptyAudio = useText('empty.purchases_audio')
+  const guestTitle = useText('purchases.guest_title')
+  const guestBody = useText('purchases.guest_body')
   const loggedIn = useLoggedIn()
   const [ebooks, setEbooks] = useState<PurchaseItem[]>([])
   const [audiobooks, setAudiobooks] = useState<PurchaseItem[]>([])
@@ -114,11 +120,8 @@ export default function PurchasesPage() {
             <p>
               <Link href="/login" className="underline">Log in</Link> to see the books in your account.
             </p>
-            <h2>Bought without an account?</h2>
-            <p>
-              Enter the email you used at checkout and we&apos;ll email you a fresh secure link to
-              your books. Your purchases never expire — only the link does.
-            </p>
+            <h2>{guestTitle}</h2>
+            <p>{guestBody}</p>
             <GuestLinkRequestForm />
           </>
         ) : (
@@ -131,7 +134,7 @@ export default function PurchasesPage() {
               {ebooks.map((p) => (
                 <Row key={p.order_id} p={p} onRead={() => setReader(p)} />
               ))}
-              {!busy && ebooks.length === 0 ? <li>No ebook purchases yet.</li> : null}
+              {!busy && ebooks.length === 0 ? <li>{emptyEbooks}</li> : null}
             </ul>
 
             <h2>Audiobooks</h2>
@@ -139,7 +142,7 @@ export default function PurchasesPage() {
               {audiobooks.map((p) => (
                 <Row key={p.order_id} p={p} onListen={() => setPlayer(p)} />
               ))}
-              {!busy && audiobooks.length === 0 ? <li>No audiobook purchases yet.</li> : null}
+              {!busy && audiobooks.length === 0 ? <li>{emptyAudio}</li> : null}
             </ul>
           </>
         )}

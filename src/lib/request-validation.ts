@@ -2,7 +2,7 @@
  * Request validation helpers for PDF API routes.
  *
  * @remarks
- * All helpers are server-only and enforce a unified 250 MB file size limit
+ * All helpers are server-only and enforce a unified 80 MB file size limit
  * across every `/api/pdf/*` route. Import `validatePdfFile` to replace
  * ad-hoc `instanceof File` checks in route handlers.
  */
@@ -12,8 +12,9 @@ import { NextResponse } from 'next/server';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-/** Unified 250 MB cap enforced on every PDF upload (matches Django backend limit). */
-export const MAX_FILE_SIZE_BYTES = 250 * 1024 * 1024; // 250 MB
+/** Unified cap on every PDF upload: the server's real limit (80 MB). */
+import { EDITOR_UPLOAD_MAX_BYTES } from "@/lib/upload-limits";
+export const MAX_FILE_SIZE_BYTES = EDITOR_UPLOAD_MAX_BYTES;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

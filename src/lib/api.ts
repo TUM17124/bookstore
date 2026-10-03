@@ -425,14 +425,30 @@ export async function getProStatus(): Promise<ProStatus> {
  * admin-configured price to logged-out visitors too. Never hardcode
  * this value in frontend code; SiteSettings.pro_price_monthly is the
  * single source of truth. */
-export async function getProPricing(): Promise<{ price_monthly: string; quote?: PromoQuote; server_now?: string }> {
+/** A Pro plan on sale (Django admin → Pro plans), with this visitor's price. */
+export type ProPlanQuote = {
+  code: string
+  name: string
+  price: string
+  billing_days: number
+  description: string
+  quote?: PromoQuote
+}
+
+export async function getProPricing(): Promise<{
+  price_monthly: string
+  quote?: PromoQuote
+  plans?: ProPlanQuote[]
+  signups_open?: boolean
+  server_now?: string
+}> {
   // With the login when there is one: promotions can be for some people only.
   return getOr("/pro/pricing/", { price_monthly: "0" }, { auth: !!getToken(), cache: "no-store" })
 }
 
 /** `expectedAmount`: the price the page showed - the server refuses to
  * charge another (ProductPriceChangedError with the new price). */
-export async function subscribePro(expectedAmount?: string, call?: CallOptions): Promise<{
+export async function subscribePro(expectedAmount?: string, call?: CallOptions, plan?: string): Promise<{
   subscription_id: number
   checkout_url: string
   reference: string
@@ -441,7 +457,7 @@ export async function subscribePro(expectedAmount?: string, call?: CallOptions):
 }> {
   if (!getToken()) throw new UserError("Log in required")
   return withPriceCheck(() =>
-    apiAction("/pro/subscribe/", { method: "POST", body: JSON.stringify({ expected_amount: expectedAmount }) }, call),
+    apiAction("/pro/subscribe/", { method: "POST", body: JSON.stringify({ expected_amount: expectedAmount, plan }) }, call),
   )
 }
 

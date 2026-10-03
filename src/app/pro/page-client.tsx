@@ -1,7 +1,7 @@
 'use client'
 
 import { useMoney } from '@/lib/money'
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -11,6 +11,7 @@ import {
   subscribePro,
   confirmProPayment,
   type ProStatus,
+  type ProPlanQuote,
   ProductPriceChangedError,
   type PromoQuote,
 } from '@/lib/api'
@@ -19,24 +20,25 @@ import { useAsyncAction } from '@/hooks/use-async-action'
 import { PromoPrice } from '@/components/offers/promo-price'
 import { noteServerTime } from '@/components/offers/countdown'
 import { ActionButton } from '@/components/ui/action-button'
+import { useFeature, useOffMessage, usePairs, useText } from '@/lib/site-config'
 
-const BENEFITS = [
-  {
-    icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="1.8" aria-hidden>
-        <rect x="3" y="5" width="14" height="11" rx="1.5" />
-        <path d="M13 12.5h6v6h-6z" fill="currentColor" stroke="none" />
-      </svg>
-    ),
-    title: 'Floating pop-out reader & player',
-    body: 'Keep your audiobook playing and your page floating even when you switch apps or minimize the browser. Audio continues in the background — close or navigate away from the tab to stop it.',
-  },
-  {
-    icon: <span className="text-lg leading-none">🔊</span>,
-    title: 'AI narration, any page',
-    body: 'Have any page read aloud in a natural voice — pick from four distinct voices, control speed, and follow along with auto-scroll and sentence highlighting as it reads. Narration stops automatically when you close or navigate away from the tab.',
-  },
+// Icons for the benefits, in order; the texts are admin-editable
+// (Django admin → Site: General → Pro page benefits).
+const BENEFIT_ICONS = [
+  <svg key="popout" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="1.8" aria-hidden>
+    <rect x="3" y="5" width="14" height="11" rx="1.5" />
+    <path d="M13 12.5h6v6h-6z" fill="currentColor" stroke="none" />
+  </svg>,
+  <span key="voice" className="text-lg leading-none">🔊</span>,
 ]
+
+/** "month" for 30 days, "year" for 365, otherwise "N days". */
+function periodLabel(days: number) {
+  if (days === 30 || days === 31) return 'month'
+  if (days === 365 || days === 366) return 'year'
+  if (days === 7) return 'week'
+  return `${days} days`
+}
 
 function ProInner() {
   const money = useMoney()
@@ -47,12 +49,30 @@ function ProInner() {
   const [loggedIn, setLoggedIn] = useState(false)
   const [price, setPrice] = useState('')
   const [quote, setQuote] = useState<PromoQuote | null>(null)
+  const [plans, setPlans] = useState<ProPlanQuote[]>([])
+  const [planCode, setPlanCode] = useState('')
+  const [signupsOpen, setSignupsOpen] = useState(true)
+  const headline = useText('pro.headline')
+  const benefits = usePairs('pro.benefits')
+  const signupsOn = useFeature('pro_signups')
+  const signupsOffMessage = useOffMessage('pro_signups')
   const [pricingNonce, setPricingNonce] = useState(0)
   const [status, setStatus] = useState<ProStatus | null>(null)
   const [cancelConfirmed, setCancelConfirmed] = useState(false)
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [justSubscribed, setJustSubscribed] = useState(false)
+  const planCodeRef = useRef('')
+  const plan = plans.find((x) => x.code === planCode)
+  const period = periodLabel(plan?.billing_days ?? 30)
+  const canSubscribe = signupsOn && signupsOpen
+
+  function choosePlan(next: ProPlanQuote) {
+    planCodeRef.current = next.code
+    setPlanCode(next.code)
+    setPrice(next.price)
+    setQuote(next.quote ?? null)
+  }
 
   useEffect(() => {
     setMounted(true)
@@ -67,8 +87,20 @@ function ProInner() {
       .then((p) => {
         if (!live) return
         noteServerTime(p.server_now)
-        setPrice(p.price_monthly)
-        setQuote(p.quote ?? null)
+        const list = p.plans ?? []
+        setPlans(list)
+        setSignupsOpen(p.signups_open !== false)
+        // Keep the visitor's choice when it is still on sale, else the first plan.
+        const chosen = list.find((x) => x.code === planCodeRef.current) ?? list[0]
+        if (chosen) {
+          planCodeRef.current = chosen.code
+          setPlanCode(chosen.code)
+          setPrice(chosen.price)
+          setQuote(chosen.quote ?? null)
+        } else {
+          setPrice(p.price_monthly === '0' ? '' : p.price_monthly)
+          setQuote(p.quote ?? null)
+        }
       })
       .catch(() => {})
     return () => {
@@ -118,7 +150,7 @@ function ProInner() {
   // The price shown is sent along: if it is no longer the price (a
   // promotion just started/ended or filled up), nothing is charged and the
   // new price is shown for the user to confirm with another press.
-  const upgrade = useAsyncAction((ctx) => subscribePro(quote?.final_amount ?? (price || undefined), ctx), {
+  const upgrade = useAsyncAction((ctx) => subscribePro(quote?.final_amount ?? (price || undefined), ctx, planCode || undefined), {
     successMs: 60_000, // "Redirecting…" while the browser leaves for Paystack
     errorFallback: 'Could not start checkout. Please try again.',
     onSuccess: (res) => {
@@ -163,13 +195,13 @@ function ProInner() {
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[#d4af37]/15 px-3 py-1 text-xs font-bold uppercase tracking-wider text-[#a3811f]">
           ★ PlugYard Pro
         </span>
-        <h1 className="mt-4 text-3xl font-bold sm:text-4xl">Read and listen without limits</h1>
+        <h1 className="mt-4 text-3xl font-bold sm:text-4xl">{headline}</h1>
         <div className="mt-3 flex justify-center text-foreground/60">
           {price ? (
             <PromoPrice
               quote={quote}
               fallback={price}
-              suffix=" / month"
+              suffix={` / ${period}`}
               onExpire={() => setPricingNonce((n) => n + 1)}
               className="items-center text-foreground"
             />
@@ -177,6 +209,27 @@ function ProInner() {
             'Loading price…'
           )}
         </div>
+        {plans.length > 1 && (
+          <div role="radiogroup" aria-label="Choose a plan" className="mt-5 flex flex-wrap justify-center gap-2">
+            {plans.map((x) => (
+              <button
+                key={x.code}
+                type="button"
+                role="radio"
+                aria-checked={x.code === planCode}
+                onClick={() => choosePlan(x)}
+                className={`min-h-[44px] rounded-full border px-4 text-sm font-semibold transition ${
+                  x.code === planCode
+                    ? 'border-[#a3811f] bg-[#d4af37]/15 text-[#7a5f14]'
+                    : 'border-foreground/15 text-foreground/70 hover:border-foreground/30'
+                }`}
+              >
+                {x.name} · {money(x.quote?.final_amount ?? x.price)}
+              </button>
+            ))}
+          </div>
+        )}
+        {plan?.description && <p className="mt-3 text-sm text-foreground/55">{plan.description}</p>}
       </div>
 
       {justSubscribed && (
@@ -191,14 +244,14 @@ function ProInner() {
       )}
 
       <div className="mt-8 space-y-4">
-        {BENEFITS.map((b) => (
-          <div key={b.title} className="flex items-start gap-3 rounded-xl border border-foreground/10 p-4">
+        {benefits.map((b, i) => (
+          <div key={`${i}-${b.label}`} className="flex items-start gap-3 rounded-xl border border-foreground/10 p-4">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#d4af37]/15 text-[#a3811f]">
-              {b.icon}
+              {BENEFIT_ICONS[i] ?? <span className="text-base leading-none">★</span>}
             </span>
             <div>
-              <p className="font-semibold">{b.title}</p>
-              <p className="mt-0.5 text-sm text-foreground/60">{b.body}</p>
+              <p className="font-semibold">{b.label}</p>
+              {b.value && <p className="mt-0.5 text-sm text-foreground/60">{b.value}</p>}
             </div>
           </div>
         ))}
@@ -258,6 +311,11 @@ function ProInner() {
               )}
             </div>
           </div>
+        ) : !canSubscribe ? (
+          <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-5 text-center">
+            <p className="font-semibold">Pro sign-ups are turned off</p>
+            <p className="mt-1 text-sm text-foreground/70">{signupsOffMessage}</p>
+          </div>
         ) : (
           <ActionButton
             action={upgrade}
@@ -271,7 +329,7 @@ function ProInner() {
             errorClassName="mt-3 text-center text-sm text-red-700"
             className="w-full rounded-full bg-[#d4af37] px-4 py-3.5 text-center text-base font-bold text-[#3a2e08] disabled:opacity-60 aria-busy:opacity-80"
           >
-            {`Upgrade to Pro — ${price ? money(quote?.final_amount ?? price) : '…'}/month`}
+            {`Upgrade to Pro — ${price ? money(quote?.final_amount ?? price) : '…'}/${period}`}
           </ActionButton>
         )}
       </div>

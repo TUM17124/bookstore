@@ -250,6 +250,7 @@ import type { ExportFormat } from "@/components/editor/lib/export-formats";
 import type { HeaderFooterSpec } from "@qrcommunication/gigapdf-lib";
 import { clientLogger } from "@/lib/pdf-editor/client-logger";
 import { withRetry } from "@/lib/pdf-editor/with-retry";
+import { EDITOR_UPLOAD_MAX_MB, editorUploadProblem } from "@/lib/upload-limits";
 import {
   buildMembership,
   mergeSavedLayers,
@@ -395,6 +396,11 @@ function UploadToStartPrompt({
 
   async function handleFile(file: File | undefined | null) {
     if (!file) return;
+    const tooBig = editorUploadProblem(file);
+    if (tooBig) {
+      setError(tooBig);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -438,7 +444,7 @@ function UploadToStartPrompt({
       <div>
         <h1 className="text-lg font-semibold">PDF Editor</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Upload a PDF, or start with a blank page.
+          Upload a PDF (up to {EDITOR_UPLOAD_MAX_MB} MB), or start with a blank page.
         </p>
       </div>
       <input
