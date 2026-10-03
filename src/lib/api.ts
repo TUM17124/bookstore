@@ -633,7 +633,16 @@ function bannerToken(): string | null {
  * decided by the server). Personal, so never cached. */
 export async function getBanners(placement: BannerPlacement, category = ""): Promise<BannersPage> {
   const path = bannersPath(placement, category)
-  const token = bannerToken()
+  let token = bannerToken()
+  if (!token && getToken()) {
+    // Logged in but the access token has expired: refresh it first (one
+    // shared refresh), or this person would get the guests' banners.
+    try {
+      token = await refreshAccessToken(getToken())
+    } catch {
+      token = null
+    }
+  }
   const pre = await takePreloaded<BannersPage>(path, token)
   if (pre && Array.isArray(pre.banners)) return pre
   return getOr(path, { banners: [] }, { auth: false, headers: bannerHeaders(token) })
