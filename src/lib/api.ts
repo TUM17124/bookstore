@@ -663,7 +663,8 @@ export async function createCheckout(
   try {
     return await apiAction<{ order_id: number; checkout_url: string; dev_mode?: boolean; amount?: string }>(
       "/checkout/",
-      { method: "POST", body: JSON.stringify(payload) },
+      // Part E: the browser id, so a guest's purchase can be matched to their ad click.
+      { method: "POST", body: JSON.stringify(payload), headers: visitorHeader() },
       call,
     )
   } catch (err) {
@@ -778,6 +779,64 @@ export function sendAdEvent(kind: "seen" | "click", token: string) {
   } catch {
     // statistics and billing are server-side; never break the page
   }
+}
+
+/** Part E (PR 3): interaction signals for every book (future ML ranking):
+ * card impressions and clicks, and reading time. Batched, sent every few
+ * seconds and when the page is hidden; never blocks or breaks anything. */
+export type Signal = {
+  kind: "impression" | "click" | "read_time"
+  book_id: string | number
+  placement?: string
+  section_id?: number | null
+  position?: number | null
+  value?: number
+}
+const signalQueue: Signal[] = []
+let signalTimer: ReturnType<typeof setTimeout> | null = null
+let signalHooked = false
+
+export function flushSignals() {
+  if (signalTimer) {
+    clearTimeout(signalTimer)
+    signalTimer = null
+  }
+  if (!API || signalQueue.length === 0) return
+  const events = signalQueue.splice(0, 50)
+  try {
+    void fetch(`${API}/signals/`, {
+      method: "POST",
+      body: JSON.stringify({ events }),
+      headers: bannerHeaders(bannerToken()),
+      keepalive: true,
+    }).catch(() => {})
+  } catch {
+    // signals only
+  }
+  if (signalQueue.length) flushSignals()
+}
+
+export function queueSignal(ev: Signal) {
+  if (typeof window === "undefined" || !API) return
+  signalQueue.push(ev)
+  if (!signalHooked) {
+    signalHooked = true
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flushSignals()
+    })
+    window.addEventListener("pagehide", flushSignals)
+  }
+  if (signalQueue.length >= 50) flushSignals()
+  else if (!signalTimer) signalTimer = setTimeout(flushSignals, 5000)
+}
+
+/** Where on the site a card is: home, category or search (from the URL). */
+export function currentPlacement(): string {
+  if (typeof window === "undefined") return ""
+  const p = new URLSearchParams(window.location.search)
+  if ((p.get("q") || "").trim()) return "search"
+  if ((p.get("category") || "").trim()) return "category"
+  return window.location.pathname === "/" ? "home" : window.location.pathname.replace(/\W+/g, "_").slice(0, 16)
 }
 
 /** Fire-and-forget view / click / dismiss: frequency caps, per-audience
@@ -1710,6 +1769,12 @@ export type AdAccount = {
   off_message: string
   balance: string
   low_balance: boolean
+  /** PR 3 */
+  today_spend: string
+  low_balance_warning: string
+  active_ads: number
+  /** Active ads exist, but the balance can't pay for one click. */
+  stalled_for_balance: boolean
   min_topup: string
   min_cpc: string
   min_daily_budget: string
@@ -1731,6 +1796,41 @@ export type AdData = {
   on_search: boolean
   categories: string[]
   created_at: string
+  /** PR 3: all-time results (null before the first impression). */
+  totals?: AdTotals | null
+}
+
+export type AdTotals = {
+  impressions: number
+  clicks: number
+  click_rate: number
+  spend: string
+  sales: number
+  revenue: string
+  cost_per_sale: string | null
+  invalid_clicks?: number
+}
+
+export type AdStatsDay = { day: string; impressions: number; clicks: number; spend: string; sales: number; revenue: string }
+export type AdStats = { days: 7 | 30; series: AdStatsDay[]; totals: AdTotals }
+
+export async function getAdStats(id: number, days: 7 | 30): Promise<AdStats | null> {
+  return getOr<AdStats | null>(`/ads/${id}/stats/?days=${days}`, null, { cache: "no-store" })
+}
+
+/** The ad statement (every top-up, click, refund) as a CSV download. */
+export async function downloadAdStatement(): Promise<void> {
+  const res = await authFetch(`${API}/ads/statement/`, { cache: "no-store" })
+  const blob = await res.blob()
+  const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "")?.[1] || "plugyard-ad-statement.csv"
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 export type AdInput = Partial<{
