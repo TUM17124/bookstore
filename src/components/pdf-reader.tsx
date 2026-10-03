@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type Cl
 import { createPortal } from 'react-dom'
 import { useCurrency, useMoney } from '@/lib/money'
 import Link from 'next/link'
-import { getToken, getReaderManifest, getReaderPageText, ContentError, type ReaderManifest } from '@/lib/api'
+import { getToken, getReaderManifest, getReaderPageText, ContentError, ProductPriceChangedError, type ReaderManifest } from '@/lib/api'
+import { UserError } from '@/lib/user-error'
 import { getPdfProgress, savePdfProgress, getPdfNotes, addPdfNote, updatePdfNote, deletePdfNote, type PdfNoteRow } from '@/lib/api'
 import { useAsyncAction } from '@/hooks/use-async-action'
 import { ActionButton } from '@/components/ui/action-button'
@@ -36,6 +37,7 @@ import {
 } from '@/lib/api'
 import { usePictureInPicture } from '@/lib/pip'
 import { ProGateModal } from '@/components/pro-gate-modal'
+import { PromoPrice } from '@/components/offers/promo-price'
 
 function markKey(url: string) {
   return `plugyard-read-mark:${url.split('?')[0]}`
@@ -1883,18 +1885,30 @@ export function PdfReader({
     }, 250)
   }
 
+  // Pays the price shown in the box (sent along: the server refuses any
+  // other). If the box is out of date (amount just typed), it is refreshed
+  // and the user presses Pay again with the price in view.
   const creditCheckout = useAsyncAction(
     async (ctx, amount: string) => {
-      const q = await quoteTtsCredits(amount)
-      if (q) setCreditQuote(q)
+      const shown = creditQuote && Number(creditQuote.amount) === Number(amount) ? creditQuote : null
+      if (!shown?.quote) {
+        const q = await quoteTtsCredits(amount)
+        if (q) setCreditQuote(q)
+        throw new UserError('Check the price, then press Pay now again.')
+      }
       try { sessionStorage.setItem('plugyard-return', nextPath) } catch {}
-      return buyTtsCredits(amount, nextPath, ctx)
+      return buyTtsCredits(amount, nextPath, ctx, shown.quote.final_amount)
     },
     {
       successMs: 60_000, // "Redirecting…" while leaving for Paystack
       errorFallback: 'Could not start checkout. Please try again.',
       onSuccess: (res) => {
         if (res?.checkout_url) window.location.href = res.checkout_url
+      },
+      onError: (err) => {
+        if (err instanceof ProductPriceChangedError) {
+          setCreditQuote((cur) => (cur ? { ...cur, quote: err.quote } : cur))
+        }
       },
     },
   )
@@ -2384,6 +2398,16 @@ export function PdfReader({
               {creditAmount || creditQuote?.amount || creditQuote?.min_kes ? money(creditAmount || creditQuote?.amount || creditQuote?.min_kes) : '—'} gives you{' '}
               {estimatedCreditChars != null ? estimatedCreditChars.toLocaleString() : '—'} characters
             </p>
+            {creditQuote?.quote?.promotion && Number(creditQuote.quote.discount) > 0 ? (
+              <div className="mt-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-foreground/50">You pay</p>
+                <PromoPrice
+                  quote={creditQuote.quote}
+                  size="sm"
+                  onExpire={() => void refreshCreditQuote(creditAmount)}
+                />
+              </div>
+            ) : null}
             <p className="mt-1 text-[12px] text-foreground/60">
               Pay at least {creditQuote?.min_kes ? money(creditQuote.min_kes) : '—'} to add robot-reader credits.
               {creditQuote?.volume_bonus_percent ? ` · ${creditQuote.volume_bonus_percent}% extra if you pay 2× the minimum` : ''}
