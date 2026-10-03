@@ -796,6 +796,9 @@ export type CampaignData = {
   max_books_per_author: number
   approval_required: boolean
   admin_only: boolean
+  /** Who sees the offers, e.g. "New readers" or "everyone". */
+  audience?: string
+  targeted?: boolean
   can_join: boolean
   can_decline: boolean
   entries: CampaignEntryData[]
