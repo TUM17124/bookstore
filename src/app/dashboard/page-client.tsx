@@ -1228,11 +1228,11 @@ function BookBoostRow({
   ) => void;
 }) {
   const currency = useCurrency();
-  const { label, left } =
+  const { label } =
     useCountdown(
       boost?.seconds_left || 0
     );
-  // Part D: Site: Pricing → boost days; Site: Features → boosts.
+  // A paid boost bought before Part E still shows its countdown (records kept).
 
   const active = Boolean(
     boost?.is_active
@@ -1365,15 +1365,6 @@ function BookBoostRow({
               Boosted · featured until
               countdown ends:{" "}
               <b>{label}</b>
-            </p>
-          ) : boost?.status ===
-              "expired" ||
-            (boost?.status ===
-              "paid" &&
-              left === 0) ? (
-            <p className="text-sm text-foreground/70">
-              Boost ended. You can boost
-              again now.
             </p>
           ) : (
             <p className="text-sm text-foreground/70">
