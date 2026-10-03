@@ -389,6 +389,16 @@ export async function getBooks(params?: {
 
 export async function getBook(id: string | number): Promise<ApiBook | null> {
   if (!API) throw new Error("NEXT_PUBLIC_API_URL is not set")
+  // With the login when there is one (an offer can be for some people
+  // only); a dead session falls back to the public request, like getBooks.
+  if (getToken()) {
+    try {
+      const res = await authFetch(`${API}/books/${id}/`, { auth: true })
+      return (await res.json()) as ApiBook
+    } catch (err) {
+      if (!(err instanceof AuthFetchError && err.status === 401)) return null
+    }
+  }
   return getOr<ApiBook | null>(`/books/${id}/`, null, { auth: false })
 }
 
@@ -655,8 +665,10 @@ export async function createCheckout(
 }
 
 export async function getQuote(bookId: string | number, productType: "ebook" | "audiobook", call?: CallOptions) {
+  // With the login when there is one: an offer can be for some people only
+  // (campaign audiences), and checkout charges this buyer's own price.
   return api<PriceQuote>(`/books/${bookId}/quote/?product_type=${productType}`, {
-    auth: false,
+    auth: !!getToken(),
     cache: "no-store",
     signal: call?.signal,
   })
