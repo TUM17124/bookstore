@@ -37,6 +37,8 @@ export type ApiBook = {
   audiobook_price?: number
   stock?: number
   hasEbook?: boolean
+  /** Owner only: state of an upload that is converted to PDF (DOCX, ODT, PPTX, ...). */
+  conversion?: { status: 'queued' | 'running' | 'ok' | 'failed'; format: string; error?: string; pages?: number } | null
   hasAudiobook?: boolean
   ebookDownloadable?: boolean
   audiobookDownloadable?: boolean

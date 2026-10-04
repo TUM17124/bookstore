@@ -192,7 +192,7 @@ function PublishPageInner() {
         <input name="image_spine" type="file" accept="image/*" required />
         <label className="text-sm font-medium">Back cover *</label>
         <input name="image_back" type="file" accept="image/*" required />
-        <label className="text-sm font-medium">PDF *</label>
+        <label className="text-sm font-medium">Book file *</label>
         {hasAttachment ? (
           <div className="flex items-center justify-between gap-3 rounded-lg border border-foreground/15 bg-foreground/[0.03] px-3 py-2 text-sm">
             <span className="min-w-0 truncate">
@@ -207,7 +207,14 @@ function PublishPageInner() {
             </button>
           </div>
         ) : (
-          <input name="pdf" type="file" accept="application/pdf" required />
+          <>
+            <input name="pdf" type="file" accept=".pdf,.epub,.docx,.doc,.odt,.rtf,.txt,.pptx,.ppt,application/pdf,application/epub+zip" required />
+            <p className="text-xs text-foreground/60">
+              PDF, EPUB, Word (.docx, .doc), OpenDocument (.odt), RTF, plain text, or PowerPoint (.pptx, .ppt).
+              Word, text and slide files are converted to PDF for you (usually under a minute);
+              EPUB keeps its reflowable text. Files with macros, DRM or fixed layouts are not accepted. Up to 30 MB.
+            </p>
+          </>
         )}
         <label className="text-sm font-medium">Audiobook (optional MP3)</label>
         <input name="audio" type="file" accept="audio/*" />
