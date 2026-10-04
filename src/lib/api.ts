@@ -98,6 +98,8 @@ export type PurchaseItem = {
   book_id: string
   product_type: string
   downloadable?: boolean
+  /** Format of the author's original upload ("docx", "pptx"…), present only when it may be downloaded. */
+  original_format?: string
 }
 
 export function getToken(): string | null {
@@ -1700,10 +1702,11 @@ export async function fetchBookDownload(
   kind: BookKind,
   guestToken?: string | null,
   fallbackName?: string,
+  variant?: "original",
 ): Promise<{ blob: Blob; filename: string }> {
   // No timeout: a large file must not be cut off and re-requested (each
   // completed download counts toward the limit server-side).
-  const res = await contentFetch(`/books/${bookId}/download/?kind=${kind}`, { timeoutMs: 0, retries: 0 }, guestToken)
+  const res = await contentFetch(`/books/${bookId}/download/?kind=${kind}${variant ? `&variant=${variant}` : ""}`, { timeoutMs: 0, retries: 0 }, guestToken)
   return {
     blob: await res.blob(),
     filename: filenameFrom(res, fallbackName || (kind === "ebook" ? "book.pdf" : "book.mp3")),
@@ -1716,8 +1719,9 @@ export async function downloadBook(
   kind: BookKind,
   fallbackName: string,
   guestToken?: string | null,
+  variant?: "original",
 ): Promise<void> {
-  const { blob, filename } = await fetchBookDownload(bookId, kind, guestToken, fallbackName)
+  const { blob, filename } = await fetchBookDownload(bookId, kind, guestToken, fallbackName, variant)
   const objUrl = URL.createObjectURL(blob)
   const a = document.createElement("a")
   a.href = objUrl
