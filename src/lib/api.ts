@@ -1572,7 +1572,21 @@ export type ReaderManifest = {
   watermark: string
   copy_protected: boolean
   pages: { page: number; url: string }[]
+  /** "epub" for natively-read EPUBs; absent/"pdf" otherwise. */
+  format?: string
+  /** EPUB table of contents: where each chapter starts (1-based page). */
+  chapters?: ReaderChapter[]
 }
+
+export type ReaderChapter = { title: string; page: number }
+
+/** Structured EPUB page content. Only text, table-cell text and signed image
+ * URLs ever arrive here; the plain `text` stays the source for TTS/highlights. */
+export type ReaderBlock =
+  | { t: "h"; x: string; l?: number }
+  | { t: "p" | "li" | "q"; x: string }
+  | { t: "img"; a: number; alt: string; url: string }
+  | { t: "table"; rows: string[][] }
 
 export class ContentError extends UserError {
   status: number
@@ -1647,10 +1661,24 @@ export async function getReaderManifest(bookId: string | number, guestToken?: st
   return res.json()
 }
 
-export async function getReaderPageText(url: string, guestToken?: string | null): Promise<string> {
+export async function getReaderPage(
+  url: string,
+  guestToken?: string | null,
+): Promise<{ text: string; blocks?: ReaderBlock[] }> {
   const res = await contentFetch(url, {}, guestToken)
-  const data = (await res.json()) as { text?: string }
-  return data.text || ""
+  const data = (await res.json()) as { text?: string; blocks?: ReaderBlock[] }
+  return { text: data.text || "", blocks: Array.isArray(data.blocks) ? data.blocks : undefined }
+}
+
+export async function getReaderPageText(url: string, guestToken?: string | null): Promise<string> {
+  return (await getReaderPage(url, guestToken)).text
+}
+
+/** One EPUB image, fetched with the same auth as page text (an <img src> could
+ * not send the Bearer/guest token) and shown from a blob: URL. */
+export async function getReaderImage(url: string, guestToken?: string | null): Promise<Blob> {
+  const res = await contentFetch(url, {}, guestToken)
+  return res.blob()
 }
 
 export async function getAudioStreamUrl(bookId: string | number, guestToken?: string | null): Promise<string> {

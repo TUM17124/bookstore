@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type Cl
 import { createPortal } from 'react-dom'
 import { useCurrency, useMoney } from '@/lib/money'
 import Link from 'next/link'
-import { getToken, getReaderManifest, getReaderPageText, ContentError, ProductPriceChangedError, type ReaderManifest } from '@/lib/api'
+import { getToken, getReaderManifest, getReaderPage, ContentError, ProductPriceChangedError, type ReaderManifest, type ReaderBlock, type ReaderChapter } from '@/lib/api'
+import { EpubBlocks, ChapterList, chapterIndexFor, hasFigures } from '@/components/epub-blocks'
 import { UserError } from '@/lib/user-error'
 import { getPdfProgress, savePdfProgress, getPdfNotes, addPdfNote, updatePdfNote, deletePdfNote, type PdfNoteRow } from '@/lib/api'
 import { useAsyncAction } from '@/hooks/use-async-action'
@@ -280,6 +281,10 @@ export function PdfReader({
   const [status, setStatus] = useState('Opening…')
   const [total, setTotal] = useState(0)
   const [pages, setPages] = useState<Record<number, string>>({})
+  // EPUB only: structured blocks for pages that carry images/tables, and the table of contents.
+  const [blocksByPage, setBlocksByPage] = useState<Record<number, ReaderBlock[]>>({})
+  const [chapters, setChapters] = useState<ReaderChapter[]>([])
+  const [tocOpen, setTocOpen] = useState(false)
   // Height a not-yet-loaded page reserves: the median of the pages already
   // shown (about 80% of the screen before any has loaded). A 128 px
   // placeholder grew to a full page when its text arrived and pushed the
@@ -474,6 +479,8 @@ export function PdfReader({
 
   function pageContentRoot(section: Element | null): HTMLElement | null {
     if (!section) return null
+    // Figure pages (EPUB images/tables) have no single text paragraph: offsets fall back to quote search.
+    if (section.querySelector('[data-epub-blocks]')) return null
     const paragraphs = section.querySelectorAll('p')
     return (paragraphs[1] as HTMLElement) || (paragraphs[0] as HTMLElement) || null
   }
@@ -1073,17 +1080,22 @@ export function PdfReader({
     loadingPage.current.add(n)
     try {
       const entry = () => manifestRef.current?.pages.find((p) => p.page === n)
-      let text: string
+      let got: { text: string; blocks?: ReaderBlock[] }
       try {
-        text = await getReaderPageText(entry()!.url, guestToken)
+        got = await getReaderPage(entry()!.url, guestToken)
       } catch (err) {
         // Page URLs are short-lived: re-issue the manifest once and retry.
         if (err instanceof ContentError && err.code === 'expired') {
           await refreshManifest()
-          text = await getReaderPageText(entry()!.url, guestToken)
+          got = await getReaderPage(entry()!.url, guestToken)
         } else {
           throw err
         }
+      }
+      const text = got.text
+      if (hasFigures(got.blocks)) {
+        const figureBlocks = got.blocks as ReaderBlock[]
+        setBlocksByPage((prev: Record<number, ReaderBlock[]>) => ({ ...prev, [n]: figureBlocks }))
       }
       commitPageText(n, text || `Page ${n}`)
     } catch (err) {
@@ -1123,6 +1135,8 @@ export function PdfReader({
       try {
         setStatus('Opening…')
         setPages({})
+        setBlocksByPage({})
+        setChapters([])
         setAccessError(null)
         pagesRef.current = {}
         maxPagesRef.current = 0
@@ -1134,6 +1148,8 @@ export function PdfReader({
         totalRef.current = totalPages
         setTotal(totalPages)
         setPreviewPages(m.preview ? m.allowed_pages : 0)
+        // Only chapters that start inside the allowed (preview) range are offered.
+        setChapters(m.format === 'epub' ? (m.chapters || []).filter((c) => c.page <= m.allowed_pages) : [])
         setWatermark(m.watermark || '')
         setCopyProtected(!!m.copy_protected)
         let saved = Number(localStorage.getItem(markKey(url)) || 0)
@@ -1502,6 +1518,17 @@ export function PdfReader({
       cancelAnimationFrame(followRafRef.current)
       followRafRef.current = 0
     }
+  }
+
+  /** Previous/next chapter: from mid-chapter, "previous" first returns to this chapter's start. */
+  async function gotoChapter(dir: 1 | -1) {
+    if (!chapters.length) return
+    const cur = chapterIndexFor(chapters, pageRef.current)
+    let target: number
+    if (dir === 1) target = Math.min(chapters.length - 1, cur + 1)
+    else target = cur >= 0 && chapters[cur].page < pageRef.current ? cur : Math.max(0, cur - 1)
+    setTocOpen(false)
+    await gotoPage(chapters[target].page)
   }
 
   async function gotoPage(n: number) {
@@ -2115,6 +2142,7 @@ export function PdfReader({
   }
 
   const voiceOptions = ttsVoices.length ? ttsVoices : FALLBACK_VOICES
+  const chapterNow = chapterIndexFor(chapters, page)
   const numbers = Array.from({ length: total }, (_, i) => i + 1)
   const creditChars = ttsUsage?.credit_chars ?? 0
 
@@ -2129,6 +2157,36 @@ export function PdfReader({
         <span className="min-w-[3.5rem] text-center text-xs font-semibold text-foreground/60">{fontSize}px</span>
         <button type="button" onClick={() => { fontTouchedRef.current = true; setFontSize((n: number) => Math.min(40, n + 2)) }} className="rounded-full bg-foreground/10 px-3 py-1 text-sm font-bold text-foreground">A+</button>
         <span className="text-xs font-semibold text-foreground/60">{page} / {total || '—'}</span>
+        {chapters.length > 0 ? (
+          <>
+            <button
+              type="button"
+              aria-label="Previous chapter"
+              onClick={() => void gotoChapter(-1)}
+              disabled={chapterNow <= 0 && page <= (chapters[0]?.page ?? 1)}
+              className="rounded-full bg-foreground/10 px-3 py-1 text-sm font-bold text-foreground disabled:opacity-40"
+            >
+              ‹ Chapter
+            </button>
+            <button
+              type="button"
+              aria-expanded={tocOpen}
+              onClick={() => setTocOpen((v: boolean) => !v)}
+              className={`max-w-[11rem] truncate rounded-full px-3 py-1 text-sm font-bold ${tocOpen ? 'bg-[#f591ac] text-[var(--on-brand)]' : 'bg-foreground/10 text-foreground'}`}
+            >
+              ☰ {chapterNow >= 0 ? chapters[chapterNow].title : 'Contents'}
+            </button>
+            <button
+              type="button"
+              aria-label="Next chapter"
+              onClick={() => void gotoChapter(1)}
+              disabled={chapterNow >= chapters.length - 1}
+              className="rounded-full bg-foreground/10 px-3 py-1 text-sm font-bold text-foreground disabled:opacity-40"
+            >
+              Chapter ›
+            </button>
+          </>
+        ) : null}
         <button type="button" onClick={markHere} className="rounded-full bg-[#f591ac] px-3 py-1 text-sm font-bold text-[var(--on-brand)]">Mark page {page}</button>
         <button type="button" onClick={toggleHighlightMode} aria-pressed={highlightMode} className={`rounded-full px-3 py-1 text-sm font-bold ${highlightMode ? 'bg-[#f6e27a] text-[var(--on-brand)]' : 'bg-foreground/10 text-foreground'}`}>✏️ Highlight</button>
         <button
@@ -2324,6 +2382,15 @@ export function PdfReader({
         className={`relative min-h-0 flex-1 overflow-auto ${highlightMode ? highlightSelectClass(true) : 'select-none'}`}
         style={highlightSelectStyle(highlightMode)}
       >
+        {tocOpen && chapters.length > 0 ? (
+          <div className="absolute inset-x-0 top-0 z-20 mx-auto max-w-md rounded-b-2xl border border-foreground/10 bg-background p-3 shadow-xl">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-bold text-foreground">Contents</p>
+              <button type="button" onClick={() => setTocOpen(false)} className="rounded-full bg-foreground/10 px-3 py-1 text-sm font-bold text-foreground">Close</button>
+            </div>
+            <ChapterList chapters={chapters} page={page} onGo={(p: number) => { setTocOpen(false); void gotoPage(p) }} />
+          </div>
+        ) : null}
         {status && accessError ? (
           <p className="p-6 text-sm font-semibold text-[#b4233c] dark:text-red-400" role="alert">
             {status}
@@ -2364,7 +2431,9 @@ export function PdfReader({
               <p className="mb-3 select-none text-[11px] font-bold uppercase tracking-wider text-foreground/40">Page {n}</p>
               {ttsPageLoaded === n && ttsSentences.length > 0
                 ? renderSentences(n, 'tts-sentence')
-                : renderClickablePage(n, pages[n] || '')}
+                : blocksByPage[n] && pages[n]
+                  ? <EpubBlocks blocks={blocksByPage[n]} fontSize={fontSize} guestToken={guestToken} />
+                  : renderClickablePage(n, pages[n] || '')}
             </section>
           ))}
         </article>
