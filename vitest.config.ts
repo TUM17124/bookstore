@@ -36,6 +36,10 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // The full suite runs ~25 workers at once; a cold fabric/jsdom import on a
+    // loaded machine can exceed the 5 s default without anything being wrong.
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },
 })

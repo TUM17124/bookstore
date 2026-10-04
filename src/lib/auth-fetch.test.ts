@@ -114,13 +114,25 @@ describe("authFetch", () => {
 
   it("surfaces network failures with a readable message", async () => {
     installStorage({ access_token: jwt(3600), refresh_token: "r" })
-    globalThis.fetch = vi.fn(async () => {
+    const fetchMock = vi.fn(async () => {
       throw new TypeError("Failed to fetch")
-    }) as unknown as typeof fetch
-    const err = await authFetch("https://pdf.test/api/pdf/annotations").catch((e) => e)
-    expect(err).toBeInstanceOf(AuthFetchError)
-    expect(err.code).toBe("network")
-    expect(err.message).not.toMatch(/Failed to fetch/)
+    })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    // A GET retries transient failures 3 times (0.5 s + 1 s + 3 s of real
+    // backoff, plus jitter). Run on fake timers so the full retry path is
+    // still exercised but the test no longer sits close to vitest's 5 s limit.
+    vi.useFakeTimers()
+    try {
+      const pending = authFetch("https://pdf.test/api/pdf/annotations").catch((e) => e)
+      await vi.runAllTimersAsync()
+      const err = await pending
+      expect(err).toBeInstanceOf(AuthFetchError)
+      expect(err.code).toBe("network")
+      expect(err.message).not.toMatch(/Failed to fetch/)
+      expect(fetchMock).toHaveBeenCalledTimes(4) // first try + 3 retries
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("a burst of parallel 401s causes ONE refresh (the production 429 storm)", async () => {
