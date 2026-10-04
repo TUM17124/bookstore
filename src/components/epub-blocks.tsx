@@ -25,8 +25,6 @@ export function EpubImage({ url, alt, guestToken }: { url: string; alt: string; 
   useEffect(() => {
     let revoked = false
     let made: string | null = null
-    setSrc(null)
-    setFailed(false)
     getReaderImage(url, guestToken)
       .then((blob) => {
         if (revoked) return
@@ -79,7 +77,7 @@ export function EpubBlocks({
           case 'q':
             return <p key={i} className="border-l-2 border-foreground/20 pl-3 font-semibold italic leading-relaxed">{b.x}</p>
           case 'img':
-            return <EpubImage key={i} url={b.url} alt={b.alt} guestToken={guestToken} />
+            return <EpubImage key={`${i}:${b.url}`} url={b.url} alt={b.alt} guestToken={guestToken} />
           case 'table':
             return (
               <div key={i} className="max-w-full overflow-x-auto">
