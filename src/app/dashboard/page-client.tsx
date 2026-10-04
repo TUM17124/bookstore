@@ -82,6 +82,17 @@ function cycleDate(c: any): Date | null {
 }
 
 
+/** One short status line for an upload that is being converted to PDF ("" when there is nothing to say). */
+export function conversionNote(
+  c: { status: string; format: string; error?: string } | null | undefined,
+): string {
+  if (!c) return ""
+  const fmt = c.format.toUpperCase()
+  if (c.status === "queued" || c.status === "running") return ` · converting your ${fmt} file…`
+  if (c.status === "failed") return ` · could not convert your ${fmt} file${c.error ? `: ${c.error}` : ""} — upload it again or as PDF`
+  return ""
+}
+
 export default function DashboardPage() {
   // Part C: every amount uses the site currency setting.
   const money = useMoney();
@@ -1358,6 +1369,7 @@ function BookBoostRow({
             false
               ? " · off the store"
               : ""}
+            {conversionNote(book.conversion)}
           </p>
 
           {active ? (
@@ -1619,7 +1631,7 @@ function BookBoostRow({
               <input
                 name="pdf"
                 type="file"
-                accept="application/pdf"
+                accept=".pdf,.epub,.docx,.doc,.odt,.rtf,.txt,.pptx,.ppt,application/pdf,application/epub+zip"
                 className="mt-1 block w-full text-sm"
               />
             )}
