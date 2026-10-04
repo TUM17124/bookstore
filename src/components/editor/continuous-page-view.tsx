@@ -341,7 +341,9 @@ function ContinuousPageViewImpl(
     viewH: number;
     viewW: number;
     scrollLeft: number;
-  }>({ anchor: null, viewH: 0, viewW: 0, scrollLeft: 0 });
+    /** Reading from the very top of the document (e.g. right after opening). */
+    atTop: boolean;
+  }>({ anchor: null, viewH: 0, viewW: 0, scrollLeft: 0, atTop: true });
   const committedZoomRef = useRef(zoom);
   const sampleView = (layoutSlots: PageSlotGeometry[]) => {
     const root = scrollRef.current;
@@ -354,6 +356,7 @@ function ContinuousPageViewImpl(
       viewH,
       viewW: root.clientWidth,
       scrollLeft: root.scrollLeft,
+      atTop: contentScrollTop() < 2,
     };
   };
   const sampleViewRef = useRef(sampleView);
@@ -882,7 +885,10 @@ function ContinuousPageViewImpl(
       const last = lastViewRef.current;
       const root = scrollRef.current;
       if (zoomChanged && last.anchor && root) {
-        const y = contentYForAnchor(slots, last.anchor);
+        // Opened (or scrolled back to) the very top: stay at the top. Keeping
+        // the screen CENTRE fixed here would scroll the first page's top away
+        // as soon as the fit-zoom runs on load.
+        const y = last.atTop ? null : contentYForAnchor(slots, last.anchor);
         if (y !== null) {
           window.scrollTo({ top: rootDocTop() + Math.max(0, y - last.viewH / 2) });
           const ratio = previousZoom > 0 ? zoom / previousZoom : 1;

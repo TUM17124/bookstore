@@ -125,4 +125,15 @@ describe("ContinuousPageView reading position", () => {
       expect(useViewStore.getState().currentPageIndex).toBe(4);
     }
   });
+
+  it("does not scroll away from the top when the zoom changes on first load (fit zoom)", async () => {
+    const r = mountedRoot();
+    await act(async () => r.render(view(1)));
+    await scrollWindow(0);
+    scrollTo.mockClear();
+    await act(async () => r.render(view(1.4)));
+    await frame();
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(scrollY).toBe(0);
+  });
 });
