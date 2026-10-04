@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { useTranslations } from "@/lib/pdf-editor/use-translations";
 import type { PageObject } from "@giga-pdf/types";
 import { Plus, Trash2, ChevronUp, ChevronDown, Copy, RotateCw, FileOutput, Scaling } from "lucide-react";
@@ -50,6 +50,21 @@ export function PagesSidebar({
   thumbnails,
 }: PagesSidebarProps) {
   const t = useTranslations("editor.pages");
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Follow the reader: when the highlighted page changes (scrolling the
+  // document), bring its thumbnail into view INSIDE the list only. Never
+  // `scrollIntoView` here - that would also scroll the window and fight the
+  // document the user is scrolling.
+  useEffect(() => {
+    const list = listRef.current;
+    const thumb = list?.children[currentPageIndex] as HTMLElement | undefined;
+    if (!list || !thumb) return;
+    const top = thumb.offsetTop - list.offsetTop;
+    const bottom = top + thumb.offsetHeight;
+    if (top < list.scrollTop) list.scrollTop = Math.max(0, top - 8);
+    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight + 8;
+  }, [currentPageIndex]);
 
   const handleMoveUp = (index: number) => {
     if (onPageReorder && index > 0) {
@@ -81,10 +96,12 @@ export function PagesSidebar({
       </div>
 
       {/* Pages list */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-2">
+      <div ref={listRef} className="relative flex-1 overflow-y-auto p-2 space-y-2" data-testid="pages-list">
         {pages.map((page, index) => (
           <div
             key={page.pageId}
+            data-current={index === currentPageIndex ? "true" : undefined}
+            aria-current={index === currentPageIndex ? "page" : undefined}
             className={`
               page-thumbnail group relative cursor-pointer rounded-lg overflow-hidden border-2 transition-colors
               ${

@@ -93,6 +93,7 @@ import {
 import { useDocument } from "@/hooks/use-document";
 import { useDocumentSave } from "@/hooks/use-document-save";
 import { usePageThumbnails } from "@/hooks/use-page-thumbnails";
+import { useFocusedPageIndex } from "@/hooks/use-focused-page-index";
 import {
   useEmbeddedFonts,
   buildDocumentFontOptions,
@@ -615,10 +616,11 @@ function EditorPageInner() {
   // View store — active page in the continuous (Word-like) scroller. The
   // continuous view writes activePageIndex on click; the page-scoped panels
   // read it (see effectivePageIndex below). Single-page mode ignores it.
-  const { activePageIndex, setActivePageIndex } = useViewStore(
+  const { activePageIndex, setActivePageIndex, setViewCurrentPageIndex } = useViewStore(
     useShallow((s) => ({
       activePageIndex: s.activePageIndex,
       setActivePageIndex: s.setActivePageIndex,
+      setViewCurrentPageIndex: s.setCurrentPageIndex,
     }))
   );
 
@@ -853,6 +855,10 @@ function EditorPageInner() {
   // current page. `effectivePageIndex`/`effectivePage` unify the two so the
   // panels stay agnostic of the layout mode.
   const isContinuous = viewMode === "continuous";
+  // Page being looked at (follows the scroll in continuous mode): drives the
+  // "Page X of Y" indicators and the highlighted thumbnail. `effectivePageIndex`
+  // below is the ACTIVE (clicked) page that the editing panels follow.
+  const focusedPageIndex = useFocusedPageIndex(isContinuous, currentPageIndex, pages.length);
   const effectivePageIndex = useMemo(() => {
     const raw = isContinuous ? activePageIndex : currentPageIndex;
     if (pages.length === 0) return 0;
@@ -981,11 +987,14 @@ function EditorPageInner() {
           : Math.min(Math.max(0, index), pages.length - 1);
       goToPage(clamped);
       if (isContinuous) {
+        // Highlight/indicator move at once; the scroll handler keeps them in
+        // step as the smooth scroll runs.
+        setViewCurrentPageIndex(clamped);
         activatePage(clamped);
         continuousViewRef.current?.scrollToPage(clamped, align);
       }
     },
-    [pages.length, goToPage, isContinuous, activatePage]
+    [pages.length, goToPage, isContinuous, activatePage, setViewCurrentPageIndex]
   );
 
   // Apply the ?page=N deep link once the document's pages are available (opened
@@ -6038,7 +6047,7 @@ function EditorPageInner() {
             ) : null}
             <p className="text-xs text-muted-foreground">
               {t("pageIndicator", {
-                current: currentPageIndex + 1,
+                current: focusedPageIndex + 1,
                 total: pages.length,
               })}
             </p>
@@ -6515,7 +6524,7 @@ function EditorPageInner() {
             <div className="relative flex h-full">
               <PagesSidebar
               pages={pages}
-              currentPageIndex={effectivePageIndex}
+              currentPageIndex={focusedPageIndex}
               onPageSelect={(index) => navigateToPage(index, "start")}
               onPageAdd={handleAddPage}
               onPageDelete={handleDeletePage}
@@ -6924,7 +6933,7 @@ function EditorPageInner() {
           <div className="flex min-h-0 flex-1">
             <PagesSidebar
               pages={pages}
-              currentPageIndex={effectivePageIndex}
+              currentPageIndex={focusedPageIndex}
               onPageSelect={(index) => {
                 navigateToPage(index, "start");
                 setShowPagesSheet(false);
@@ -7110,7 +7119,7 @@ function EditorPageInner() {
           </button>
           <span>
             {t("pageIndicator", {
-              current: currentPageIndex + 1,
+              current: focusedPageIndex + 1,
               total: pages.length,
             })}
           </span>

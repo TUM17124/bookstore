@@ -58,15 +58,21 @@ import { PageSlot } from "./page-slot";
 import type { EditorCanvasHandle } from "./editor-canvas";
 import { PageRenderPool } from "./lib/page-render-pool";
 import {
+  PAGE_H_PADDING_PX,
+  anchorAtContentY,
   computePageLayout,
+  contentYForAnchor,
   effectivePagePoints,
   pageIndexAtScroll,
+  type PageSlot as PageSlotGeometry,
+  type ScrollAnchor,
 } from "./lib/page-layout";
 import type { PageMargins } from "./lib/page-margins";
 import type { RulerUnit } from "./lib/ruler-ticks";
 // Tactile (mobile lot 2): per-tool touch-action gating + app pinch-to-zoom.
 import { touchActionForTool } from "./lib/touch-interaction";
 import { attachPinchZoom } from "./lib/pinch-zoom";
+import { HorizontalScrollMirror } from "./horizontal-scroll-mirror";
 
 /** Pages of buffer kept mounted on each side of the visible window. */
 const BUFFER_PAGES = 2;
@@ -321,6 +327,40 @@ function ContinuousPageViewImpl(
   };
   const contentScrollTop = () => Math.max(0, window.scrollY - rootDocTop());
 
+  // ── Keep the reading position when the zoom changes ────────────────────────
+  // The document scrolls with the window, so a zoom re-lays every page out
+  // while `window.scrollY` stays the same: the page that was in view slides
+  // away (zooming out of page 8 could land back near page 1, and the browser
+  // clamps the scroll when the document gets shorter). We therefore remember
+  // what is at the middle of the screen - which page and how far down it, plus
+  // the horizontal scroll - on every scroll and after every layout, and put it
+  // back in the layout effect that follows a zoom (before paint). Pinch zoom
+  // keeps its own finger-anchored projection (pendingPinchAnchorRef).
+  const lastViewRef = useRef<{
+    anchor: ScrollAnchor | null;
+    viewH: number;
+    viewW: number;
+    scrollLeft: number;
+  }>({ anchor: null, viewH: 0, viewW: 0, scrollLeft: 0 });
+  const committedZoomRef = useRef(zoom);
+  const sampleView = (layoutSlots: PageSlotGeometry[]) => {
+    const root = scrollRef.current;
+    if (!root) {
+      return;
+    }
+    const viewH = window.innerHeight;
+    lastViewRef.current = {
+      anchor: anchorAtContentY(layoutSlots, contentScrollTop() + viewH / 2),
+      viewH,
+      viewW: root.clientWidth,
+      scrollLeft: root.scrollLeft,
+    };
+  };
+  const sampleViewRef = useRef(sampleView);
+  useEffect(() => {
+    sampleViewRef.current = sampleView;
+  });
+
   // Mirror of the current zoom so the fit-zoom effect can compare against it
   // without re-subscribing its ResizeObserver on every zoom change (same
   // pattern the single-page EditorCanvas uses for its own fit logic).
@@ -330,7 +370,7 @@ function ContinuousPageViewImpl(
   }, [zoom]);
 
   // Layout is pure geometry: recompute only when the page set or zoom changes.
-  const { slots, totalHeight } = useMemo(
+  const { slots, totalHeight, contentWidth } = useMemo(
     () => computePageLayout(pages, zoom),
     [pages, zoom],
   );
@@ -720,6 +760,7 @@ function ContinuousPageViewImpl(
       setScrollTop(top);
 
       const currentSlots = slotsRef.current;
+      sampleViewRef.current(currentSlots);
       const focus = pageIndexAtScroll(currentSlots, top, window.innerHeight);
       setCurrentPageIndex(focus);
 
@@ -832,8 +873,26 @@ function ContinuousPageViewImpl(
   // exact slot+fraction ; horizontal : proportionnel (best-effort — le contenu
   // est centré, le navigateur clampe la valeur).
   useLayoutEffect(() => {
+    const zoomChanged = committedZoomRef.current !== zoom;
+    const previousZoom = committedZoomRef.current;
+    committedZoomRef.current = zoom;
     const pending = pendingPinchAnchorRef.current;
     if (!pending) {
+      // Toolbar / keyboard / fit zoom: restore the remembered reading position.
+      const last = lastViewRef.current;
+      const root = scrollRef.current;
+      if (zoomChanged && last.anchor && root) {
+        const y = contentYForAnchor(slots, last.anchor);
+        if (y !== null) {
+          window.scrollTo({ top: rootDocTop() + Math.max(0, y - last.viewH / 2) });
+          const ratio = previousZoom > 0 ? zoom / previousZoom : 1;
+          root.scrollLeft = Math.max(
+            0,
+            (last.scrollLeft + last.viewW / 2) * ratio - last.viewW / 2,
+          );
+        }
+      }
+      sampleViewRef.current(slots);
       return;
     }
     pendingPinchAnchorRef.current = null;
@@ -848,7 +907,8 @@ function ContinuousPageViewImpl(
     );
     window.scrollTo({ top: rootDocTop() + targetContentTop });
     root.scrollLeft = Math.max(0, pending.contentX * pending.ratio - pending.viewX);
-  }, [slots]);
+    sampleViewRef.current(slots);
+  }, [slots, zoom]);
 
   // ── Imperative scrollToPage (used by sidebar / TOC / header / keyboard) ────
   useImperativeHandle(
@@ -874,22 +934,63 @@ function ContinuousPageViewImpl(
     // Tactile : `overscroll-contain` bloque le pull-to-refresh ; touch-action
     // suit l'outil (tracé → none : le doigt dessine sur la page active ;
     // navigation → pan-x pan-y : scroll natif, le pinch app garde le zoom).
+    <>
     <div
       ref={scrollRef}
-      // No overflow/overscroll classes here at all, on purpose: ANY non-
-      // "visible" overflow-x forces the CSS engine to compute overflow-y as
-      // "auto" too (spec quirk), and a sub-pixel rounding overflow (the page
-      // is 595x842 at fractional zoom) was enough to make this div swallow
-      // wheel/touch scroll into its own ~1px "scroll" instead of chaining it
-      // to the real page scroll - even with overscroll-behavior set to
-      // "auto". Fully flat/unscrollable here is the only reliable fix; the
-      // page-level scroll (see the window-scroll refactor above) carries
-      // the document, including any horizontal overflow at high zoom.
-      className="w-full bg-gray-200"
+      // The document scrolls vertically with the browser window (see the
+      // window-scroll refactor above), but it must scroll HORIZONTALLY inside
+      // this box: at high zoom a page is wider than the canvas column, and
+      // letting it overflow painted it over the Pages / Properties / Document
+      // Info panels and gave the whole page a horizontal scrollbar.
+      // `overflow-y: hidden` (not auto) is deliberate: this box is exactly as
+      // tall as its content, so it never scrolls vertically, and a hidden
+      // y-axis lets wheel/touch scroll chain straight to the window (a 1px
+      // sub-pixel `auto` overflow used to swallow it). The native horizontal
+      // bar would sit at the very end of a long document, so it is hidden and
+      // mirrored by a bar pinned to the bottom of the screen.
+      className="w-full overflow-x-auto overflow-y-hidden bg-gray-200 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       style={{ touchAction: touchActionForTool(tool) }}
+      onScroll={() => sampleViewRef.current(slotsRef.current)}
+      data-testid="continuous-scroller"
     >
       {/* Pre-sized content surface: total document height, absolute children. */}
-      <div className="relative mx-auto" style={{ height: totalHeight }}>
+      <div
+        className="relative mx-auto"
+        style={{
+          height: totalHeight,
+          width: "100%",
+          // Widest page + breathing room: the box grows (and scrolls) instead
+          // of letting a zoomed page escape it. Pages stay centred within it.
+          minWidth: contentWidth + 2 * PAGE_H_PADDING_PX,
+        }}
+      >
+        {/* Sentinels live in a strip pinned to the scroller's left edge, so a
+            horizontal pan never clips them out of the viewport (which would
+            read as "page left the window" and unmount it). */}
+        <div
+          className="pointer-events-none sticky left-0 w-px"
+          style={{ height: totalHeight, marginBottom: -totalHeight }}
+          aria-hidden="true"
+        >
+        {pages.map((page, index) => {
+          const slot = slots[index];
+          if (!slot) {
+            return null;
+          }
+          return (
+            <div
+              key={page.pageId}
+              ref={(el) => {
+                sentinelsRef.current[index] = el;
+              }}
+              data-page-index={index}
+              className="pointer-events-none absolute left-0 h-px w-px"
+              style={{ top: slot.top }}
+              aria-hidden="true"
+            />
+          );
+        })}
+        </div>
         {pages.map((page, index) => {
           const slot = slots[index];
           if (!slot) {
@@ -898,16 +999,6 @@ function ContinuousPageViewImpl(
           const isActive = index === activePageIndex;
           return (
             <React.Fragment key={page.pageId}>
-              {/* Zero-size IO sentinel positioned at the slot top. */}
-              <div
-                ref={(el) => {
-                  sentinelsRef.current[index] = el;
-                }}
-                data-page-index={index}
-                className="pointer-events-none absolute left-0 h-px w-px"
-                style={{ top: slot.top }}
-                aria-hidden="true"
-              />
               {pool ? (
                 <PageSlot
                   page={page}
@@ -992,6 +1083,8 @@ function ContinuousPageViewImpl(
         })}
       </div>
     </div>
+    <HorizontalScrollMirror targetRef={scrollRef} />
+    </>
   );
 }
 
