@@ -108,7 +108,7 @@ interface DocumentInfoSidebarProps {
    * Structurally remove the annotation `index` of page `page`
    * (`removeAnnotation`). Used only in native mode (with {@link onListAnnotations}).
    */
-  onRemoveAnnotation?: (page: number, index: number) => Promise<void> | void;
+  onRemoveAnnotation?: (page: number, index: number) => Promise<boolean | void> | boolean | void;
   /** Total page count — bounds the destination page input in outline edit. */
   pageCount?: number;
   className?: string;

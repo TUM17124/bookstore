@@ -152,8 +152,13 @@ interface AnnotationsPanelProps {
    * `removeAnnotation`). Utilisé uniquement en mode natif (avec
    * {@link onListAnnotations}). La promesse se résout une fois le PDF adopté ;
    * le panneau rafraîchit alors sa liste.
+   *
+   * Résoudre `true` signifie « le document a été remplacé » : le parent fournit
+   * alors un NOUVEAU `onListAnnotations` (lié au binaire), ce qui recharge déjà
+   * la liste — le panneau ne la recharge pas une seconde fois. Tout autre
+   * résultat (échec, rien changé) déclenche le rechargement du panneau.
    */
-  onRemoveAnnotation?: (page: number, index: number) => Promise<void> | void;
+  onRemoveAnnotation?: (page: number, index: number) => Promise<boolean | void> | boolean | void;
   className?: string;
 }
 
@@ -396,7 +401,7 @@ function NativeAnnotationsPanel({
   className,
 }: {
   onListAnnotations: () => Promise<NativeAnnotationItem[]>;
-  onRemoveAnnotation?: (page: number, index: number) => Promise<void> | void;
+  onRemoveAnnotation?: (page: number, index: number) => Promise<boolean | void> | boolean | void;
   onAdd?: (type: GeometricAnnotationType) => void;
   addBusy: boolean;
   className?: string;
@@ -438,12 +443,16 @@ function NativeAnnotationsPanel({
     async (item: NativeAnnotationItem) => {
       if (!onRemoveAnnotation) return;
       setRemovingKey(`${item.page}:${item.index}`);
+      let documentReplaced = false;
       try {
-        await onRemoveAnnotation(item.page, item.index);
+        documentReplaced = (await onRemoveAnnotation(item.page, item.index)) === true;
       } finally {
         // Re-read the inventory from the freshly adopted PDF; per-page indices
         // shift after a removal, so the stale list must be rebuilt, not patched.
-        await refresh();
+        // When the document was replaced, the new fetcher identity already
+        // reloads the list (effect above): a second fetch here was a duplicate.
+        if (documentReplaced) setRemovingKey(null);
+        else await refresh();
       }
     },
     [onRemoveAnnotation, refresh],

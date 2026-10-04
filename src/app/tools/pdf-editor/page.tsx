@@ -93,6 +93,15 @@ import {
 import { useDocument } from "@/hooks/use-document";
 import { useDocumentSave } from "@/hooks/use-document-save";
 import { usePageThumbnails } from "@/hooks/use-page-thumbnails";
+import { useFocusedPageIndex } from "@/hooks/use-focused-page-index";
+import {
+  XLSX_MIME,
+  copyTextToClipboard,
+  downloadBytes,
+  tableToText,
+  toXlsx,
+  type TableExportFormat,
+} from "@/lib/table-export";
 import {
   useEmbeddedFonts,
   buildDocumentFontOptions,
@@ -615,10 +624,11 @@ function EditorPageInner() {
   // View store — active page in the continuous (Word-like) scroller. The
   // continuous view writes activePageIndex on click; the page-scoped panels
   // read it (see effectivePageIndex below). Single-page mode ignores it.
-  const { activePageIndex, setActivePageIndex } = useViewStore(
+  const { activePageIndex, setActivePageIndex, setViewCurrentPageIndex } = useViewStore(
     useShallow((s) => ({
       activePageIndex: s.activePageIndex,
       setActivePageIndex: s.setActivePageIndex,
+      setViewCurrentPageIndex: s.setCurrentPageIndex,
     }))
   );
 
@@ -853,6 +863,10 @@ function EditorPageInner() {
   // current page. `effectivePageIndex`/`effectivePage` unify the two so the
   // panels stay agnostic of the layout mode.
   const isContinuous = viewMode === "continuous";
+  // Page being looked at (follows the scroll in continuous mode): drives the
+  // "Page X of Y" indicators and the highlighted thumbnail. `effectivePageIndex`
+  // below is the ACTIVE (clicked) page that the editing panels follow.
+  const focusedPageIndex = useFocusedPageIndex(isContinuous, currentPageIndex, pages.length);
   const effectivePageIndex = useMemo(() => {
     const raw = isContinuous ? activePageIndex : currentPageIndex;
     if (pages.length === 0) return 0;
@@ -981,11 +995,14 @@ function EditorPageInner() {
           : Math.min(Math.max(0, index), pages.length - 1);
       goToPage(clamped);
       if (isContinuous) {
+        // Highlight/indicator move at once; the scroll handler keeps them in
+        // step as the smooth scroll runs.
+        setViewCurrentPageIndex(clamped);
         activatePage(clamped);
         continuousViewRef.current?.scrollToPage(clamped, align);
       }
     },
-    [pages.length, goToPage, isContinuous, activatePage]
+    [pages.length, goToPage, isContinuous, activatePage, setViewCurrentPageIndex]
   );
 
   // Apply the ?page=N deep link once the document's pages are available (opened
@@ -3285,6 +3302,10 @@ function EditorPageInner() {
           tbl.tableIndexOnPage === tableIndexOnPage,
       );
       if (!target) return;
+      if (target.editable === false) {
+        toast({ title: t("tableEdit.toasts.notEditable") });
+        return;
+      }
 
       // Precise positioning when the active cell belongs to THIS table; else the
       // action falls back to the table's edges.
@@ -3394,6 +3415,30 @@ function EditorPageInner() {
   // (`EditorCanvas` `overlay` prop) and the continuous view (`PageSlot`'s
   // `renderActiveOverlay`). Uses `effectivePage` so the geometry matches whichever
   // page is focused in either mode. Returns `null` when table editing is off.
+  // Copy a table to the clipboard (CSV / Markdown / TSV) or download it as .xlsx.
+  const handleTableExport = useCallback(
+    async (tableIndexOnPage: number, format: TableExportFormat) => {
+      const pageNumber = effectivePageIndex + 1;
+      const target = documentTables.find(
+        (tbl) => tbl.pageNumber === pageNumber && tbl.tableIndexOnPage === tableIndexOnPage,
+      );
+      if (!target) return;
+      if (format === "xlsx") {
+        const base = (currentPdfFile?.name ?? "table").replace(/\.pdf$/i, "");
+        downloadBytes(toXlsx(target, `Table ${tableIndexOnPage + 1}`), `${base}-p${pageNumber}-table${tableIndexOnPage + 1}.xlsx`, XLSX_MIME);
+        toast({ title: t("tableEdit.toasts.downloaded") });
+        return;
+      }
+      const ok = await copyTextToClipboard(tableToText(target, format));
+      toast({
+        title: ok
+          ? t("tableEdit.toasts.copied", { format: format === "markdown" ? "Markdown" : format.toUpperCase() })
+          : t("tableEdit.toasts.copyFailed"),
+      });
+    },
+    [effectivePageIndex, documentTables, currentPdfFile, toast, t],
+  );
+
   const renderTableEditOverlay = useCallback((): React.ReactNode => {
     if (!showTableEdit || !effectivePage) return null;
     return (
@@ -3408,6 +3453,7 @@ function EditorPageInner() {
         onSelectTable={setSelectedTableIndex}
         onAction={handleTableEditAction}
         onStyleAction={handleTableStyleAction}
+        onExport={handleTableExport}
         busy={tableEditBusy}
       />
     );
@@ -3420,6 +3466,7 @@ function EditorPageInner() {
     activeTableCell,
     handleTableEditAction,
     handleTableStyleAction,
+    handleTableExport,
     tableEditBusy,
   ]);
 
@@ -5000,9 +5047,11 @@ function EditorPageInner() {
     }, [currentPdfFile]);
 
   const handleRemoveAnnotation = useCallback(
-    async (page: number, index: number): Promise<void> => {
+    // Resolves true when the document was replaced (the annotation panel then
+    // reloads through its new fetcher and must not fetch a second time).
+    async (page: number, index: number): Promise<boolean> => {
       const file = currentPdfFileRef.current;
-      if (!file) return;
+      if (!file) return false;
       const form = new FormData();
       form.append("file", file, file.name);
       form.append("action", "remove");
@@ -5026,7 +5075,11 @@ function EditorPageInner() {
         },
         () => void retryHandlersRef.current.handleRemoveAnnotation?.(page, index),
       );
-      if (blob) adoptModifiedPdf(blob, { reparse: true });
+      if (blob) {
+        adoptModifiedPdf(blob, { reparse: true });
+        return true;
+      }
+      return false;
     },
     [adoptModifiedPdf, editorOp, t],
   );
@@ -6032,7 +6085,7 @@ function EditorPageInner() {
             ) : null}
             <p className="text-xs text-muted-foreground">
               {t("pageIndicator", {
-                current: currentPageIndex + 1,
+                current: focusedPageIndex + 1,
                 total: pages.length,
               })}
             </p>
@@ -6509,7 +6562,7 @@ function EditorPageInner() {
             <div className="relative flex h-full">
               <PagesSidebar
               pages={pages}
-              currentPageIndex={effectivePageIndex}
+              currentPageIndex={focusedPageIndex}
               onPageSelect={(index) => navigateToPage(index, "start")}
               onPageAdd={handleAddPage}
               onPageDelete={handleDeletePage}
@@ -6918,7 +6971,7 @@ function EditorPageInner() {
           <div className="flex min-h-0 flex-1">
             <PagesSidebar
               pages={pages}
-              currentPageIndex={effectivePageIndex}
+              currentPageIndex={focusedPageIndex}
               onPageSelect={(index) => {
                 navigateToPage(index, "start");
                 setShowPagesSheet(false);
@@ -7104,7 +7157,7 @@ function EditorPageInner() {
           </button>
           <span>
             {t("pageIndicator", {
-              current: currentPageIndex + 1,
+              current: focusedPageIndex + 1,
               total: pages.length,
             })}
           </span>

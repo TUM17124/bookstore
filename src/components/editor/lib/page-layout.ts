@@ -20,6 +20,9 @@ export const PAGE_GAP_PX = 24;
 /** Top/bottom padding of the document scroll area, in CSS pixels. */
 export const PAGE_V_PADDING_PX = 16;
 
+/** Left/right breathing room around the widest page, in CSS pixels. */
+export const PAGE_H_PADDING_PX = 16;
+
 /**
  * Minimal page shape this module needs. The real {@link PageObject} satisfies
  * it, but tests (and other callers) can pass a bare object.
@@ -151,6 +154,54 @@ export function pageIndexAtScroll(
   }
 
   return best;
+}
+
+/**
+ * A reading position that survives a zoom change: which page, and how far down
+ * it (0 = its top edge, 1 = its bottom edge).
+ */
+export interface ScrollAnchor {
+  index: number;
+  frac: number;
+}
+
+/**
+ * The page under `contentY` (a y in scroll-content space), plus the fraction of
+ * the page above that point. A y in a gap or padding snaps to the nearest page
+ * edge, so the anchor is always a real position. Null for an empty layout.
+ */
+export function anchorAtContentY(
+  slots: readonly PageSlot[],
+  contentY: number
+): ScrollAnchor | null {
+  if (slots.length === 0) {
+    return null;
+  }
+  for (let i = 0; i < slots.length; i += 1) {
+    const slot = slots[i];
+    if (!slot) {
+      continue;
+    }
+    const bottom = slot.top + slot.height;
+    if (contentY <= bottom) {
+      const frac =
+        slot.height > 0 ? (contentY - slot.top) / slot.height : 0;
+      return { index: i, frac: Math.min(1, Math.max(0, frac)) };
+    }
+  }
+  return { index: slots.length - 1, frac: 1 };
+}
+
+/** Inverse of {@link anchorAtContentY} in a (re-zoomed) layout: the content y of the anchor. */
+export function contentYForAnchor(
+  slots: readonly PageSlot[],
+  anchor: ScrollAnchor
+): number | null {
+  const slot = slots[anchor.index];
+  if (!slot) {
+    return null;
+  }
+  return slot.top + anchor.frac * slot.height;
 }
 
 // Re-export the canonical page type so callers can pass real pages directly.
