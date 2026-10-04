@@ -36,6 +36,7 @@ function loadThree() {
 }
 import { useCurrency, formatMoney } from '@/lib/money';
 import { edgeMask, useScrollEdges } from '@/components/category-nav/use-scroll-edges';
+import { useSignalsOn } from '@/lib/site-config';
 import { Banners } from '@/components/offers/banners';
 
 export interface BookCfg {
@@ -87,14 +88,15 @@ export type CardSlot = { placement?: string; sectionId?: number | null; position
  * screen for one continuous second, sent once per card. A sponsored card
  * reports to the ad server (its signed token); any other card queues an
  * impression signal. */
-function useCardViewability(bookId: string, token: string | undefined, slot: CardSlot | undefined) {
+function useCardViewability(bookId: string, token: string | undefined, slot: CardSlot | undefined, signals: boolean) {
   const ref = useRef<HTMLButtonElement | null>(null);
   const placement = slot?.placement;
   const sectionId = slot?.sectionId ?? null;
   const position = slot?.position ?? null;
   useEffect(() => {
     const el = ref.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
+    // Organic cards report only while Activity signals are on (admin switch).
+    if (!el || typeof IntersectionObserver === 'undefined' || (!token && !signals)) return;
     const report = () =>
       token
         ? sendAdEvent('seen', token)
@@ -124,7 +126,7 @@ function useCardViewability(bookId: string, token: string | undefined, slot: Car
       if (timer) clearTimeout(timer);
       io.disconnect();
     };
-  }, [bookId, token, placement, sectionId, position]);
+  }, [bookId, token, placement, sectionId, position, signals]);
   return ref;
 }
 
@@ -239,7 +241,8 @@ function GridBookCard({
   const spineColor = book.spineBg || book.backBg || '#1c1f26';
   const pageColor = book.edge || '#eee4cf';
   const adToken = book.sponsored?.token;
-  const adRef = useCardViewability(book.id, adToken, slot);
+  const signalsOn = useSignalsOn();
+  const adRef = useCardViewability(book.id, adToken, slot, signalsOn);
 
   useEffect(() => {
     if (hasPayloadRating) return; // came with the section payload
@@ -269,7 +272,7 @@ function GridBookCard({
         // A sponsored click goes to the ad server (charging, fraud checks);
         // it logs the signal itself, marked sponsored.
         if (adToken) sendAdEvent('click', adToken);
-        else
+        else if (signalsOn)
           queueSignal({
             kind: 'click',
             book_id: book.id,
