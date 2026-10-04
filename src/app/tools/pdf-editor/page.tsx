@@ -5000,9 +5000,11 @@ function EditorPageInner() {
     }, [currentPdfFile]);
 
   const handleRemoveAnnotation = useCallback(
-    async (page: number, index: number): Promise<void> => {
+    // Resolves true when the document was replaced (the annotation panel then
+    // reloads through its new fetcher and must not fetch a second time).
+    async (page: number, index: number): Promise<boolean> => {
       const file = currentPdfFileRef.current;
-      if (!file) return;
+      if (!file) return false;
       const form = new FormData();
       form.append("file", file, file.name);
       form.append("action", "remove");
@@ -5026,7 +5028,11 @@ function EditorPageInner() {
         },
         () => void retryHandlersRef.current.handleRemoveAnnotation?.(page, index),
       );
-      if (blob) adoptModifiedPdf(blob, { reparse: true });
+      if (blob) {
+        adoptModifiedPdf(blob, { reparse: true });
+        return true;
+      }
+      return false;
     },
     [adoptModifiedPdf, editorOp, t],
   );

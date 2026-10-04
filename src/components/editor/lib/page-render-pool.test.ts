@@ -52,4 +52,47 @@ describe("page canvas ownership", () => {
     expect(pool.freeCount).toBe(1);
     pool.dispose();
   });
+
+  it("disposes an evicted canvas exactly once even when its host releases it later", async () => {
+    const pool = new PageRenderPool({ fabric, maxLive: 1 });
+    const first = await pool.acquire(0, host().el);
+    await pool.acquire(1, host().el); // evicts + disposes `first`
+    expect(first.dispose).toHaveBeenCalledOnce();
+    pool.release(0, first); // the old host's unmount cleanup
+    expect(first.dispose).toHaveBeenCalledOnce();
+    expect(pool.freeCount).toBe(0); // a disposed canvas is never recycled
+    pool.dispose();
+    expect(first.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("swallows a rejected or throwing dispose instead of leaking an unhandled rejection", async () => {
+    const pool = new PageRenderPool({ fabric });
+    const a = await pool.acquire(0, host().el);
+    const b = await pool.acquire(1, host().el);
+    (a.dispose as unknown as ReturnType<typeof vi.fn>).mockReturnValue(Promise.reject("aborted"));
+    (b.dispose as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw new Error("NotFoundError");
+    });
+    pool.dispose(); // must not throw; an unhandled rejection would fail this run
+    await new Promise((r) => setTimeout(r, 0));
+    expect(a.dispose).toHaveBeenCalledOnce();
+    expect(b.dispose).toHaveBeenCalledOnce();
+  });
+});
+
+describe("page canvas ownership with the real Fabric", () => {
+  it("evict + stale release + pool dispose leave no unhandled 'aborted' rejection", async () => {
+    const real = await import("fabric");
+    const pool = new PageRenderPool({ fabric: real as unknown as typeof Fabric, maxLive: 1 });
+    const h0 = host();
+    const c0 = await pool.acquire(0, h0.el);
+    c0.requestRenderAll(); // a pending render makes Fabric's dispose wait
+    await pool.acquire(1, host().el); // evicts c0
+    h0.mount.remove(); // host unmount
+    pool.release(0, c0); // its stale release used to dispose a second time
+    pool.dispose();
+    await new Promise((r) => setTimeout(r, 100));
+    // vitest fails the run on an unhandled rejection, so reaching here is the assertion
+    expect(pool.liveCount).toBe(0);
+  });
 });

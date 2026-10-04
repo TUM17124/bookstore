@@ -107,6 +107,14 @@ export class PageRenderPool {
   private readonly live = new Map<number, PoolEntry>();
   /** Released canvases available for reuse (LRU: oldest first). */
   private readonly freeList: FabricCanvas[] = [];
+  /**
+   * Canvases already handed to `dispose()`. Fabric's `dispose()` is async and a
+   * SECOND call while the first is still waiting for a pending render rejects
+   * the first with "aborted" (an unhandled rejection in the console). A host
+   * whose canvas was evicted still releases it on unmount, so the same canvas
+   * reached `dispose()` twice. Dispose each canvas exactly once.
+   */
+  private readonly disposedCanvases = new WeakSet<object>();
 
   /** Shared renderer (one GigaPdfDoc); created lazily on first background render. */
   private renderer: SharedRenderer | null = null;
@@ -200,6 +208,8 @@ export class PageRenderPool {
   release(index: number, expectedCanvas?: FabricCanvas): void {
     const entry = this.live.get(index);
     if (expectedCanvas && entry?.canvas !== expectedCanvas) {
+      // Already evicted/disposed (or superseded by a remounted page): safeDispose
+      // is a no-op for a canvas that was disposed before.
       this.safeDispose(expectedCanvas);
       return;
     }
@@ -403,6 +413,8 @@ export class PageRenderPool {
 
   /** Clear a canvas and push it onto the free-list for reuse. */
   private recycle(canvas: FabricCanvas): void {
+    // A disposed canvas has lost its elements; reusing it would throw.
+    if (this.isDisposed(canvas)) return;
     try {
       (canvas as unknown as PoolableFabricCanvas).clear();
     } catch (err) {
@@ -431,9 +443,31 @@ export class PageRenderPool {
     }
   }
 
+  private isDisposed(canvas: FabricCanvas): boolean {
+    return (
+      this.disposedCanvases.has(canvas) ||
+      (canvas as unknown as { disposed?: boolean }).disposed === true
+    );
+  }
+
+  /**
+   * Dispose a canvas once. Fabric's `dispose()` throws synchronously when its
+   * DOM was already taken apart and returns a promise that can reject; both
+   * are absorbed here so a teardown never surfaces as a console error.
+   */
   private safeDispose(canvas: FabricCanvas): void {
+    if (this.disposedCanvases.has(canvas)) return;
+    this.disposedCanvases.add(canvas);
     try {
-      void (canvas as unknown as PoolableFabricCanvas).dispose();
+      const result = (canvas as unknown as PoolableFabricCanvas).dispose();
+      if (result && typeof (result as Promise<void>).catch === "function") {
+        (result as Promise<void>).catch((err: unknown) => {
+          // "aborted" = a newer cleanup superseded this one; nothing to do.
+          if (err !== "aborted") {
+            clientLogger.warn("[PageRenderPool] dispose failed:", err);
+          }
+        });
+      }
     } catch (err) {
       clientLogger.warn("[PageRenderPool] dispose failed:", err);
     }
