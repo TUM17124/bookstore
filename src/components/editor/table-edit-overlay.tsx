@@ -4,8 +4,8 @@
  * table-edit-overlay.tsx
  *
  * The Word-like table-editing layer: a per-page overlay that draws a selectable
- * rectangle over every table the engine reconstructed (frames come from
- * `/api/pdf/table-structure` in PDF user-space, origin bottom-left), and a small
+ * rectangle over every table the service found (frames come from
+ * `/api/pdf/table-structure` in displayed page space, origin top-left), and a small
  * floating toolbar — appearing above the selected table — to add / remove a row
  * or column. Each action bakes the structural edit natively through the engine
  * (`applyModelOps` with `tableOps`) and the page re-parses, so the change is real
@@ -20,10 +20,11 @@
  *
  * Coordinate model
  * ────────────────
- * Frames are PDF points, origin bottom-left (Y-up). The sheet renders at `zoom`
- * (1pt → 1px at zoom 1), origin top-left (Y-down). Each frame is flipped to
- * displayed-point space (rotation-aware, mirroring the engine's `webToPdf`
- * inverse) and scaled by `zoom`: `px = pt * zoom`. The overlay fills the page
+ * Frames are already in DISPLAYED page space: points, origin top-left (Y-down),
+ * page rotation applied (the engine's model frames and the service's ruled-table
+ * frames both use it). The sheet renders at `zoom` (1pt → 1px at zoom 1), so
+ * `px = pt * zoom` - no flip. (This used to flip them again as if they were PDF
+ * user space, which drew every overlay mirrored vertically.) The overlay fills the page
  * sheet absolutely; only the table rectangles + toolbar are pointer-interactive
  * (the rest is `pointer-events-none`), so it never steals clicks from the page.
  */
@@ -39,8 +40,11 @@ import {
   Combine,
   PaintBucket,
   ChevronDown,
+  Copy,
+  Download,
 } from "lucide-react";
 import type { TableStructureInfo } from "@giga-pdf/api";
+import type { TableExportFormat } from "@/lib/table-export";
 
 /** Which add/remove action a toolbar button triggers, in grid terms. */
 export type TableEditAction =
@@ -85,12 +89,12 @@ export type TableStyleAction =
 export interface TableEditOverlayProps {
   /** Tables on THIS page (already filtered to `pageNumber`), in reading order. */
   tables: TableStructureInfo[];
-  /** Page width in PDF points, on the intrinsic (un-rotated) media box. */
-  pageWidthPts: number;
-  /** Page height in PDF points, on the intrinsic (un-rotated) media box. */
-  pageHeightPts: number;
-  /** Page `/Rotate` (CW): frames are flipped to displayed space accordingly. */
-  rotation: 0 | 90 | 180 | 270;
+  /** Page width in PDF points (kept for callers; frames no longer need it). */
+  pageWidthPts?: number;
+  /** Page height in PDF points (kept for callers; frames no longer need it). */
+  pageHeightPts?: number;
+  /** Page `/Rotate` (kept for callers; frames are already in displayed space). */
+  rotation?: 0 | 90 | 180 | 270;
   /** Current zoom factor (1 = 100%): points → px. */
   zoom: number;
   /** The selected table's `tableIndexOnPage`, or `null` when none is selected. */
@@ -108,6 +112,8 @@ export interface TableEditOverlayProps {
   onAction: (tableIndexOnPage: number, action: TableEditAction) => void;
   /** Run a STYLE action (cell shading, row/col size, border, span) on a table. */
   onStyleAction: (tableIndexOnPage: number, action: TableStyleAction) => void;
+  /** Copy (CSV / Markdown / TSV) or download (Excel) a table. */
+  onExport?: (tableIndexOnPage: number, format: TableExportFormat) => void;
   /** Disables the toolbar buttons while a bake is in flight. */
   busy?: boolean;
 }
@@ -121,52 +127,19 @@ interface ScreenRect {
 }
 
 /**
- * Flip a PDF-user-space frame (origin bottom-left) to displayed-point space
- * (origin top-left), rotation-aware, then scale by `zoom` to CSS px. Mirrors the
- * engine's `webToPdf` inverse: at rotation 0 the displayed height is the page
- * height and Y flips against it; at 90/270 the displayed box is swapped (height =
- * page WIDTH); at 180 X also flips. Returns `null` when the table has no frame.
+ * A table frame (displayed page space, points, origin top-left) as a rectangle
+ * in CSS px on the page sheet. Returns `null` when the table has no frame.
  */
-function frameToScreenRect(
+export function frameToScreenRect(
   frame: TableStructureInfo["frame"],
-  pageWidthPts: number,
-  pageHeightPts: number,
-  rotation: 0 | 90 | 180 | 270,
   zoom: number,
 ): ScreenRect | null {
   if (!frame) return null;
-  const { x, y, w, h } = frame;
-
-  // Displayed point-space top-left (Y-down) before zoom. The displayed height
-  // used for the Y-flip is the page width on a 90/270 rotation (dims swapped).
-  let left: number;
-  let top: number;
-  let width: number;
-  let height: number;
-
-  if (rotation === 90 || rotation === 270) {
-    const displayedHeight = pageWidthPts;
-    left = x;
-    top = displayedHeight - y - h;
-    width = w;
-    height = h;
-  } else if (rotation === 180) {
-    left = pageHeightPts - x - w; // X flips on 180° (mirrors webToPdf)
-    top = y;
-    width = w;
-    height = h;
-  } else {
-    left = x;
-    top = pageHeightPts - y - h;
-    width = w;
-    height = h;
-  }
-
   return {
-    left: left * zoom,
-    top: top * zoom,
-    width: width * zoom,
-    height: height * zoom,
+    left: frame.x * zoom,
+    top: frame.y * zoom,
+    width: frame.w * zoom,
+    height: frame.h * zoom,
   };
 }
 
@@ -441,6 +414,63 @@ function TableStyleMenu({
   );
 }
 
+/** Copy / export menu: CSV, Markdown and TSV go to the clipboard, Excel downloads a file. */
+function TableExportMenu({
+  onExport,
+  busy,
+}: {
+  onExport: (format: TableExportFormat) => void;
+  busy: boolean;
+}) {
+  const t = useTranslations("editor.tableEdit");
+  const [open, setOpen] = useState(false);
+  const items: Array<{ format: TableExportFormat; label: string; icon: React.ReactNode }> = [
+    { format: "csv", label: t("copyCsv"), icon: <Copy size={14} /> },
+    { format: "markdown", label: t("copyMarkdown"), icon: <Copy size={14} /> },
+    { format: "tsv", label: t("copyTsv"), icon: <Copy size={14} /> },
+    { format: "xlsx", label: t("downloadXlsx"), icon: <Download size={14} /> },
+  ];
+  return (
+    <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        title={t("exportMenu")}
+        aria-label={t("exportMenu")}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        disabled={busy}
+        className="flex h-7 items-center justify-center gap-0.5 rounded px-1 text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <Copy size={15} />
+        <ChevronDown size={11} />
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute left-0 top-full z-40 mt-1 w-56 rounded-lg border border-border bg-background p-1 shadow-xl"
+        >
+          {items.map((item) => (
+            <button
+              key={item.format}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onExport(item.format);
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted"
+            >
+              {item.icon}
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * The floating add/remove toolbar, positioned just above a table's screen rect
  * (or below it when the table starts near the top of the sheet so the toolbar
@@ -453,8 +483,10 @@ function TableToolbar({
   canDeleteRow,
   canDeleteColumn,
   activeCell,
+  editable,
   onAction,
   onStyleAction,
+  onExport,
   busy,
 }: {
   rect: ScreenRect;
@@ -463,8 +495,11 @@ function TableToolbar({
   canDeleteRow: boolean;
   canDeleteColumn: boolean;
   activeCell: { row: number; col: number } | null;
+  /** False for tables read from ruling lines: copy/export only. */
+  editable: boolean;
   onAction: (tableIndexOnPage: number, action: TableEditAction) => void;
   onStyleAction: (tableIndexOnPage: number, action: TableStyleAction) => void;
+  onExport?: (tableIndexOnPage: number, format: TableExportFormat) => void;
   busy: boolean;
 }) {
   const t = useTranslations("editor.tableEdit");
@@ -491,6 +526,8 @@ function TableToolbar({
       // Prevent the page-body deselect handler from firing when using the bar.
       onMouseDown={(e) => e.stopPropagation()}
     >
+      {editable ? (
+        <>
       <ToolbarButton label={label("insertRowAbove")} onClick={run("insertRowAbove")} disabled={busy}>
         <ArrowUpToLine size={15} />
       </ToolbarButton>
@@ -539,6 +576,21 @@ function TableToolbar({
         onStyleAction={onStyleAction}
         busy={busy}
       />
+        </>
+      ) : (
+        <span className="px-2 text-xs text-muted-foreground" title={t("readOnlyHint")}>
+          {t("readOnly")}
+        </span>
+      )}
+      {onExport ? (
+        <>
+          {editable ? <span className="mx-0.5 h-5 w-px bg-border" aria-hidden /> : null}
+          <TableExportMenu
+            onExport={(format) => onExport(tableIndexOnPage, format)}
+            busy={busy}
+          />
+        </>
+      ) : null}
     </div>
   );
 }
@@ -550,15 +602,13 @@ function TableToolbar({
  */
 export function TableEditOverlay({
   tables,
-  pageWidthPts,
-  pageHeightPts,
-  rotation,
   zoom,
   selectedTableIndex,
   activeCell,
   onSelectTable,
   onAction,
   onStyleAction,
+  onExport,
   busy = false,
 }: TableEditOverlayProps) {
   const t = useTranslations("editor.tableEdit");
@@ -568,15 +618,9 @@ export function TableEditOverlay({
     () =>
       tables.map((table) => ({
         table,
-        rect: frameToScreenRect(
-          table.frame,
-          pageWidthPts,
-          pageHeightPts,
-          rotation,
-          zoom,
-        ),
+        rect: frameToScreenRect(table.frame, zoom),
       })),
-    [tables, pageWidthPts, pageHeightPts, rotation, zoom],
+    [tables, zoom],
   );
 
   const selected = rects.find(
@@ -642,8 +686,10 @@ export function TableEditOverlay({
           canDeleteRow={selected.table.rowCount > 1}
           canDeleteColumn={selected.table.colCount > 1}
           activeCell={activeCell}
+          editable={selected.table.editable !== false}
           onAction={onAction}
           onStyleAction={onStyleAction}
+          {...(onExport ? { onExport } : {})}
           busy={busy}
         />
       ) : null}

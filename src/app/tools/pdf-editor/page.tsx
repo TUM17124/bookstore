@@ -95,6 +95,14 @@ import { useDocumentSave } from "@/hooks/use-document-save";
 import { usePageThumbnails } from "@/hooks/use-page-thumbnails";
 import { useFocusedPageIndex } from "@/hooks/use-focused-page-index";
 import {
+  XLSX_MIME,
+  copyTextToClipboard,
+  downloadBytes,
+  tableToText,
+  toXlsx,
+  type TableExportFormat,
+} from "@/lib/table-export";
+import {
   useEmbeddedFonts,
   buildDocumentFontOptions,
 } from "@giga-pdf/editor";
@@ -3294,6 +3302,10 @@ function EditorPageInner() {
           tbl.tableIndexOnPage === tableIndexOnPage,
       );
       if (!target) return;
+      if (target.editable === false) {
+        toast({ title: t("tableEdit.toasts.notEditable") });
+        return;
+      }
 
       // Precise positioning when the active cell belongs to THIS table; else the
       // action falls back to the table's edges.
@@ -3403,6 +3415,30 @@ function EditorPageInner() {
   // (`EditorCanvas` `overlay` prop) and the continuous view (`PageSlot`'s
   // `renderActiveOverlay`). Uses `effectivePage` so the geometry matches whichever
   // page is focused in either mode. Returns `null` when table editing is off.
+  // Copy a table to the clipboard (CSV / Markdown / TSV) or download it as .xlsx.
+  const handleTableExport = useCallback(
+    async (tableIndexOnPage: number, format: TableExportFormat) => {
+      const pageNumber = effectivePageIndex + 1;
+      const target = documentTables.find(
+        (tbl) => tbl.pageNumber === pageNumber && tbl.tableIndexOnPage === tableIndexOnPage,
+      );
+      if (!target) return;
+      if (format === "xlsx") {
+        const base = (currentPdfFile?.name ?? "table").replace(/\.pdf$/i, "");
+        downloadBytes(toXlsx(target, `Table ${tableIndexOnPage + 1}`), `${base}-p${pageNumber}-table${tableIndexOnPage + 1}.xlsx`, XLSX_MIME);
+        toast({ title: t("tableEdit.toasts.downloaded") });
+        return;
+      }
+      const ok = await copyTextToClipboard(tableToText(target, format));
+      toast({
+        title: ok
+          ? t("tableEdit.toasts.copied", { format: format === "markdown" ? "Markdown" : format.toUpperCase() })
+          : t("tableEdit.toasts.copyFailed"),
+      });
+    },
+    [effectivePageIndex, documentTables, currentPdfFile, toast, t],
+  );
+
   const renderTableEditOverlay = useCallback((): React.ReactNode => {
     if (!showTableEdit || !effectivePage) return null;
     return (
@@ -3417,6 +3453,7 @@ function EditorPageInner() {
         onSelectTable={setSelectedTableIndex}
         onAction={handleTableEditAction}
         onStyleAction={handleTableStyleAction}
+        onExport={handleTableExport}
         busy={tableEditBusy}
       />
     );
@@ -3429,6 +3466,7 @@ function EditorPageInner() {
     activeTableCell,
     handleTableEditAction,
     handleTableStyleAction,
+    handleTableExport,
     tableEditBusy,
   ]);
 

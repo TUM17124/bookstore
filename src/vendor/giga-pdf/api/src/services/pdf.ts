@@ -1587,6 +1587,8 @@ export interface TableCellInfo {
   colSpan: number;
   rowSpan: number;
   sourceIndices: number[];
+  /** The cell's text (lines joined with "\n"); empty for an empty cell. */
+  text?: string;
 }
 
 /** One table surfaced by `tableStructure` — its handle, grid size, frame, cells. */
@@ -1599,8 +1601,16 @@ export interface TableStructureInfo {
   rowCount: number;
   /** Number of grid columns. */
   colCount: number;
-  /** Placement frame (PDF points, origin bottom-left), or `null` when unknown. */
+  /**
+   * Placement frame in DISPLAYED page space: points, origin TOP-left, page
+   * rotation already applied (the space the engine's own table frames use).
+   * `null` when unknown.
+   */
   frame: TableRect | null;
+  /** `model` = the engine's table; `rules` = read from the drawn ruling lines. Absent on older services. */
+  source?: 'model' | 'rules';
+  /** False for `rules` tables: they can be copied/exported but not row/column-edited. Absent (= editable) on older services. */
+  editable?: boolean;
   /** Cells in row-major order (grid position + spans + run indices). */
   cells: TableCellInfo[];
 }

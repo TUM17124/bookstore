@@ -1133,9 +1133,20 @@
       "columnWidth": "Column width",
       "tableBorder": "Table border",
       "apply": "Apply",
+      "readOnly": "Read-only table",
+      "readOnlyHint": "Detected from the page's ruling lines: it can be copied or exported, but not edited here.",
+      "exportMenu": "Copy or export table",
+      "copyCsv": "Copy as CSV",
+      "copyMarkdown": "Copy as Markdown",
+      "copyTsv": "Copy as TSV",
+      "downloadXlsx": "Download as Excel (.xlsx)",
       "toasts": {
         "applied": "Table updated",
-        "failed": "Table edit failed"
+        "failed": "Table edit failed",
+        "copied": "Table copied as {format}",
+        "copyFailed": "Could not copy the table. Allow clipboard access or use the Excel download.",
+        "downloaded": "Table saved as Excel",
+        "notEditable": "This table was read from the page's ruling lines and can't be edited, only copied or exported."
       }
     },
     "redactPii": {
