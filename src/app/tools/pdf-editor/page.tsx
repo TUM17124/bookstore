@@ -161,7 +161,6 @@ import {
   styleActionToTableEdit,
   buildSourceIndexToCellMap,
 } from "@/components/editor/lib/table-edit";
-import { ShareDialog } from "@/components/sharing/share-dialog";
 import {
   useFlattenPdf,
   usePdfPageOperation,
@@ -519,8 +518,6 @@ function EditorPageInner() {
   // search hit. Applied once, after the pages load (see effect below).
   const deepLinkAppliedRef = useRef(false);
 
-  // Share dialog (GED) — partage le document STOCKÉ (storedDocumentId)
-  const [showShareDialog, setShowShareDialog] = useState(false);
 
   // Publish/Edit-published-book integration: null = not yet loaded/unpublished,
   // a Book id once this saved document has been attached to a Book. Fetched
@@ -1028,10 +1025,9 @@ function EditorPageInner() {
   // exact-string matches (no dynamic segments), so its real replacement
   // (bookstore_pdf_service/src/routes/fonts.ts) takes documentId/fontId as
   // query params on ONE route instead — these injectable overrides adapt the
-  // hook to that contract. Google Fonts substitution (fetchGoogleFont) is
-  // left on the hook's own default: it's a non-fatal last-resort fallback
-  // (see use-embedded-fonts.ts) for fonts that aren't embedded at all, and
-  // failing it just skips the substitute rather than breaking font loading.
+  // hook to that contract. There is no Google Fonts route: fetchGoogleFont is
+  // not injected, so the hook makes no request for it and a font that is not
+  // embedded just falls back to the locally available fonts.
   const fetchFontList = useCallback(async (docId: string) => {
     const token = await getAuthToken();
     const res = await pdfServiceFetch(
@@ -6095,10 +6091,9 @@ function EditorPageInner() {
         <div className="flex shrink-0 items-center gap-2 md:gap-3">
           {/* The actions are mirrored in the "Actions document" menu; on
               phones their labels are hidden to keep the header compact.
-              Share is hidden, not just broken-on-click: the invite endpoint
-              was never built (real-time collaboration was explicitly cut
-              from this migration's scope), so surfacing "Failed to send
-              invitation" as a live error is worse than not offering it.
+              There is no Share button: sharing was never built here (no
+              /sharing routes exist) and the dead dialog and its API calls
+              were removed rather than left to fail.
               Publish, export, and save stay directly available in the sticky
               header on phones as compact icon buttons. */}
           {storedDocumentId && (
@@ -7068,14 +7063,6 @@ function EditorPageInner() {
           </div>
         </SheetContent>
       </UiSheet>
-
-      {/* Share dialog (GED) — partage le document STOCKÉ, pas la copie de session */}
-      <ShareDialog
-        open={showShareDialog}
-        onOpenChange={setShowShareDialog}
-        documentId={storedDocumentId}
-        documentName={name}
-      />
 
       {/* P7 — Rechercher & remplacer (texte du scene graph, toutes pages) */}
       <FindReplaceDialog
