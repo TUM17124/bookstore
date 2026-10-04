@@ -39,6 +39,7 @@ export type FeatureName =
   | "install_prompt"
   | "push_prompt"
   | "personalised_default"
+  | "signals"
 
 export type ProPlan = { code: string; name: string; price: string; billing_days: number; description: string }
 
@@ -136,6 +137,13 @@ export function useFeature(name: FeatureName): boolean {
 }
 
 /** The message shown while a switch is off (also what the server returns). */
+/** Activity signals (Part E): OFF unless the server says on - also while
+ * the site config is loading or unreachable (fails closed). */
+export function useSignalsOn(): boolean {
+  const [cfg] = useSiteConfig()
+  return cfg?.features?.signals === true
+}
+
 export function useOffMessage(name: FeatureName): string {
   return useText(`off.${name}`)
 }

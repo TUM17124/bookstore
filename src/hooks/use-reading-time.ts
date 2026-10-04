@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { queueSignal } from "@/lib/api"
+import { useSignalsOn } from "@/lib/site-config"
 
 const TICK_MS = 5_000
 const FLUSH_MS = 60_000
@@ -17,8 +18,10 @@ const IDLE_MS = 120_000 // reader: no scroll/tap/key for 2 minutes = not reading
  * or the reader closes.
  */
 export function useReadingTime(bookId: string | undefined, active: boolean, mode: "reader" | "audio") {
+  // Only while the admin's Activity signals switch is on.
+  const on = useSignalsOn()
   useEffect(() => {
-    if (!bookId || !active || typeof window === "undefined") return
+    if (!on || !bookId || !active || typeof window === "undefined") return
     let secs = 0
     let last = Date.now()
     let lastInput = Date.now()
@@ -55,5 +58,5 @@ export function useReadingTime(bookId: string | undefined, active: boolean, mode
       document.removeEventListener("visibilitychange", onVisibility)
       flush()
     }
-  }, [bookId, active, mode])
+  }, [on, bookId, active, mode])
 }

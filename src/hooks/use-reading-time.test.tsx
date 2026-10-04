@@ -4,6 +4,8 @@ import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/api", () => ({ queueSignal: vi.fn() }))
+const signalsSwitch = { on: true }
+vi.mock("@/lib/site-config", () => ({ useSignalsOn: () => signalsSwitch.on }))
 import { queueSignal } from "@/lib/api"
 import { useReadingTime } from "./use-reading-time"
 
@@ -27,6 +29,15 @@ describe("useReadingTime (Part E: reading time signals)", () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.mocked(queueSignal).mockClear()
+    signalsSwitch.on = true
+  })
+
+  it("sends nothing while the Activity signals switch is off", () => {
+    signalsSwitch.on = false
+    mount(true, "audio")
+    act(() => vi.advanceTimersByTime(3 * 60_000))
+    act(() => root.render(<Reader active={false} mode="audio" />))
+    expect(sent()).toEqual([])
   })
   afterEach(() => {
     act(() => root.unmount())
