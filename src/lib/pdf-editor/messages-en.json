@@ -341,6 +341,12 @@
       "textLabel": "Text",
       "textPlaceholder": "e.g. CONFIDENTIAL",
       "positionLabel": "Position",
+      "angleLabel": "Angle: {angle}°",
+      "angleReset": "Reset angle",
+      "fontSizeLabel": "Font size (pt)",
+      "fontSizeAuto": "Auto",
+      "fontSizeInvalid": "Enter a size between 1 and 500, or leave blank for automatic.",
+      "colorLabel": "Colour",
       "positionOptions": {
         "centerDiagonal": "Center diagonal",
         "header": "Header",

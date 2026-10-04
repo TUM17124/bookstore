@@ -4,6 +4,17 @@ import React, { useState } from "react";
 import { useTranslations } from "@/lib/pdf-editor/use-translations";
 import { X, Loader2, Droplet } from "lucide-react";
 import { useAddWatermark, useAddImageWatermark, downloadBlob } from "@giga-pdf/api";
+import {
+  DEFAULT_WATERMARK_COLOR,
+  DEFAULT_WATERMARK_TEXT,
+  MAX_FONT_SIZE,
+  MIN_FONT_SIZE,
+  buildTextWatermarkOptions,
+  defaultAngle,
+  fontSizeError,
+  parsePages,
+  type WatermarkPosition,
+} from "./lib/watermark-options";
 
 export interface WatermarkDialogProps {
   open: boolean;
@@ -22,14 +33,7 @@ export interface WatermarkDialogProps {
 /** What to do with the watermarked PDF once produced. */
 type OutputMode = "apply" | "download";
 
-type Position =
-  | "center-diagonal"
-  | "top-left"
-  | "top-right"
-  | "bottom-left"
-  | "bottom-right"
-  | "header"
-  | "footer";
+type Position = WatermarkPosition;
 
 type Anchor =
   | "center"
@@ -75,8 +79,13 @@ export function WatermarkDialog({
   const [mode, setMode] = useState<"text" | "image">("text");
 
   // ── Text-mode state ────────────────────────────────────────────────────
-  const [text, setText] = useState("CONFIDENTIEL");
+  const [text, setText] = useState(DEFAULT_WATERMARK_TEXT);
   const [position, setPosition] = useState<Position>("center-diagonal");
+  // Angle follows the preset (45° diagonal, 0° elsewhere) until the user moves it.
+  const [angle, setAngle] = useState(defaultAngle("center-diagonal"));
+  const [angleTouched, setAngleTouched] = useState(false);
+  const [fontSizeInput, setFontSizeInput] = useState("");
+  const [colorHex, setColorHex] = useState(DEFAULT_WATERMARK_COLOR);
 
   // ── Image-mode state ───────────────────────────────────────────────────
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -96,24 +105,6 @@ export function WatermarkDialog({
   // the dialog degrades to its historical download-only behaviour.
   const canApplyToDocument = Boolean(onApplied);
 
-  const parsePages = (raw: string): number[] | undefined => {
-    const trimmed = raw.trim();
-    if (!trimmed) return undefined;
-    const out = new Set<number>();
-    for (const part of trimmed.split(",")) {
-      const seg = part.trim();
-      const range = seg.match(/^(\d+)\s*-\s*(\d+)$/);
-      if (range) {
-        const start = Number(range[1]);
-        const end = Number(range[2]);
-        for (let i = start; i <= end; i++) out.add(i);
-      } else if (/^\d+$/.test(seg)) {
-        out.add(Number(seg));
-      }
-    }
-    return out.size > 0 ? Array.from(out).sort((a, b) => a - b) : undefined;
-  };
-
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -123,12 +114,15 @@ export function WatermarkDialog({
       if (!currentFile || !text.trim()) return;
       blob = await addWatermark.mutateAsync({
         file: currentFile,
-        options: {
-          text: text.trim(),
+        options: buildTextWatermarkOptions({
+          text,
           position,
-          opacity: opacity / 100,
-          pages: parsePages(pagesInput),
-        },
+          opacityPct: opacity,
+          pagesInput,
+          angle,
+          fontSizeInput,
+          colorHex,
+        }),
       });
     } else {
       if (!currentFile || !imageFile) return;
@@ -161,7 +155,7 @@ export function WatermarkDialog({
   const isPending = addWatermark.isPending || addImageWatermark.isPending;
   const isDisabled =
     mode === "text"
-      ? !currentFile || !text.trim() || isPending
+      ? !currentFile || !text.trim() || isPending || fontSizeError(fontSizeInput) !== null
       : !currentFile || !imageFile || isPending;
 
   if (!open) return null;
@@ -238,7 +232,11 @@ export function WatermarkDialog({
                 </label>
                 <select
                   value={position}
-                  onChange={(e) => setPosition(e.target.value as Position)}
+                  onChange={(e) => {
+                    const next = e.target.value as Position;
+                    setPosition(next);
+                    if (!angleTouched) setAngle(defaultAngle(next));
+                  }}
                   className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 >
                   {POSITIONS.map((p) => (
@@ -248,6 +246,84 @@ export function WatermarkDialog({
                   ))}
                 </select>
               </div>
+
+              <div>
+                <label
+                  htmlFor="watermark-angle"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  {t("angleLabel", { angle })}
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="watermark-angle"
+                    type="range"
+                    min="-180"
+                    max="180"
+                    step="5"
+                    value={angle}
+                    onChange={(e) => {
+                      setAngle(Number(e.target.value));
+                      setAngleTouched(true);
+                    }}
+                    className="w-full"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAngle(defaultAngle(position));
+                      setAngleTouched(false);
+                    }}
+                    className="px-2 py-1 text-xs rounded-md border border-input hover:bg-muted whitespace-nowrap"
+                  >
+                    {t("angleReset")}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label
+                    htmlFor="watermark-font-size"
+                    className="block text-sm font-medium text-foreground mb-1"
+                  >
+                    {t("fontSizeLabel")}
+                  </label>
+                  <input
+                    id="watermark-font-size"
+                    type="number"
+                    inputMode="decimal"
+                    min={MIN_FONT_SIZE}
+                    max={MAX_FONT_SIZE}
+                    step="1"
+                    value={fontSizeInput}
+                    onChange={(e) => setFontSizeInput(e.target.value)}
+                    placeholder={t("fontSizeAuto")}
+                    aria-invalid={fontSizeError(fontSizeInput) !== null}
+                    className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="watermark-color"
+                    className="block text-sm font-medium text-foreground mb-1"
+                  >
+                    {t("colorLabel")}
+                  </label>
+                  <input
+                    id="watermark-color"
+                    type="color"
+                    value={colorHex}
+                    onChange={(e) => setColorHex(e.target.value)}
+                    className="h-[38px] w-full rounded-md border border-input bg-background p-1 cursor-pointer"
+                  />
+                </div>
+              </div>
+              {fontSizeError(fontSizeInput) && (
+                <p className="text-xs text-destructive" role="alert">
+                  {t("fontSizeInvalid")}
+                </p>
+              )}
             </>
           )}
 
