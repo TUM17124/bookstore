@@ -983,6 +983,8 @@ export const pdfService = {
       fontSize?: number;
       color?: [number, number, number];
       opacity?: number;
+      /** Degrees counter-clockwise for the presets (service default: 45 diagonal, 0 otherwise). */
+      rotation?: number;
       custom?: { x: number; y: number; rotation: number };
     },
   ): Promise<Blob> => {
@@ -994,6 +996,7 @@ export const pdfService = {
     if (options.fontSize !== undefined) form.append('fontSize', String(options.fontSize));
     if (options.color) form.append('color', JSON.stringify(options.color));
     if (options.opacity !== undefined) form.append('opacity', String(options.opacity));
+    if (options.rotation !== undefined) form.append('rotation', String(options.rotation));
     if (options.custom) form.append('custom', JSON.stringify(options.custom));
 
     const response = await pdfFetch(`${PDF_SERVICE_URL}/pdf/watermark`, {
