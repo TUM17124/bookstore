@@ -29,6 +29,11 @@ function Row({
     { errorFallback: 'Download failed. Please try again.' },
   )
 
+  const original = useAsyncAction(
+    () => downloadBook(p.book_id, 'ebook', `book-${p.book_id}.${p.original_format}`, null, 'original'),
+    { errorFallback: 'Download failed. Please try again.' },
+  )
+
   return (
     <li className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-foreground/10 px-3 py-2 text-sm">
       <Link
@@ -67,11 +72,24 @@ function Row({
             errorPlacement="none"
             className="rounded-full border border-foreground/20 px-3 py-[3px] text-xs font-semibold disabled:opacity-50"
           >
-            Download
+            {p.original_format ? 'Download PDF' : 'Download'}
           </ActionButton>
         )}
+        {!isAudio && p.downloadable !== false && p.original_format ? (
+          <ActionButton
+            action={original}
+            onClick={() => void original.run()}
+            compact
+            loadingLabel="Downloading…"
+            successLabel="Downloaded"
+            errorPlacement="none"
+            className="rounded-full border border-foreground/20 px-3 py-[3px] text-xs font-semibold disabled:opacity-50"
+          >
+            Original (.{p.original_format})
+          </ActionButton>
+        ) : null}
       </span>
-      {download.errorText ? <p className="basis-full text-xs text-red-500" role="alert">{download.errorText}</p> : null}
+      {download.errorText || original.errorText ? <p className="basis-full text-xs text-red-500" role="alert">{download.errorText || original.errorText}</p> : null}
     </li>
   )
 }
