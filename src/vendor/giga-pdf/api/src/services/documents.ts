@@ -72,50 +72,6 @@ export const documentService = {
   },
 
   /**
-   * Share a document with collaborators
-   * Backend: POST /sharing/share
-   */
-  share: async (
-    id: string,
-    data: { email: string; permission: 'view' | 'edit' }[]
-  ): Promise<Document> => {
-    const response = await apiClient.post<Document>('/sharing/share', {
-      document_id: id,
-      collaborators: data,
-    });
-    return response.data;
-  },
-
-  /**
-   * Remove collaborator from document
-   * Backend: DELETE /sharing/shares/{id}
-   * @param _documentId - unused, kept for API backward compatibility
-   * @param shareId - the sharing record ID returned by the sharing endpoints
-   */
-  removeCollaborator: async (_documentId: string, shareId: string): Promise<Document> => {
-    const response = await apiClient.delete<Document>(`/sharing/shares/${shareId}`);
-    return response.data;
-  },
-
-  /**
-   * Update collaborator permission
-   * Backend: PATCH /sharing/shares/{id}/permission
-   * @param _documentId - unused, kept for API backward compatibility
-   * @param shareId - the sharing record ID returned by the sharing endpoints
-   */
-  updateCollaboratorPermission: async (
-    _documentId: string,
-    shareId: string,
-    permission: 'view' | 'edit'
-  ): Promise<Document> => {
-    const response = await apiClient.patch<Document>(
-      `/sharing/shares/${shareId}/permission`,
-      { permission }
-    );
-    return response.data;
-  },
-
-  /**
    * Get document activity history
    * Backend: GET /activity/documents/{document_id}/history
    */

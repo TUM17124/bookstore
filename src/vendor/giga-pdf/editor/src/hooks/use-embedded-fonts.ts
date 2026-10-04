@@ -7,8 +7,10 @@
  * Behaviour:
  *  1. Fetches font metadata list from /api/pdf/fonts/:documentId
  *  2. For each font: checks IndexedDB cache → downloads embedded bytes if absent
- *  3. Falls back to the /api/fonts/google proxy when a font is not embedded
- *     in the PDF (or its bytes cannot be extracted) before marking it failed
+ *  3. When a font is not embedded in the PDF (or its bytes cannot be
+ *     extracted) it is marked failed and the editor uses a locally available
+ *     font. An optional injected `fetchGoogleFont` can supply a substitute; no
+ *     Google Fonts route exists in this deployment, so there is no default.
  *  4. Registers each font via document.fonts.add(new FontFace(...))
  *  5. On unmount: removes registered FontFace instances (prevents leaks)
  *  6. Loads all fonts in parallel (Promise.allSettled)
@@ -137,10 +139,11 @@ export interface UseEmbeddedFontsOptions {
     fontId: string,
   ) => Promise<{ dataBase64: string; format: 'ttf' | 'otf' | 'cff'; mimeType: string }>;
   /**
-   * Injectable function to fetch a Google Fonts substitute for a font that
-   * is not embedded in the PDF (or whose bytes cannot be extracted).
-   * Defaults to fetch against /api/fonts/google.
-   * Override in tests to avoid network calls.
+   * Optional function that returns a substitute font for one that is not
+   * embedded in the PDF (or whose bytes cannot be extracted). There is NO
+   * default: the old default called `/api/fonts/google`, a route that does not
+   * exist here, so every non-embedded font cost a failing request. Without it
+   * the font simply falls back to the locally available fonts.
    */
   fetchGoogleFont?: (originalName: string) => Promise<GoogleFontResult>;
   /** Override the cache instance (useful in tests to inject a mock). */
@@ -506,10 +509,11 @@ async function defaultFetchFontData(
   };
 }
 
-// ─── Google Fonts proxy fallback ──────────────────────────────────────────────
-// When a font is not embedded in the PDF (or its bytes cannot be extracted),
-// the same-origin proxy route /api/fonts/google resolves the original PDF
-// font name to the closest Google Fonts variant instead of giving up.
+// ─── Optional substitute-font fallback ────────────────────────────────────────
+// A host may inject `fetchGoogleFont` to resolve a font that is not embedded in
+// the PDF (or whose bytes cannot be extracted) to a substitute. No such route
+// is built in: without it the font is marked failed and the editor falls back
+// to the locally available fonts.
 
 /** Successful Google Fonts proxy match for a PDF font name. */
 export interface GoogleFontMatch {
@@ -522,31 +526,8 @@ export interface GoogleFontMatch {
   dataBase64: string;
 }
 
-/** Response contract of GET /api/fonts/google?name=… */
+/** Result of an injected substitute-font lookup. */
 export type GoogleFontResult = GoogleFontMatch | { found: false };
-
-async function defaultFetchGoogleFont(
-  originalName: string,
-  getToken?: () => Promise<string | null> | string | null,
-): Promise<GoogleFontResult> {
-  const token = getToken ? await Promise.resolve(getToken()) : null;
-  const headers: HeadersInit = { Accept: 'application/json' };
-  if (token) (headers as Record<string, string>).Authorization = `Bearer ${token}`;
-  const response = await fetch(`/api/fonts/google?name=${encodeURIComponent(originalName)}`, {
-    headers,
-    credentials: 'include',
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch Google font: HTTP ${response.status}`);
-  }
-  const json = (await response.json()) as {
-    success: boolean;
-    data?: GoogleFontResult;
-    error?: string;
-  };
-  if (!json.success || !json.data) throw new Error(json.error ?? 'Google font request failed');
-  return json.data;
-}
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
@@ -606,11 +587,10 @@ export function useEmbeddedFonts(opts: UseEmbeddedFontsOptions): UseEmbeddedFont
         : defaultFetchFontData(id, fid, getAuthTokenRef.current),
     [],
   );
+  // No injected lookup => no request at all (never call a route that does not exist).
   const fetchGoogleFont = useCallback(
-    (originalName: string) =>
-      fetchGoogleRef.current
-        ? fetchGoogleRef.current(originalName)
-        : defaultFetchGoogleFont(originalName, getAuthTokenRef.current),
+    async (originalName: string): Promise<GoogleFontResult> =>
+      fetchGoogleRef.current ? fetchGoogleRef.current(originalName) : { found: false },
     [],
   );
 
@@ -681,7 +661,7 @@ export function useEmbeddedFonts(opts: UseEmbeddedFontsOptions): UseEmbeddedFont
             // fallback below instead of failing immediately.
             embeddedError =
               extractErr instanceof Error ? extractErr.message : String(extractErr);
-            logger.warn('Embedded font bytes unavailable, trying Google Fonts fallback', {
+            logger.warn('Embedded font bytes unavailable, using a local font', {
               fontId: metadata.fontId,
               fontName: metadata.originalName,
               documentId,
@@ -690,9 +670,9 @@ export function useEmbeddedFonts(opts: UseEmbeddedFontsOptions): UseEmbeddedFont
           }
         }
 
-        // Google Fonts proxy fallback — font is not embedded in the PDF, or
-        // its embedded bytes could not be fetched. A miss or a network error
-        // resolves to 'failed' (CSS fallback), never an uncaught throw.
+        // Optional substitute lookup — font is not embedded in the PDF, or its
+        // embedded bytes could not be fetched. A miss or a network error
+        // resolves to 'failed' (local-font fallback), never an uncaught throw.
         if (!fontBuffer) {
           let google: GoogleFontResult | null = null;
           let googleError: string | null = null;
@@ -706,8 +686,8 @@ export function useEmbeddedFonts(opts: UseEmbeddedFontsOptions): UseEmbeddedFont
 
           if (!google || !google.found) {
             const fallbackDetail = googleError
-              ? `Google Fonts fallback failed: ${googleError}`
-              : 'no Google Fonts substitute found';
+              ? `substitute lookup failed: ${googleError}`
+              : 'using a local font instead';
             throw new Error(
               embeddedError
                 ? `${embeddedError} (${fallbackDetail})`

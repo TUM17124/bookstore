@@ -131,68 +131,6 @@ export const useDuplicateDocument = () => {
 };
 
 /**
- * Hook to share a document
- * Backend: POST /sharing/share
- */
-export const useShareDocument = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({
-      id,
-      collaborators,
-    }: {
-      id: string;
-      collaborators: { email: string; permission: 'view' | 'edit' }[];
-    }) => documentService.share(id, collaborators),
-    onSuccess: (data: Document) => {
-      queryClient.setQueryData(documentKeys.detail(data.id), data);
-    },
-  });
-};
-
-/**
- * Hook to remove a share
- * Backend: DELETE /sharing/shares/{id}
- * NOTE: shareId is the sharing record ID, not the userId
- */
-export const useRemoveCollaborator = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ documentId, shareId }: { documentId: string; shareId: string }) =>
-      documentService.removeCollaborator(documentId, shareId),
-    onSuccess: (data: Document) => {
-      queryClient.setQueryData(documentKeys.detail(data.id), data);
-    },
-  });
-};
-
-/**
- * Hook to update collaborator permission
- * Backend: PATCH /sharing/shares/{id}/permission
- * NOTE: shareId is the sharing record ID, not the userId
- */
-export const useUpdateCollaboratorPermission = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({
-      documentId,
-      shareId,
-      permission,
-    }: {
-      documentId: string;
-      shareId: string;
-      permission: 'view' | 'edit';
-    }) => documentService.updateCollaboratorPermission(documentId, shareId, permission),
-    onSuccess: (data: Document) => {
-      queryClient.setQueryData(documentKeys.detail(data.id), data);
-    },
-  });
-};
-
-/**
  * Hook to get document activity history
  * Backend: GET /activity/documents/{document_id}/history
  */
