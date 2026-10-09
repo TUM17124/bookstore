@@ -1919,3 +1919,43 @@ export async function createAd(input: AdInput, call?: CallOptions): Promise<AdDa
 export async function updateAd(id: number, input: AdInput, call?: CallOptions): Promise<AdData> {
   return apiAction(`/ads/${id}/`, { method: "PATCH", body: JSON.stringify(input) }, call)
 }
+
+// --- Not interested / hidden books ---
+
+export type HiddenBookEntry = {
+  id: number
+  book: ApiBook
+  reason: string
+  hidden_at: string
+}
+
+export async function hideBook(bookId: number, reason = ""): Promise<void> {
+  await api(`/books/${bookId}/hide/`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+    headers: visitorHeader(),
+  })
+}
+
+export async function unhideBook(bookId: number): Promise<void> {
+  await api(`/books/${bookId}/hide/`, {
+    method: "DELETE",
+    headers: visitorHeader(),
+  })
+}
+
+export async function getHiddenBookIds(): Promise<{ ids: number[] }> {
+  return getOr<{ ids: number[] }>("/me/hidden-book-ids/", { ids: [] }, {
+    cache: "no-store",
+    headers: visitorHeader() as HeadersInit,
+  })
+}
+
+export async function getHiddenBooks(page = 1): Promise<Paginated<HiddenBookEntry>> {
+  const empty: Paginated<HiddenBookEntry> = { count: 0, next: null, previous: null, results: [] }
+  return getOr<Paginated<HiddenBookEntry>>(
+    `/me/hidden-books/?page=${page}`,
+    empty,
+    { cache: "no-store", headers: visitorHeader() as HeadersInit },
+  )
+}

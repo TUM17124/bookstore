@@ -10,7 +10,8 @@ import { useBookmarks } from '@/components/bookmarks-context';
 import { useAsyncAction } from '@/hooks/use-async-action';
 import { ActionButton, ActionStatus } from '@/components/ui/action-button';
 import { createPortal } from 'react-dom';
-import { searchTrack, sendAdEvent, queueSignal, currentPlacement, getRatings, getRelatedBooks, getBookAccess, downloadBook, type ApiBook, type ApiOffer, type BookAccess } from '@/lib/api';
+import { Menu as MenuPrimitive } from '@base-ui/react/menu';
+import { searchTrack, sendAdEvent, queueSignal, currentPlacement, getRatings, getRelatedBooks, getBookAccess, downloadBook, hideBook, unhideBook, type ApiBook, type ApiOffer, type BookAccess } from '@/lib/api';
 import { PriceTag } from '@/components/offers/price-tag';
 import dynamic from 'next/dynamic';
 
@@ -89,7 +90,7 @@ export type CardSlot = { placement?: string; sectionId?: number | null; position
  * reports to the ad server (its signed token); any other card queues an
  * impression signal. */
 function useCardViewability(bookId: string, token: string | undefined, slot: CardSlot | undefined, signals: boolean) {
-  const ref = useRef<HTMLButtonElement | null>(null);
+  const ref = useRef<HTMLDivElement | null>(null);
   const placement = slot?.placement;
   const sectionId = slot?.sectionId ?? null;
   const position = slot?.position ?? null;
@@ -223,6 +224,7 @@ function GridBookCard({
   spinning,
   eager = false,
   slot,
+  onHide,
 }: {
   book: BookCfg;
   /** Where the card is (section, position) for the interaction signals. */
@@ -231,6 +233,8 @@ function GridBookCard({
   spinning?: boolean;
   /** Perf Step 2: covers in the first row load at once; the rest when near the screen. */
   eager?: boolean;
+  /** Called when the user hides this book. The parent removes it from its list. */
+  onHide?: (bookId: string, title: string) => void;
 }) {
   const src = coverSrc(book);
   const srcSet = coverSrcSet(book);
@@ -264,9 +268,18 @@ function GridBookCard({
     };
   }, [book.id, book.stars, hasPayloadRating]);
 
+  function handleHide(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (onHide) onHide(book.id, book.title);
+  }
+
   return (
-    <button
+    <div
       ref={adRef}
+      className="group relative flex w-full flex-col"
+      data-sponsored={adToken ? 'true' : undefined}
+    >
+    <button
       type="button"
       onClick={() => {
         // A sponsored click goes to the ad server (charging, fraud checks);
@@ -283,8 +296,7 @@ function GridBookCard({
         onOpen();
       }}
       disabled={spinning}
-      className="group flex w-full flex-col text-left outline-none"
-      data-sponsored={adToken ? 'true' : undefined}
+      className="flex w-full flex-col text-left outline-none"
     >
       <div
         className={cn(
@@ -374,6 +386,36 @@ function GridBookCard({
 </div>
       </div>
     </button>
+    {/* ⋯ "Not interested" button — appears on hover, positioned over cover top-right */}
+    {onHide && !spinning && (
+      <MenuPrimitive.Root>
+        <MenuPrimitive.Trigger
+          render={
+            <button
+              type="button"
+              aria-label="More options"
+              onClick={(e) => e.stopPropagation()}
+              className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/60 focus:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11"
+            />
+          }
+        >
+          ···
+        </MenuPrimitive.Trigger>
+        <MenuPrimitive.Portal>
+          <MenuPrimitive.Positioner sideOffset={4} align="end">
+            <MenuPrimitive.Popup className="z-50 min-w-[160px] origin-(--transform-origin) overflow-hidden rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+              <MenuPrimitive.Item
+                className="flex cursor-default items-center rounded-md px-2 py-1.5 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground data-disabled:opacity-50"
+                onClick={handleHide}
+              >
+                Not interested
+              </MenuPrimitive.Item>
+            </MenuPrimitive.Popup>
+          </MenuPrimitive.Positioner>
+        </MenuPrimitive.Portal>
+      </MenuPrimitive.Root>
+    )}
+    </div>
   );
 }
 
@@ -384,11 +426,15 @@ function SectionRow({
   onOpen,
   spinningId,
   first = false,
+  onHide,
+  hiddenIds,
 }: {
   section: ShowcaseSection;
   first?: boolean;
   onOpen: (book: BookCfg) => void;
   spinningId?: string | null;
+  onHide?: (bookId: string, title: string) => void;
+  hiddenIds?: Set<string>;
 }) {
   const [whyOpen, setWhyOpen] = useState(false);
   const headingId = `bs-section-${section.id}`;
@@ -431,10 +477,10 @@ function SectionRow({
         style={{ ...edgeMask(edges.start, edges.end), ['--bs-card-meta' as string]: 'var(--bs-section-meta)' }}
         className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain px-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {section.books.map((book, i) => (
+        {section.books.filter((book) => !hiddenIds?.has(book.id)).map((book, i) => (
           <li key={book.id} className="w-[44%] shrink-0 snap-start @min-[520px]:w-[30%] @min-[768px]:w-[200px]">
             <GridBookCard book={book} eager={first && i < 6} spinning={spinningId === book.id} onOpen={() => onOpen(book)}
-              slot={{ sectionId: section.id, position: i }} />
+              slot={{ sectionId: section.id, position: i }} onHide={onHide} />
           </li>
         ))}
       </ul>
@@ -479,12 +525,16 @@ function SectionsBlock({
   skeletons,
   spinningId,
   onOpen,
+  onHide,
+  hiddenIds,
 }: {
   sections: ShowcaseSection[];
   loading: boolean;
   skeletons: number;
   spinningId: string | null;
   onOpen: (book: BookCfg) => void;
+  onHide?: (bookId: string, title: string) => void;
+  hiddenIds?: Set<string>;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [reserve, setReserve] = useState(0);
@@ -517,7 +567,7 @@ function SectionsBlock({
       {loading
         ? Array.from({ length: skeletons }, (_, i) => <SectionSkeleton key={i} />)
         : sections.map((section, i) => (
-            <SectionRow key={section.id} section={section} first={i === 0} spinningId={spinningId} onOpen={onOpen} />
+            <SectionRow key={section.id} section={section} first={i === 0} spinningId={spinningId} onOpen={onOpen} onHide={onHide} hiddenIds={hiddenIds} />
           ))}
     </div>
   );
@@ -738,6 +788,81 @@ export function BooksShowcase({
   };
   const [downloadMenu, setDownloadMenu] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+
+  // --- Not interested ---
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  type HideToast = {
+    id: string
+    title: string
+    phase: 'pick-reason' | 'hidden' | 'error'
+    error?: string
+    errorAction?: 'hide' | 'unhide'
+  }
+  const [hideToast, setHideToast] = useState<HideToast | null>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function _scheduleToastDismiss(ms = 6000) {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = setTimeout(() => setHideToast(null), ms);
+  }
+
+  function handleHideBook(bookId: string, title: string) {
+    setHiddenIds((prev) => new Set([...prev, bookId]));
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    setHideToast({ id: bookId, title, phase: 'pick-reason' });
+    hideBook(Number(bookId)).catch(() => {
+      setHiddenIds((prev) => { const n = new Set(prev); n.delete(bookId); return n; });
+      setHideToast({ id: bookId, title, phase: 'error', error: "Couldn't hide this book.", errorAction: 'hide' });
+      _scheduleToastDismiss(9000);
+    });
+  }
+
+  function handlePickReason(reason: string) {
+    const toast = hideToast;
+    if (!toast) return;
+    setHideToast({ id: toast.id, title: toast.title, phase: 'hidden' });
+    _scheduleToastDismiss();
+    hideBook(Number(toast.id), reason).catch(() => { /* reason update failure is non-critical */ });
+  }
+
+  function handleSkipReason() {
+    const toast = hideToast;
+    if (!toast) return;
+    setHideToast({ id: toast.id, title: toast.title, phase: 'hidden' });
+    _scheduleToastDismiss();
+  }
+
+  function handleUndoHide() {
+    const toast = hideToast;
+    if (!toast) return;
+    setHideToast(null);
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    setHiddenIds((prev) => { const n = new Set(prev); n.delete(toast.id); return n; });
+    unhideBook(Number(toast.id)).catch(() => {
+      setHiddenIds((prev) => new Set([...prev, toast.id]));
+      setHideToast({ id: toast.id, title: toast.title, phase: 'error', error: "Couldn't undo. Try again.", errorAction: 'unhide' });
+      _scheduleToastDismiss(9000);
+    });
+  }
+
+  function handleRetryHide() {
+    const toast = hideToast;
+    if (!toast) return;
+    setHideToast(null);
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    if (toast.errorAction === 'hide') {
+      handleHideBook(toast.id, toast.title);
+    } else {
+      // Retry unhide: book is still hidden, attempt unhide again
+      setHiddenIds((prev) => { const n = new Set(prev); n.delete(toast.id); return n; });
+      unhideBook(Number(toast.id)).catch(() => {
+        setHiddenIds((prev) => new Set([...prev, toast.id]));
+        setHideToast({ id: toast.id, title: toast.title, phase: 'error', error: "Couldn't undo. Try again.", errorAction: 'unhide' });
+        _scheduleToastDismiss(9000);
+      });
+    }
+  }
+
   const shelfActive = uiMode !== 'hero' && !!selectedCfg;
   // Perf Step 2: a book opened from a link (?book=) skips the grid while
   // opening, so the book view is in its final place from the first frame
@@ -2302,6 +2427,8 @@ export function BooksShowcase({
             skeletons={sectionSkeletons ?? 0}
             spinningId={uiMode === 'opening' ? selectedCfg?.id ?? null : null}
             onOpen={(book) => (onSectionBookOpen ? onSectionBookOpen(book) : openFromGrid(book))}
+            onHide={handleHideBook}
+            hiddenIds={hiddenIds}
           />
           {showNav && (
             <nav className="mb-5 flex items-center justify-between">
@@ -2314,13 +2441,14 @@ export function BooksShowcase({
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-x-4 gap-y-7 @min-[768px]:grid-cols-4 @min-[768px]:gap-x-5 @min-[768px]:gap-y-8">
-              {books.map((book, i) => (
+              {books.filter((book) => !hiddenIds.has(book.id)).map((book, i) => (
                 <GridBookCard
                   key={book.id}
                   book={book}
                   slot={{ position: i }}
                   spinning={uiMode === 'opening' && selectedCfg?.id === book.id}
                   onOpen={() => openFromGrid(book)}
+                  onHide={handleHideBook}
                 />
               ))}
             </div>
@@ -2619,6 +2747,24 @@ export function BooksShowcase({
                 <path d="M7 3h10v18l-5-4-5 4z" />
               </svg>
             </ActionButton>
+            {selectedCfg && !hiddenIds.has(String(selectedCfg.id)) && (
+              <button
+                type="button"
+                aria-label="Not interested"
+                title="Not interested"
+                onClick={() => {
+                  if (!selectedCfg) return;
+                  handleHideBook(String(selectedCfg.id), selectedCfg.title);
+                  sceneApiRef.current?.closeCurrent();
+                }}
+                className="inline-flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-full bg-current/[0.08] transition hover:scale-[1.04] @max-[760px]:h-12 @max-[760px]:w-12"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.7}>
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M15 9l-6 6M9 9l6 6" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
         </div>
@@ -2688,6 +2834,70 @@ export function BooksShowcase({
         </div>
       )}
       {shelfActive && selectedCfg && <RecommendedBooks book={selectedCfg} />}
+
+      {/* Not interested toast: reason picker → confirmed → error */}
+      {hideToast && typeof document !== 'undefined' && createPortal(
+        <div
+          role={hideToast.phase === 'error' ? 'alert' : 'status'}
+          aria-live="polite"
+          className={`fixed bottom-6 left-1/2 z-[9999] flex -translate-x-1/2 flex-col items-stretch gap-2 rounded-2xl bg-foreground px-4 py-3 text-sm text-background shadow-lg ${
+            hideToast.phase === 'pick-reason' ? 'w-[min(340px,90vw)]' : 'min-w-[220px] max-w-[90vw]'
+          }`}
+        >
+          {hideToast.phase === 'pick-reason' && (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold">Why not interested?</span>
+                <button type="button" onClick={handleSkipReason} className="text-xs text-background/60 hover:text-background underline shrink-0">Skip</button>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {([
+                  ['not_my_genre', 'Not my genre'],
+                  ['already_read', 'Already read it'],
+                  ['dislike_author', "Don't like author"],
+                  ['other', 'Other'],
+                ] as [string, string][]).map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => handlePickReason(val)}
+                    className="rounded-lg border border-background/20 px-2 py-1.5 text-xs font-medium hover:bg-background/10 active:bg-background/20 text-left"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {hideToast.phase === 'hidden' && (
+            <div className="flex items-center gap-3">
+              <span className="max-w-[160px] truncate flex-1">Hidden: {hideToast.title}</span>
+              <button
+                type="button"
+                onClick={handleUndoHide}
+                className="shrink-0 rounded-full border border-background/30 px-2.5 py-0.5 text-xs font-semibold hover:bg-background/10"
+              >
+                Undo
+              </button>
+              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-background/60 hover:text-background">✕</button>
+            </div>
+          )}
+          {hideToast.phase === 'error' && (
+            <div className="flex items-center gap-3">
+              <span className="flex-1 text-xs">{hideToast.error}</span>
+              <button
+                type="button"
+                onClick={handleRetryHide}
+                className="shrink-0 rounded-full border border-background/30 px-2.5 py-0.5 text-xs font-semibold hover:bg-background/10"
+              >
+                Try again
+              </button>
+              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-background/60 hover:text-background">✕</button>
+            </div>
+          )}
+        </div>,
+        document.body,
+      )}
     </div>
     </div>
   );
