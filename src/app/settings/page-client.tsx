@@ -231,6 +231,7 @@ const SECTIONS = [
   { id: "email", label: "Email" },
   { id: "notifications", label: "Notifications" },
   { id: "personalisation", label: "Personalisation" },
+  { id: "hidden", label: "Hidden books" },
   { id: "pro", label: "Pro" },
   { id: "affiliate", label: "Affiliate & rewards" },
   { id: "history", label: "History" },
@@ -612,6 +613,21 @@ export default function SettingsPage() {
                     }}
                   />
                 </label>
+              </section>
+            )}
+
+            {active === "hidden" && (
+              <section className="min-w-0 space-y-4 rounded-xl border p-5">
+                <h2 className="text-xl font-semibold">Hidden books</h2>
+                <p className="text-sm text-foreground/70">
+                  Books you marked as "not interested" are hidden from the home and category pages. View and manage them on the hidden books page.
+                </p>
+                <Link
+                  href="/settings/hidden-books"
+                  className="inline-flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-foreground/5"
+                >
+                  Manage hidden books →
+                </Link>
               </section>
             )}
 

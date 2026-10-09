@@ -10,7 +10,8 @@ import { useBookmarks } from '@/components/bookmarks-context';
 import { useAsyncAction } from '@/hooks/use-async-action';
 import { ActionButton, ActionStatus } from '@/components/ui/action-button';
 import { createPortal } from 'react-dom';
-import { searchTrack, sendAdEvent, queueSignal, currentPlacement, getRatings, getRelatedBooks, getBookAccess, downloadBook, type ApiBook, type ApiOffer, type BookAccess } from '@/lib/api';
+import { Menu as MenuPrimitive } from '@base-ui/react/menu';
+import { searchTrack, sendAdEvent, queueSignal, currentPlacement, getRatings, getRelatedBooks, getBookAccess, downloadBook, hideBook, unhideBook, type ApiBook, type ApiOffer, type BookAccess } from '@/lib/api';
 import { PriceTag } from '@/components/offers/price-tag';
 import dynamic from 'next/dynamic';
 
@@ -89,7 +90,7 @@ export type CardSlot = { placement?: string; sectionId?: number | null; position
  * reports to the ad server (its signed token); any other card queues an
  * impression signal. */
 function useCardViewability(bookId: string, token: string | undefined, slot: CardSlot | undefined, signals: boolean) {
-  const ref = useRef<HTMLButtonElement | null>(null);
+  const ref = useRef<HTMLDivElement | null>(null);
   const placement = slot?.placement;
   const sectionId = slot?.sectionId ?? null;
   const position = slot?.position ?? null;
@@ -223,6 +224,7 @@ function GridBookCard({
   spinning,
   eager = false,
   slot,
+  onHide,
 }: {
   book: BookCfg;
   /** Where the card is (section, position) for the interaction signals. */
@@ -231,6 +233,8 @@ function GridBookCard({
   spinning?: boolean;
   /** Perf Step 2: covers in the first row load at once; the rest when near the screen. */
   eager?: boolean;
+  /** Called when the user hides this book. The parent removes it from its list. */
+  onHide?: (bookId: string, title: string) => void;
 }) {
   const src = coverSrc(book);
   const srcSet = coverSrcSet(book);
@@ -264,9 +268,18 @@ function GridBookCard({
     };
   }, [book.id, book.stars, hasPayloadRating]);
 
+  function handleHide(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (onHide) onHide(book.id, book.title);
+  }
+
   return (
-    <button
+    <div
       ref={adRef}
+      className="group relative flex w-full flex-col"
+      data-sponsored={adToken ? 'true' : undefined}
+    >
+    <button
       type="button"
       onClick={() => {
         // A sponsored click goes to the ad server (charging, fraud checks);
@@ -283,8 +296,7 @@ function GridBookCard({
         onOpen();
       }}
       disabled={spinning}
-      className="group flex w-full flex-col text-left outline-none"
-      data-sponsored={adToken ? 'true' : undefined}
+      className="flex w-full flex-col text-left outline-none"
     >
       <div
         className={cn(
@@ -374,6 +386,36 @@ function GridBookCard({
 </div>
       </div>
     </button>
+    {/* ⋯ "Not interested" button — appears on hover, positioned over cover top-right */}
+    {onHide && !spinning && (
+      <MenuPrimitive.Root>
+        <MenuPrimitive.Trigger
+          render={
+            <button
+              type="button"
+              aria-label="More options"
+              onClick={(e) => e.stopPropagation()}
+              className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/60 focus:opacity-100 group-hover:opacity-100"
+            />
+          }
+        >
+          ···
+        </MenuPrimitive.Trigger>
+        <MenuPrimitive.Portal>
+          <MenuPrimitive.Positioner sideOffset={4} align="end">
+            <MenuPrimitive.Popup className="z-50 min-w-[160px] origin-(--transform-origin) overflow-hidden rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+              <MenuPrimitive.Item
+                className="flex cursor-default items-center rounded-md px-2 py-1.5 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground data-disabled:opacity-50"
+                onClick={handleHide}
+              >
+                Not interested
+              </MenuPrimitive.Item>
+            </MenuPrimitive.Popup>
+          </MenuPrimitive.Positioner>
+        </MenuPrimitive.Portal>
+      </MenuPrimitive.Root>
+    )}
+    </div>
   );
 }
 
@@ -384,11 +426,15 @@ function SectionRow({
   onOpen,
   spinningId,
   first = false,
+  onHide,
+  hiddenIds,
 }: {
   section: ShowcaseSection;
   first?: boolean;
   onOpen: (book: BookCfg) => void;
   spinningId?: string | null;
+  onHide?: (bookId: string, title: string) => void;
+  hiddenIds?: Set<string>;
 }) {
   const [whyOpen, setWhyOpen] = useState(false);
   const headingId = `bs-section-${section.id}`;
@@ -431,10 +477,10 @@ function SectionRow({
         style={{ ...edgeMask(edges.start, edges.end), ['--bs-card-meta' as string]: 'var(--bs-section-meta)' }}
         className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain px-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {section.books.map((book, i) => (
+        {section.books.filter((book) => !hiddenIds?.has(book.id)).map((book, i) => (
           <li key={book.id} className="w-[44%] shrink-0 snap-start @min-[520px]:w-[30%] @min-[768px]:w-[200px]">
             <GridBookCard book={book} eager={first && i < 6} spinning={spinningId === book.id} onOpen={() => onOpen(book)}
-              slot={{ sectionId: section.id, position: i }} />
+              slot={{ sectionId: section.id, position: i }} onHide={onHide} />
           </li>
         ))}
       </ul>
@@ -479,12 +525,16 @@ function SectionsBlock({
   skeletons,
   spinningId,
   onOpen,
+  onHide,
+  hiddenIds,
 }: {
   sections: ShowcaseSection[];
   loading: boolean;
   skeletons: number;
   spinningId: string | null;
   onOpen: (book: BookCfg) => void;
+  onHide?: (bookId: string, title: string) => void;
+  hiddenIds?: Set<string>;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [reserve, setReserve] = useState(0);
@@ -517,7 +567,7 @@ function SectionsBlock({
       {loading
         ? Array.from({ length: skeletons }, (_, i) => <SectionSkeleton key={i} />)
         : sections.map((section, i) => (
-            <SectionRow key={section.id} section={section} first={i === 0} spinningId={spinningId} onOpen={onOpen} />
+            <SectionRow key={section.id} section={section} first={i === 0} spinningId={spinningId} onOpen={onOpen} onHide={onHide} hiddenIds={hiddenIds} />
           ))}
     </div>
   );
@@ -738,6 +788,33 @@ export function BooksShowcase({
   };
   const [downloadMenu, setDownloadMenu] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+
+  // --- Not interested ---
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [hideToast, setHideToast] = useState<{ id: string; title: string } | null>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleHideBook(bookId: string, title: string) {
+    setHiddenIds((prev) => new Set([...prev, bookId]));
+    setHideToast({ id: bookId, title });
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = setTimeout(() => setHideToast(null), 5000);
+    hideBook(Number(bookId)).catch(() =>
+      setHiddenIds((prev) => { const n = new Set(prev); n.delete(bookId); return n; }),
+    );
+  }
+
+  function handleUndoHide() {
+    const toast = hideToast;
+    if (!toast) return;
+    setHideToast(null);
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    setHiddenIds((prev) => { const n = new Set(prev); n.delete(toast.id); return n; });
+    unhideBook(Number(toast.id)).catch(() =>
+      setHiddenIds((prev) => new Set([...prev, toast.id])),
+    );
+  }
+
   const shelfActive = uiMode !== 'hero' && !!selectedCfg;
   // Perf Step 2: a book opened from a link (?book=) skips the grid while
   // opening, so the book view is in its final place from the first frame
@@ -2302,6 +2379,8 @@ export function BooksShowcase({
             skeletons={sectionSkeletons ?? 0}
             spinningId={uiMode === 'opening' ? selectedCfg?.id ?? null : null}
             onOpen={(book) => (onSectionBookOpen ? onSectionBookOpen(book) : openFromGrid(book))}
+            onHide={handleHideBook}
+            hiddenIds={hiddenIds}
           />
           {showNav && (
             <nav className="mb-5 flex items-center justify-between">
@@ -2314,13 +2393,14 @@ export function BooksShowcase({
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-x-4 gap-y-7 @min-[768px]:grid-cols-4 @min-[768px]:gap-x-5 @min-[768px]:gap-y-8">
-              {books.map((book, i) => (
+              {books.filter((book) => !hiddenIds.has(book.id)).map((book, i) => (
                 <GridBookCard
                   key={book.id}
                   book={book}
                   slot={{ position: i }}
                   spinning={uiMode === 'opening' && selectedCfg?.id === book.id}
                   onOpen={() => openFromGrid(book)}
+                  onHide={handleHideBook}
                 />
               ))}
             </div>
@@ -2688,6 +2768,33 @@ export function BooksShowcase({
         </div>
       )}
       {shelfActive && selectedCfg && <RecommendedBooks book={selectedCfg} />}
+
+      {/* Not interested undo toast */}
+      {hideToast && typeof document !== 'undefined' && createPortal(
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 left-1/2 z-[9999] flex -translate-x-1/2 items-center gap-3 rounded-full bg-foreground px-4 py-2.5 text-sm text-background shadow-lg"
+        >
+          <span className="max-w-[180px] truncate">Hidden: {hideToast.title}</span>
+          <button
+            type="button"
+            onClick={handleUndoHide}
+            className="shrink-0 rounded-full border border-background/30 px-2.5 py-0.5 text-xs font-semibold hover:bg-background/10"
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            onClick={() => setHideToast(null)}
+            aria-label="Dismiss"
+            className="shrink-0 text-background/60 hover:text-background"
+          >
+            ✕
+          </button>
+        </div>,
+        document.body,
+      )}
     </div>
     </div>
   );
