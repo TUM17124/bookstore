@@ -17,7 +17,7 @@ export function BrandLogo({ size, alt = "", className = "" }: { size: number; al
         height={size}
         alt={alt}
         decoding="async"
-        className={className}
+        className={`[filter:invert(1)_hue-rotate(180deg)_brightness(1.38)] dark:[filter:none] ${className}`}
       />
     </picture>
   )

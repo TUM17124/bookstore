@@ -13,6 +13,7 @@ import {
 } from "@/lib/api"
 import { useAsyncAction } from "@/hooks/use-async-action"
 import { ActionButton } from "@/components/ui/action-button"
+import { triggerPushPrompt } from "@/lib/push-trigger"
 import { Countdown, formatLocalTime, noteServerTime } from "@/components/offers/countdown"
 import { useCurrency, useMoney } from "@/lib/money"
 import { errorMessage } from "@/lib/auth-fetch"
@@ -203,6 +204,7 @@ function JoinForm({ c, onJoined }: { c: CampaignData; onJoined: () => void }) {
         setBookId("")
         setEbook("")
         setAudio("")
+        triggerPushPrompt("campaign_join")
         onJoined()
       },
     },
