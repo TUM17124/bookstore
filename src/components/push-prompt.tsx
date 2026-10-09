@@ -183,7 +183,10 @@ export function PushPrompt() {
     },
     {
       successMs: 0,
-      onSuccess: () => setShow(false),
+      onSuccess: () => {
+        setShow(false)
+        window.dispatchEvent(new CustomEvent("push-state-changed"))
+      },
       onError: (error) => {
         // A failed push subscription (e.g. Brave blocking it by default) is
         // routine, not a blocking error — surface it as a quiet note and

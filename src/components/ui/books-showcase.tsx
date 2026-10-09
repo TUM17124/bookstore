@@ -11,7 +11,7 @@ import { useAsyncAction } from '@/hooks/use-async-action';
 import { ActionButton, ActionStatus } from '@/components/ui/action-button';
 import { createPortal } from 'react-dom';
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
-import { searchTrack, sendAdEvent, queueSignal, currentPlacement, getRatings, getRelatedBooks, getBookAccess, downloadBook, hideBook, unhideBook, type ApiBook, type ApiOffer, type BookAccess } from '@/lib/api';
+import { searchTrack, sendAdEvent, queueSignal, currentPlacement, getRatings, getRelatedBooks, getBookAccess, downloadBook, hideBook, unhideBook, getHideReasons, type ApiBook, type ApiOffer, type BookAccess, type HideReason } from '@/lib/api';
 import { PriceTag } from '@/components/offers/price-tag';
 import dynamic from 'next/dynamic';
 
@@ -791,6 +791,9 @@ export function BooksShowcase({
 
   // --- Not interested ---
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [hideReasons, setHideReasons] = useState<HideReason[]>([]);
+  const [otherReasonText, setOtherReasonText] = useState('');
+  const [showOtherInput, setShowOtherInput] = useState(false);
   type HideToast = {
     id: string
     title: string
@@ -800,6 +803,7 @@ export function BooksShowcase({
   }
   const [hideToast, setHideToast] = useState<HideToast | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => { void getHideReasons().then(setHideReasons) }, []);
 
   function _scheduleToastDismiss(ms = 6000) {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -817,18 +821,22 @@ export function BooksShowcase({
     });
   }
 
-  function handlePickReason(reason: string) {
+  function handlePickReason(reason: string, otherReason = '') {
     const toast = hideToast;
     if (!toast) return;
     setHideToast({ id: toast.id, title: toast.title, phase: 'hidden' });
+    setShowOtherInput(false);
+    setOtherReasonText('');
     _scheduleToastDismiss();
-    hideBook(Number(toast.id), reason).catch(() => { /* reason update failure is non-critical */ });
+    hideBook(Number(toast.id), reason, otherReason).catch(() => { /* reason update failure is non-critical */ });
   }
 
   function handleSkipReason() {
     const toast = hideToast;
     if (!toast) return;
     setHideToast({ id: toast.id, title: toast.title, phase: 'hidden' });
+    setShowOtherInput(false);
+    setOtherReasonText('');
     _scheduleToastDismiss();
   }
 
@@ -2850,23 +2858,56 @@ export function BooksShowcase({
                 <span className="font-semibold">Why not interested?</span>
                 <button type="button" onClick={handleSkipReason} className="text-xs text-background/60 hover:text-background underline shrink-0">Skip</button>
               </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                {([
-                  ['not_my_genre', 'Not my genre'],
-                  ['already_read', 'Already read it'],
-                  ['dislike_author', "Don't like author"],
-                  ['other', 'Other'],
-                ] as [string, string][]).map(([val, label]) => (
-                  <button
-                    key={val}
-                    type="button"
-                    onClick={() => handlePickReason(val)}
-                    className="rounded-lg border border-background/20 px-2 py-1.5 text-xs font-medium hover:bg-background/10 active:bg-background/20 text-left"
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              {showOtherInput ? (
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    autoFocus
+                    maxLength={200}
+                    rows={2}
+                    value={otherReasonText}
+                    onChange={(e) => setOtherReasonText(e.target.value)}
+                    placeholder="Tell us why (optional)"
+                    className="w-full resize-none rounded-lg border border-background/20 bg-transparent px-2.5 py-1.5 text-xs placeholder:text-background/40 focus:outline-none focus:ring-1 focus:ring-background/40"
+                  />
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handlePickReason('other', otherReasonText.trim())}
+                      className="flex-1 rounded-lg bg-background/20 px-2 py-1.5 text-xs font-semibold hover:bg-background/30"
+                    >
+                      Done
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowOtherInput(false); setOtherReasonText(''); }}
+                      className="rounded-lg border border-background/20 px-2 py-1.5 text-xs hover:bg-background/10"
+                    >
+                      Back
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-1.5">
+                  {(hideReasons.length > 0 ? hideReasons : [
+                    { key: 'not_my_genre', label: 'Not my genre' },
+                    { key: 'already_read', label: 'Already read it' },
+                    { key: 'dislike_author', label: "Don't like author" },
+                    { key: 'other', label: 'Other' },
+                  ]).map(({ key, label }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => {
+                        if (key === 'other') { setShowOtherInput(true); return; }
+                        handlePickReason(key);
+                      }}
+                      className="rounded-lg border border-background/20 px-2 py-1.5 text-xs font-medium hover:bg-background/10 active:bg-background/20 text-left"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </>
           )}
           {hideToast.phase === 'hidden' && (

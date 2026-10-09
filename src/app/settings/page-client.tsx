@@ -26,9 +26,9 @@ import { splitName } from "@/lib/name"
 import { AffiliateInvite } from "@/components/affiliate-invite"
 import {
   disablePushNotifications,
-  enablePushNotifications,
   getPushSubscription,
 } from "@/lib/push"
+import { triggerPushPrompt } from "@/lib/push-trigger"
 import { useAsyncAction, type ActionContext } from "@/hooks/use-async-action"
 import { ActionButton, ActionStatus } from "@/components/ui/action-button"
 
@@ -287,21 +287,30 @@ export default function SettingsPage() {
         .catch(() => {})
     }
     window.addEventListener("auth-changed", onUserChanged)
-    return () => window.removeEventListener("auth-changed", onUserChanged)
+    const onPushStateChanged = () => {
+      getPushSubscription()
+        .then((sub) => {
+          setDeviceSubscribed(!!sub)
+          if (sub) setNotice("Push notifications enabled on this device.")
+        })
+        .catch(() => {})
+    }
+    window.addEventListener("push-state-changed", onPushStateChanged)
+    return () => {
+      window.removeEventListener("auth-changed", onUserChanged)
+      window.removeEventListener("push-state-changed", onPushStateChanged)
+    }
   }, [])
 
-  const pushToggle = useAsyncAction(
-    // Browser permission + subscription; not an API retry candidate.
-    async (_ctx, subscribed: boolean) => {
-      if (subscribed) await disablePushNotifications()
-      else await enablePushNotifications()
-      return !subscribed
+  const pushDisable = useAsyncAction(
+    async () => {
+      await disablePushNotifications()
     },
     {
-      errorFallback: "Couldn't change push notifications on this device. Please try again.",
-      onSuccess: (next) => {
-        setDeviceSubscribed(!!next)
-        setNotice(next ? "Push notifications enabled on this device." : "Push notifications turned off on this device.")
+      errorFallback: "Couldn't turn off push notifications on this device. Please try again.",
+      onSuccess: () => {
+        setDeviceSubscribed(false)
+        setNotice("Push notifications turned off on this device.")
       },
     },
   )
@@ -570,19 +579,28 @@ export default function SettingsPage() {
                       ? "This browser is subscribed to push notifications."
                       : "This browser is not currently subscribed to push notifications."}
                   </p>
-                  <ActionButton
-                    action={pushToggle}
-                    onClick={() => {
-                      setNotice("")
-                      void pushToggle.run(deviceSubscribed)
-                    }}
-                    loadingLabel={deviceSubscribed ? "Turning off…" : "Turning on…"}
-                    successLabel="Done"
-                    errorClassName="mt-2 text-sm text-red-600"
-                    className="mt-3 rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50"
-                  >
-                    {deviceSubscribed ? "Turn off push on this device" : "Turn on push on this device"}
-                  </ActionButton>
+                  {deviceSubscribed ? (
+                    <ActionButton
+                      action={pushDisable}
+                      onClick={() => {
+                        setNotice("")
+                        void pushDisable.run()
+                      }}
+                      loadingLabel="Turning off…"
+                      successLabel="Done"
+                      errorClassName="mt-2 text-sm text-red-600"
+                      className="mt-3 rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50"
+                    >
+                      Turn off push on this device
+                    </ActionButton>
+                  ) : (
+                    <button
+                      className="mt-3 rounded-lg border px-3 py-1.5 text-sm"
+                      onClick={() => triggerPushPrompt("settings")}
+                    >
+                      Turn on push on this device
+                    </button>
+                  )}
                 </div>
               </section>
             )}
