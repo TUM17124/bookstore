@@ -395,7 +395,7 @@ function GridBookCard({
               type="button"
               aria-label="More options"
               onClick={(e) => e.stopPropagation()}
-              className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/60 focus:opacity-100 group-hover:opacity-100"
+              className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/60 focus:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11"
             />
           }
         >
@@ -791,17 +791,45 @@ export function BooksShowcase({
 
   // --- Not interested ---
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
-  const [hideToast, setHideToast] = useState<{ id: string; title: string } | null>(null);
+  type HideToast = {
+    id: string
+    title: string
+    phase: 'pick-reason' | 'hidden' | 'error'
+    error?: string
+    errorAction?: 'hide' | 'unhide'
+  }
+  const [hideToast, setHideToast] = useState<HideToast | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function _scheduleToastDismiss(ms = 6000) {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = setTimeout(() => setHideToast(null), ms);
+  }
 
   function handleHideBook(bookId: string, title: string) {
     setHiddenIds((prev) => new Set([...prev, bookId]));
-    setHideToast({ id: bookId, title });
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    hideTimerRef.current = setTimeout(() => setHideToast(null), 5000);
-    hideBook(Number(bookId)).catch(() =>
-      setHiddenIds((prev) => { const n = new Set(prev); n.delete(bookId); return n; }),
-    );
+    setHideToast({ id: bookId, title, phase: 'pick-reason' });
+    hideBook(Number(bookId)).catch(() => {
+      setHiddenIds((prev) => { const n = new Set(prev); n.delete(bookId); return n; });
+      setHideToast({ id: bookId, title, phase: 'error', error: "Couldn't hide this book.", errorAction: 'hide' });
+      _scheduleToastDismiss(9000);
+    });
+  }
+
+  function handlePickReason(reason: string) {
+    const toast = hideToast;
+    if (!toast) return;
+    setHideToast({ id: toast.id, title: toast.title, phase: 'hidden' });
+    _scheduleToastDismiss();
+    hideBook(Number(toast.id), reason).catch(() => { /* reason update failure is non-critical */ });
+  }
+
+  function handleSkipReason() {
+    const toast = hideToast;
+    if (!toast) return;
+    setHideToast({ id: toast.id, title: toast.title, phase: 'hidden' });
+    _scheduleToastDismiss();
   }
 
   function handleUndoHide() {
@@ -810,9 +838,29 @@ export function BooksShowcase({
     setHideToast(null);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     setHiddenIds((prev) => { const n = new Set(prev); n.delete(toast.id); return n; });
-    unhideBook(Number(toast.id)).catch(() =>
-      setHiddenIds((prev) => new Set([...prev, toast.id])),
-    );
+    unhideBook(Number(toast.id)).catch(() => {
+      setHiddenIds((prev) => new Set([...prev, toast.id]));
+      setHideToast({ id: toast.id, title: toast.title, phase: 'error', error: "Couldn't undo. Try again.", errorAction: 'unhide' });
+      _scheduleToastDismiss(9000);
+    });
+  }
+
+  function handleRetryHide() {
+    const toast = hideToast;
+    if (!toast) return;
+    setHideToast(null);
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    if (toast.errorAction === 'hide') {
+      handleHideBook(toast.id, toast.title);
+    } else {
+      // Retry unhide: book is still hidden, attempt unhide again
+      setHiddenIds((prev) => { const n = new Set(prev); n.delete(toast.id); return n; });
+      unhideBook(Number(toast.id)).catch(() => {
+        setHiddenIds((prev) => new Set([...prev, toast.id]));
+        setHideToast({ id: toast.id, title: toast.title, phase: 'error', error: "Couldn't undo. Try again.", errorAction: 'unhide' });
+        _scheduleToastDismiss(9000);
+      });
+    }
   }
 
   const shelfActive = uiMode !== 'hero' && !!selectedCfg;
@@ -2699,6 +2747,24 @@ export function BooksShowcase({
                 <path d="M7 3h10v18l-5-4-5 4z" />
               </svg>
             </ActionButton>
+            {selectedCfg && !hiddenIds.has(String(selectedCfg.id)) && (
+              <button
+                type="button"
+                aria-label="Not interested"
+                title="Not interested"
+                onClick={() => {
+                  if (!selectedCfg) return;
+                  handleHideBook(String(selectedCfg.id), selectedCfg.title);
+                  sceneApiRef.current?.closeCurrent();
+                }}
+                className="inline-flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-full bg-current/[0.08] transition hover:scale-[1.04] @max-[760px]:h-12 @max-[760px]:w-12"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.7}>
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M15 9l-6 6M9 9l6 6" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
         </div>
@@ -2769,29 +2835,66 @@ export function BooksShowcase({
       )}
       {shelfActive && selectedCfg && <RecommendedBooks book={selectedCfg} />}
 
-      {/* Not interested undo toast */}
+      {/* Not interested toast: reason picker → confirmed → error */}
       {hideToast && typeof document !== 'undefined' && createPortal(
         <div
-          role="status"
+          role={hideToast.phase === 'error' ? 'alert' : 'status'}
           aria-live="polite"
-          className="fixed bottom-6 left-1/2 z-[9999] flex -translate-x-1/2 items-center gap-3 rounded-full bg-foreground px-4 py-2.5 text-sm text-background shadow-lg"
+          className={`fixed bottom-6 left-1/2 z-[9999] flex -translate-x-1/2 flex-col items-stretch gap-2 rounded-2xl bg-foreground px-4 py-3 text-sm text-background shadow-lg ${
+            hideToast.phase === 'pick-reason' ? 'w-[min(340px,90vw)]' : 'min-w-[220px] max-w-[90vw]'
+          }`}
         >
-          <span className="max-w-[180px] truncate">Hidden: {hideToast.title}</span>
-          <button
-            type="button"
-            onClick={handleUndoHide}
-            className="shrink-0 rounded-full border border-background/30 px-2.5 py-0.5 text-xs font-semibold hover:bg-background/10"
-          >
-            Undo
-          </button>
-          <button
-            type="button"
-            onClick={() => setHideToast(null)}
-            aria-label="Dismiss"
-            className="shrink-0 text-background/60 hover:text-background"
-          >
-            ✕
-          </button>
+          {hideToast.phase === 'pick-reason' && (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold">Why not interested?</span>
+                <button type="button" onClick={handleSkipReason} className="text-xs text-background/60 hover:text-background underline shrink-0">Skip</button>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {([
+                  ['not_my_genre', 'Not my genre'],
+                  ['already_read', 'Already read it'],
+                  ['dislike_author', "Don't like author"],
+                  ['other', 'Other'],
+                ] as [string, string][]).map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => handlePickReason(val)}
+                    className="rounded-lg border border-background/20 px-2 py-1.5 text-xs font-medium hover:bg-background/10 active:bg-background/20 text-left"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {hideToast.phase === 'hidden' && (
+            <div className="flex items-center gap-3">
+              <span className="max-w-[160px] truncate flex-1">Hidden: {hideToast.title}</span>
+              <button
+                type="button"
+                onClick={handleUndoHide}
+                className="shrink-0 rounded-full border border-background/30 px-2.5 py-0.5 text-xs font-semibold hover:bg-background/10"
+              >
+                Undo
+              </button>
+              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-background/60 hover:text-background">✕</button>
+            </div>
+          )}
+          {hideToast.phase === 'error' && (
+            <div className="flex items-center gap-3">
+              <span className="flex-1 text-xs">{hideToast.error}</span>
+              <button
+                type="button"
+                onClick={handleRetryHide}
+                className="shrink-0 rounded-full border border-background/30 px-2.5 py-0.5 text-xs font-semibold hover:bg-background/10"
+              >
+                Try again
+              </button>
+              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-background/60 hover:text-background">✕</button>
+            </div>
+          )}
         </div>,
         document.body,
       )}
