@@ -55,6 +55,7 @@ function toCfg(b: ApiBook): BookCfg {
     ratingCount: (b as SectionBook).rating_count,
     offers: b.offers ?? null,
     sponsored: b.sponsored ?? null,
+    pageCount: b.pageCount ?? null,
   }
 }
 

@@ -68,6 +68,7 @@ function apiBookToCfg(b: ApiBook): BookCfg {
     previewPages: b.previewPages != null ? Number(b.previewPages) : 4,
     audioUrl: b.audioUrl || undefined,
     pdfUrl: b.pdfUrl || undefined,
+    pageCount: b.pageCount ?? null,
   };
 }
 

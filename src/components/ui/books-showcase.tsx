@@ -80,6 +80,8 @@ export interface BookCfg {
   ratingCount?: number;
   /** Part E: a paid slot ("Sponsored" label, view and click events). */
   sponsored?: { token: string; label: string } | null;
+  /** Part 6: PDF page count, used to derive spine thickness. */
+  pageCount?: number | null;
 }
 
 /** Where a card sits, for the interaction signals (Part E, PR 3). */
@@ -1204,26 +1206,42 @@ export function BooksShowcase({
       t.minFilter = THREE.LinearMipmapLinearFilter;
       return t;
     }
-    function fitTexture(t: THREE.Texture, maxDim: number) {
+    function fitTexture(t: THREE.Texture, maxDim: number, targetAR?: number) {
       const img = t.image as { width?: number; height?: number } | undefined;
       if (!img || !img.width || !img.height) return t;
       const iw = img.width;
       const ih = img.height;
+      const scale = maxDim / Math.max(iw, ih);
+      const sw = Math.max(1, Math.round(iw * scale));
+      const sh = Math.max(1, Math.round(ih * scale));
+
+      if (targetAR && Math.abs(iw / ih - targetAR) > 0.04) {
+        // Letterbox/pillarbox to target aspect ratio (object-fit: contain)
+        const tw = Math.round(Math.min(maxDim, maxDim * targetAR));
+        const th = Math.round(Math.min(maxDim, maxDim / targetAR));
+        const c = mkCanvas(tw, th);
+        const ctx = c.getContext('2d')!;
+        const fitScale = Math.min(tw / iw, th / ih);
+        const dw = Math.round(iw * fitScale), dh = Math.round(ih * fitScale);
+        ctx.drawImage(img as CanvasImageSource, (tw - dw) / 2, (th - dh) / 2, dw, dh);
+        t.image = c;
+        t.needsUpdate = true;
+        t.anisotropy = ANISO;
+        return t;
+      }
+
       if (Math.max(iw, ih) <= maxDim) {
         t.anisotropy = ANISO;
         return t;
       }
-      const scale = maxDim / Math.max(iw, ih);
-      const w = Math.max(1, Math.round(iw * scale));
-      const h = Math.max(1, Math.round(ih * scale));
-      const c = mkCanvas(w, h);
-      c.getContext('2d')!.drawImage(img as CanvasImageSource, 0, 0, w, h);
+      const c = mkCanvas(sw, sh);
+      c.getContext('2d')!.drawImage(img as CanvasImageSource, 0, 0, sw, sh);
       t.image = c;
       t.needsUpdate = true;
       t.anisotropy = ANISO;
       return t;
     }
-    function loadOrPaint(material: THREE.MeshStandardMaterial, imageURL: string | null | undefined, paintFallback: () => HTMLCanvasElement) {
+    function loadOrPaint(material: THREE.MeshStandardMaterial, imageURL: string | null | undefined, paintFallback: () => HTMLCanvasElement, aspectRatio?: number) {
       if (imageURL) {
         const c = mkCanvas(4, 6);
         const x = c.getContext('2d')!;
@@ -1240,7 +1258,7 @@ export function BooksShowcase({
         (t) => {
           if (cancelled) return;
           t.colorSpace = THREE.SRGBColorSpace;
-          fitTexture(t, MAX_TEX);
+          fitTexture(t, MAX_TEX, aspectRatio);
           material.map = t;
           material.needsUpdate = true;
         },
@@ -1489,21 +1507,16 @@ export function BooksShowcase({
 
     const W = 1.42,
       H = 2.14,
-      T = 0.34,
       CT = 0.032,
-      OV = 0.05;
+      OV = 0.05,
+      HINGE_OVERLAP = 0.05;
     const PW = W - 0.02,
       PH = H - 0.02;
-    const BLOCK_D = 0.245,
-      BLOCK_Z = -0.0205,
-      PIVOT_Z = T / 2 + CT / 2,
-      BPIVOT_Z = -(T / 2 + CT / 2),
-      HINGE_OVERLAP = 0.05;
     const coverGeo = new THREE.BoxGeometry(W + OV, H + OV * 2, CT);
-    const blockGeo = new THREE.BoxGeometry(W - 0.015, H, BLOCK_D);
     const pageGeo = new THREE.PlaneGeometry(PW, PH);
-    const spineGeo = new THREE.BoxGeometry(0.028, H + OV * 2, T + CT * 2 + 0.006);
     const hitGeo = new THREE.BoxGeometry(1.8, 2.5, 1.15);
+    // Cover face aspect ratio for texture letterboxing
+    const COVER_AR = (W + OV) / (H + OV * 2);
     const blobGeo = new THREE.PlaneGeometry(1, 1);
     const hitMat = new THREE.MeshBasicMaterial({ visible: false });
     function std(o: THREE.MeshStandardMaterialParameters) {
@@ -1520,6 +1533,9 @@ export function BooksShowcase({
     type Book = {
       cfg: BookCfg;
       index: number;
+      pivotZ: number;
+      backPivotZ: number;
+      blockZ: number;
       root: THREE.Group;
       float: THREE.Group;
       pivot: THREE.Group;
@@ -1552,6 +1568,20 @@ export function BooksShowcase({
       const float = new THREE.Group();
       root.add(float);
       bookRoot.add(root);
+
+      // Per-book thickness from page count: 400 pages ≈ default 0.34 units
+      const rawPages = cfg.pageCount ?? 0;
+      const T = rawPages > 0 ? Math.max(0.04, Math.min(0.80, (rawPages / 400) * 0.34)) : 0.34;
+      const PIVOT_Z = T / 2 + CT / 2;
+      const BPIVOT_Z = -(T / 2 + CT / 2);
+      const BLOCK_D = Math.max(0.04, T * 0.72);
+      const BLOCK_Z = -T * 0.06;
+      const pageStartZ = T / 2 - 0.004;
+
+      // Per-book geometries that depend on T
+      const spineGeo = new THREE.BoxGeometry(HINGE_OVERLAP, H + OV * 2, T + CT * 2 + 0.006);
+      const blockGeo = new THREE.BoxGeometry(W - 0.015, H, BLOCK_D);
+
       const indexPageMat = std({
         map: makeIndexPageTex(cfg.chapters),
         roughness: 0.92,
@@ -1563,22 +1593,28 @@ export function BooksShowcase({
       const mFront = std({ bumpMap: laminateBump, bumpScale: 0.0012, roughness: 0.4, envMapIntensity: 0.3 });
       const mBack = std({ bumpMap: laminateBump, bumpScale: 0.0012, roughness: 0.42, envMapIntensity: 0.28 });
       const mSpine = std({ bumpMap: clothBump, bumpScale: 0.0025, roughness: 0.55, envMapIntensity: 0.26 });
+      // Prevent z-fighting where the spine overlaps the cover hinge area
+      mSpine.polygonOffset = true;
+      mSpine.polygonOffsetFactor = 1;
+      mSpine.polygonOffsetUnits = 1;
       loadOrPaint(mFront, cfg.images?.front ?? cfg.coverURL ?? null, () => {
         const c = mkCanvas(COVER_W, COVER_H);
         const ctx = c.getContext('2d')!;
         if (cfg.front) cfg.front(ctx, COVER_W, COVER_H);
         else paintDefaultFront(ctx, COVER_W, COVER_H, { title: cfg.title, author: cfg.author, bg: cfg.spineBg ?? cfg.backBg ?? '#22252b' });
         return c;
-      });
+      }, COVER_AR);
       loadOrPaint(mBack, cfg.images?.back ?? null, () => {
         const c = mkCanvas(COVER_W, COVER_H);
         const ctx = c.getContext('2d')!;
         if (cfg.back) cfg.back(ctx, COVER_W, COVER_H);
         else paintBack(ctx, COVER_W, COVER_H, { backBg: cfg.backBg ?? '#22252b', backInk: cfg.backInk ?? '255,255,255' });
         return c;
-      });
+      }, COVER_AR);
+      // Spine canvas width matches the shelf face (Z-depth × H ratio) to avoid stretching
+      const spineCanvasW = Math.max(64, Math.round(COVER_H * (T + CT * 2 + 0.006) / (H + OV * 2)));
       loadOrPaint(mSpine, cfg.images?.spine ?? null, () => {
-        const sw = 220;
+        const sw = spineCanvasW;
         const c = mkCanvas(sw, COVER_H);
         const ctx = c.getContext('2d')!;
         if (cfg.spine) cfg.spine(ctx, sw, COVER_H);
@@ -1607,7 +1643,9 @@ export function BooksShowcase({
       pivot.add(frontMesh);
       float.add(pivot);
       const spine = new THREE.Mesh(spineGeo, mSpine);
-      spine.position.set(-W / 2 - 0.013, 0, 0);
+      // Centre the spine so its left face is flush with the cover hinge and
+      // its right face meets the page-block edge — no gap at any angle.
+      spine.position.set(-W / 2 - HINGE_OVERLAP / 2, 0, 0);
       spine.castShadow = true;
       float.add(spine);
       const block = new THREE.Mesh(blockGeo, [striMatV, paperFlat, striMatH, striMatH, paperFlat, paperFlat]);
@@ -1618,7 +1656,7 @@ export function BooksShowcase({
         pageF: number[] = [];
       for (let i = 0; i < PAGE_N; i++) {
         const pp = new THREE.Group();
-        pp.position.set(-W / 2 + 0.01, (Math.random() - 0.5) * 0.006, 0.166 - i * 0.0042);
+        pp.position.set(-W / 2 + 0.01, (Math.random() - 0.5) * 0.006, pageStartZ - i * 0.0042);
         const pm = new THREE.Mesh(pageGeo, i === 0 ? indexPageMat : pageMats[i % 3]);
         pm.position.x = PW / 2;
         pm.rotation.z = (Math.random() - 0.5) * 0.006;
@@ -1631,7 +1669,7 @@ export function BooksShowcase({
         pageFB: number[] = [];
       for (let i = 0; i < PAGE_B; i++) {
         const pp = new THREE.Group();
-        pp.position.set(-W / 2 + 0.01, (Math.random() - 0.5) * 0.006, -0.166 + i * 0.0042);
+        pp.position.set(-W / 2 + 0.01, (Math.random() - 0.5) * 0.006, -pageStartZ + i * 0.0042);
         const pm = new THREE.Mesh(pageGeo, pageMats[i % 3]);
         pm.position.x = PW / 2;
         pm.rotation.z = (Math.random() - 0.5) * 0.006;
@@ -1667,6 +1705,9 @@ export function BooksShowcase({
       const b: Book = {
         cfg,
         index,
+        pivotZ: PIVOT_Z,
+        backPivotZ: BPIVOT_Z,
+        blockZ: BLOCK_Z,
         root,
         float,
         pivot,
@@ -2075,12 +2116,12 @@ export function BooksShowcase({
       const ang = Math.max(0, s.cover.v + s.drag.v);
       const angB = Math.max(0, s.coverB.v);
       b.pivot.rotation.y = -ang;
-      b.pivot.position.z = PIVOT_Z + ang * 0.022;
+      b.pivot.position.z = b.pivotZ + ang * 0.022;
       b.backPivot.rotation.y = angB;
-      b.backPivot.position.z = BPIVOT_Z - angB * 0.022;
+      b.backPivot.position.z = b.backPivotZ - angB * 0.022;
       b.spine.rotation.y = -ang * 0.16 + angB * 0.16;
       b.block.scale.z = 1 - (ang + angB) * 0.05;
-      b.block.position.z = BLOCK_Z - ang * 0.006 + angB * 0.006;
+      b.block.position.z = b.blockZ - ang * 0.006 + angB * 0.006;
       for (let i = 0; i < b.pages.length; i++) {
         const fl = idle * Math.sin(t * 1.15 + b.phase + i * 0.6) * 0.006 * (1 - i / b.pages.length);
         b.pages[i].rotation.y = -(ang * b.pageF[i] + Math.max(0, fl));
