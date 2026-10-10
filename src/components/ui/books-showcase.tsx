@@ -2848,7 +2848,7 @@ export function BooksShowcase({
         <div
           role={hideToast.phase === 'error' ? 'alert' : 'status'}
           aria-live="polite"
-          className={`fixed bottom-6 left-1/2 z-[9999] flex -translate-x-1/2 flex-col items-stretch gap-2 rounded-2xl bg-foreground px-4 py-3 text-sm text-background shadow-lg ${
+          className={`fixed bottom-6 left-1/2 z-[9999] flex -translate-x-1/2 flex-col items-stretch gap-2 rounded-2xl bg-background px-4 py-3 text-sm text-foreground shadow-lg ring-1 ring-foreground/10 ${
             hideToast.phase === 'pick-reason' ? 'w-[min(340px,90vw)]' : 'min-w-[220px] max-w-[90vw]'
           }`}
         >
@@ -2856,7 +2856,7 @@ export function BooksShowcase({
             <>
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold">Why not interested?</span>
-                <button type="button" onClick={handleSkipReason} className="text-xs text-background/60 hover:text-background underline shrink-0">Skip</button>
+                <button type="button" onClick={handleSkipReason} className="text-xs text-foreground/60 hover:text-foreground underline shrink-0">Skip</button>
               </div>
               {showOtherInput ? (
                 <div className="flex flex-col gap-2">
@@ -2867,20 +2867,20 @@ export function BooksShowcase({
                     value={otherReasonText}
                     onChange={(e) => setOtherReasonText(e.target.value)}
                     placeholder="Tell us why (optional)"
-                    className="w-full resize-none rounded-lg border border-background/20 bg-transparent px-2.5 py-1.5 text-xs placeholder:text-background/40 focus:outline-none focus:ring-1 focus:ring-background/40"
+                    className="w-full resize-none rounded-lg border border-foreground/20 bg-transparent px-2.5 py-1.5 text-xs placeholder:text-foreground/40 focus:outline-none focus:ring-1 focus:ring-foreground/40"
                   />
                   <div className="flex gap-1.5">
                     <button
                       type="button"
                       onClick={() => handlePickReason('other', otherReasonText.trim())}
-                      className="flex-1 rounded-lg bg-background/20 px-2 py-1.5 text-xs font-semibold hover:bg-background/30"
+                      className="flex-1 rounded-lg bg-foreground/10 px-2 py-1.5 text-xs font-semibold hover:bg-foreground/20"
                     >
                       Done
                     </button>
                     <button
                       type="button"
                       onClick={() => { setShowOtherInput(false); setOtherReasonText(''); }}
-                      className="rounded-lg border border-background/20 px-2 py-1.5 text-xs hover:bg-background/10"
+                      className="rounded-lg border border-foreground/20 px-2 py-1.5 text-xs hover:bg-foreground/10"
                     >
                       Back
                     </button>
@@ -2901,7 +2901,7 @@ export function BooksShowcase({
                         if (key === 'other') { setShowOtherInput(true); return; }
                         handlePickReason(key);
                       }}
-                      className="rounded-lg border border-background/20 px-2 py-1.5 text-xs font-medium hover:bg-background/10 active:bg-background/20 text-left"
+                      className="rounded-lg border border-foreground/20 px-2 py-1.5 text-xs font-medium hover:bg-foreground/10 active:bg-foreground/20 text-left"
                     >
                       {label}
                     </button>
@@ -2916,11 +2916,11 @@ export function BooksShowcase({
               <button
                 type="button"
                 onClick={handleUndoHide}
-                className="shrink-0 rounded-full border border-background/30 px-2.5 py-0.5 text-xs font-semibold hover:bg-background/10"
+                className="shrink-0 rounded-full border border-foreground/30 px-2.5 py-0.5 text-xs font-semibold hover:bg-foreground/10"
               >
                 Undo
               </button>
-              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-background/60 hover:text-background">✕</button>
+              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-foreground/60 hover:text-foreground">✕</button>
             </div>
           )}
           {hideToast.phase === 'error' && (
@@ -2929,11 +2929,11 @@ export function BooksShowcase({
               <button
                 type="button"
                 onClick={handleRetryHide}
-                className="shrink-0 rounded-full border border-background/30 px-2.5 py-0.5 text-xs font-semibold hover:bg-background/10"
+                className="shrink-0 rounded-full border border-foreground/30 px-2.5 py-0.5 text-xs font-semibold hover:bg-foreground/10"
               >
                 Try again
               </button>
-              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-background/60 hover:text-background">✕</button>
+              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-foreground/60 hover:text-foreground">✕</button>
             </div>
           )}
         </div>,
