@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import Link from "next/link"
 import { getToken } from "@/lib/api"
 import {
   bindPushToAccount,
@@ -18,6 +17,29 @@ import { personalize } from "@/lib/prompts"
 import { useText } from "@/lib/site-config"
 
 const API = process.env.NEXT_PUBLIC_API_URL!
+
+const DISMISSED_KEY = "push_dismissed_at"
+const DEFAULT_COOLDOWN_DAYS = 30
+
+function isDismissedRecently(cooldownDays: number): boolean {
+  if (cooldownDays === 0) return false
+  try {
+    const stored = localStorage.getItem(DISMISSED_KEY)
+    if (!stored) return false
+    const dismissedAt = parseInt(stored, 10)
+    if (isNaN(dismissedAt)) return false
+    const cooldownMs = cooldownDays * 24 * 60 * 60 * 1000
+    return Date.now() - dismissedAt < cooldownMs
+  } catch {
+    return false
+  }
+}
+
+function saveDismissedAt() {
+  try {
+    localStorage.setItem(DISMISSED_KEY, Date.now().toString())
+  } catch {}
+}
 
 async function postPromptEvent(event: string) {
   try {
@@ -53,10 +75,12 @@ function isAuthPath() {
 
 export function PushPrompt() {
   const [show, setShow] = useState(false)
+  const [denied, setDenied] = useState(false)
   const [msg, setMsg] = useState("")
   const [msgIsSoft, setMsgIsSoft] = useState(false)
   const [hasAccount, setHasAccount] = useState(false)
   const [name, setName] = useState("")
+  const [cooldownDays, setCooldownDays] = useState(DEFAULT_COOLDOWN_DAYS)
   // Admin-editable (Django admin → Site: General → Push prompt).
   const guestTitle = useText("push.guest_title")
   const guestBody = useText("push.guest_body")
@@ -67,7 +91,7 @@ export function PushPrompt() {
   useEffect(() => {
     let cancelled = false
 
-    async function checkPushStatus() {
+    async function handleTrigger() {
       setHasAccount(isLoggedIn())
       setName(firstName())
       if (isAuthPath()) return
@@ -79,17 +103,14 @@ export function PushPrompt() {
         return
       }
 
-      if (Notification.permission === "denied") return
-
-      let subscription = await getPushSubscription()
+      // Already subscribed — silently re-save and stop.
+      const subscription = await getPushSubscription()
       if (subscription) {
         try {
           await savePushSubscription(subscription)
           await postPromptEvent("installed")
-          return
-        } catch {
-          // Continue to status check.
-        }
+        } catch {}
+        return
       }
 
       if (cancelled) return
@@ -97,16 +118,6 @@ export function PushPrompt() {
       const token = getToken()
       const headers: Record<string, string> = {}
       if (token) headers.Authorization = `Bearer ${token}`
-
-      let endpoint = ""
-      try {
-        const existing = await getPushSubscription()
-        endpoint = existing?.endpoint || ""
-      } catch {
-        endpoint = ""
-      }
-
-      const query = endpoint ? `?endpoint=${encodeURIComponent(endpoint)}` : ""
 
       try {
         const promptRes = await fetch(`${API}/install-prompt/`, {
@@ -116,38 +127,40 @@ export function PushPrompt() {
         const promptData = await promptRes.json().catch(() => ({}))
         if (cancelled) return
         if (promptData.push_enabled === false) return
-        if (promptData.push_prompt === false) return // Site: Features → push prompt off
-        if (promptData.installed) {
-          await postPromptEvent("installed")
-          return
-        }
-        // The backend's `ask` flag is the authoritative answer (cooldown,
-        // dismissed status, and the prompt_count cap all factor in) — a
-        // local "not subscribed yet" check alone would keep re-showing the
-        // prompt after "Later" forever, since dismissing never subscribes.
-        if (!promptData.ask) return
+        if (promptData.push_prompt === false) return
 
-        const response = await fetch(`${API}/push/status/${query}`, {
-          headers,
-          cache: "no-store",
-        })
-        const data = await response.json().catch(() => ({}))
-        if (cancelled) return
-        if (data.subscribed) {
-          await postPromptEvent("installed")
+        const days: number =
+          typeof promptData.push_prompt_cooldown_days === "number"
+            ? promptData.push_prompt_cooldown_days
+            : DEFAULT_COOLDOWN_DAYS
+        setCooldownDays(days)
+
+        // Blocked users: show the Settings path instead of the browser prompt.
+        if (Notification.permission === "denied") {
+          setDenied(true)
+          setShow(true)
           return
         }
+
+        // Respect the "Not now" cooldown stored in localStorage.
+        if (isDismissedRecently(days)) return
+
         setShow(true)
         await postPromptEvent("shown")
       } catch {
         if (!cancelled) {
+          if (isDismissedRecently(DEFAULT_COOLDOWN_DAYS)) return
           setShow(true)
           await postPromptEvent("shown")
         }
       }
     }
 
-    checkPushStatus()
+    const onTrigger = () => {
+      void handleTrigger()
+    }
+    window.addEventListener("push-prompt-trigger", onTrigger)
+
     const onAuth = () => {
       setHasAccount(isLoggedIn())
       setName(firstName())
@@ -157,6 +170,7 @@ export function PushPrompt() {
 
     return () => {
       cancelled = true
+      window.removeEventListener("push-prompt-trigger", onTrigger)
       window.removeEventListener("auth-changed", onAuth)
     }
   }, [])
@@ -169,7 +183,10 @@ export function PushPrompt() {
     },
     {
       successMs: 0,
-      onSuccess: () => setShow(false),
+      onSuccess: () => {
+        setShow(false)
+        window.dispatchEvent(new CustomEvent("push-state-changed"))
+      },
       onError: (error) => {
         // A failed push subscription (e.g. Brave blocking it by default) is
         // routine, not a blocking error — surface it as a quiet note and
@@ -182,6 +199,27 @@ export function PushPrompt() {
   const busy = enable.busy
 
   if (!show) return null
+
+  // Notifications are blocked in the browser — guide the user to fix it.
+  if (denied) {
+    return (
+      <div className="fixed bottom-4 left-4 right-4 z-[69] mx-auto max-w-md rounded-2xl border bg-background p-4 shadow-lg">
+        <p className="font-semibold">Notifications are blocked</p>
+        <p className="mt-1 text-sm text-foreground/70 dark:text-neutral-400">
+          To receive PlugYard alerts, allow notifications in your browser settings:{" "}
+          <span className="font-medium">Settings → Site settings → Notifications → Allow plugyard.com</span>.
+        </p>
+        <div className="mt-3">
+          <button
+            className="rounded-lg border px-3 py-2 text-sm"
+            onClick={() => setShow(false)}
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   const title = personalize(hasAccount ? accountTitle : guestTitle, name)
   const body = personalize(hasAccount ? accountBody : guestBody, name)
@@ -214,22 +252,23 @@ export function PushPrompt() {
           {buttonLabel}
         </ActionButton>
         {!hasAccount && (
-          <Link
+          <a
             href={withReferralQuery("/signup")}
             className="rounded-lg border px-3 py-2 text-sm"
           >
             Create account
-          </Link>
+          </a>
         )}
         <button
           disabled={busy}
           className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50"
           onClick={async () => {
+            saveDismissedAt()
             await postPromptEvent("dismissed")
             setShow(false)
           }}
         >
-          Later
+          Not now
         </button>
       </div>
     </div>

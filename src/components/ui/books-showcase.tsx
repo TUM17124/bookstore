@@ -11,7 +11,7 @@ import { useAsyncAction } from '@/hooks/use-async-action';
 import { ActionButton, ActionStatus } from '@/components/ui/action-button';
 import { createPortal } from 'react-dom';
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
-import { searchTrack, sendAdEvent, queueSignal, currentPlacement, getRatings, getRelatedBooks, getBookAccess, downloadBook, hideBook, unhideBook, type ApiBook, type ApiOffer, type BookAccess } from '@/lib/api';
+import { searchTrack, sendAdEvent, queueSignal, currentPlacement, getRatings, getRelatedBooks, getBookAccess, downloadBook, hideBook, unhideBook, getHideReasons, type ApiBook, type ApiOffer, type BookAccess, type HideReason } from '@/lib/api';
 import { PriceTag } from '@/components/offers/price-tag';
 import dynamic from 'next/dynamic';
 
@@ -791,6 +791,9 @@ export function BooksShowcase({
 
   // --- Not interested ---
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [hideReasons, setHideReasons] = useState<HideReason[]>([]);
+  const [otherReasonText, setOtherReasonText] = useState('');
+  const [showOtherInput, setShowOtherInput] = useState(false);
   type HideToast = {
     id: string
     title: string
@@ -800,6 +803,7 @@ export function BooksShowcase({
   }
   const [hideToast, setHideToast] = useState<HideToast | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => { void getHideReasons().then(setHideReasons) }, []);
 
   function _scheduleToastDismiss(ms = 6000) {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -817,18 +821,22 @@ export function BooksShowcase({
     });
   }
 
-  function handlePickReason(reason: string) {
+  function handlePickReason(reason: string, otherReason = '') {
     const toast = hideToast;
     if (!toast) return;
     setHideToast({ id: toast.id, title: toast.title, phase: 'hidden' });
+    setShowOtherInput(false);
+    setOtherReasonText('');
     _scheduleToastDismiss();
-    hideBook(Number(toast.id), reason).catch(() => { /* reason update failure is non-critical */ });
+    hideBook(Number(toast.id), reason, otherReason).catch(() => { /* reason update failure is non-critical */ });
   }
 
   function handleSkipReason() {
     const toast = hideToast;
     if (!toast) return;
     setHideToast({ id: toast.id, title: toast.title, phase: 'hidden' });
+    setShowOtherInput(false);
+    setOtherReasonText('');
     _scheduleToastDismiss();
   }
 
@@ -2840,7 +2848,7 @@ export function BooksShowcase({
         <div
           role={hideToast.phase === 'error' ? 'alert' : 'status'}
           aria-live="polite"
-          className={`fixed bottom-6 left-1/2 z-[9999] flex -translate-x-1/2 flex-col items-stretch gap-2 rounded-2xl bg-foreground px-4 py-3 text-sm text-background shadow-lg ${
+          className={`fixed bottom-6 left-1/2 z-[9999] flex -translate-x-1/2 flex-col items-stretch gap-2 rounded-2xl bg-background px-4 py-3 text-sm text-foreground shadow-lg ring-1 ring-foreground/10 ${
             hideToast.phase === 'pick-reason' ? 'w-[min(340px,90vw)]' : 'min-w-[220px] max-w-[90vw]'
           }`}
         >
@@ -2848,25 +2856,58 @@ export function BooksShowcase({
             <>
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold">Why not interested?</span>
-                <button type="button" onClick={handleSkipReason} className="text-xs text-background/60 hover:text-background underline shrink-0">Skip</button>
+                <button type="button" onClick={handleSkipReason} className="text-xs text-foreground/60 hover:text-foreground underline shrink-0">Skip</button>
               </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                {([
-                  ['not_my_genre', 'Not my genre'],
-                  ['already_read', 'Already read it'],
-                  ['dislike_author', "Don't like author"],
-                  ['other', 'Other'],
-                ] as [string, string][]).map(([val, label]) => (
-                  <button
-                    key={val}
-                    type="button"
-                    onClick={() => handlePickReason(val)}
-                    className="rounded-lg border border-background/20 px-2 py-1.5 text-xs font-medium hover:bg-background/10 active:bg-background/20 text-left"
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              {showOtherInput ? (
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    autoFocus
+                    maxLength={200}
+                    rows={2}
+                    value={otherReasonText}
+                    onChange={(e) => setOtherReasonText(e.target.value)}
+                    placeholder="Tell us why (optional)"
+                    className="w-full resize-none rounded-lg border border-foreground/20 bg-transparent px-2.5 py-1.5 text-xs placeholder:text-foreground/40 focus:outline-none focus:ring-1 focus:ring-foreground/40"
+                  />
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handlePickReason('other', otherReasonText.trim())}
+                      className="flex-1 rounded-lg bg-foreground/10 px-2 py-1.5 text-xs font-semibold hover:bg-foreground/20"
+                    >
+                      Done
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowOtherInput(false); setOtherReasonText(''); }}
+                      className="rounded-lg border border-foreground/20 px-2 py-1.5 text-xs hover:bg-foreground/10"
+                    >
+                      Back
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-1.5">
+                  {(hideReasons.length > 0 ? hideReasons : [
+                    { key: 'not_my_genre', label: 'Not my genre' },
+                    { key: 'already_read', label: 'Already read it' },
+                    { key: 'dislike_author', label: "Don't like author" },
+                    { key: 'other', label: 'Other' },
+                  ]).map(({ key, label }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => {
+                        if (key === 'other') { setShowOtherInput(true); return; }
+                        handlePickReason(key);
+                      }}
+                      className="rounded-lg border border-foreground/20 px-2 py-1.5 text-xs font-medium hover:bg-foreground/10 active:bg-foreground/20 text-left"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </>
           )}
           {hideToast.phase === 'hidden' && (
@@ -2875,11 +2916,11 @@ export function BooksShowcase({
               <button
                 type="button"
                 onClick={handleUndoHide}
-                className="shrink-0 rounded-full border border-background/30 px-2.5 py-0.5 text-xs font-semibold hover:bg-background/10"
+                className="shrink-0 rounded-full border border-foreground/30 px-2.5 py-0.5 text-xs font-semibold hover:bg-foreground/10"
               >
                 Undo
               </button>
-              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-background/60 hover:text-background">✕</button>
+              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-foreground/60 hover:text-foreground">✕</button>
             </div>
           )}
           {hideToast.phase === 'error' && (
@@ -2888,11 +2929,11 @@ export function BooksShowcase({
               <button
                 type="button"
                 onClick={handleRetryHide}
-                className="shrink-0 rounded-full border border-background/30 px-2.5 py-0.5 text-xs font-semibold hover:bg-background/10"
+                className="shrink-0 rounded-full border border-foreground/30 px-2.5 py-0.5 text-xs font-semibold hover:bg-foreground/10"
               >
                 Try again
               </button>
-              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-background/60 hover:text-background">✕</button>
+              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-foreground/60 hover:text-foreground">✕</button>
             </div>
           )}
         </div>,

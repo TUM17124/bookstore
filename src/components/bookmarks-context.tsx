@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react';
 import type { BookCfg } from '@/components/ui/books-showcase';
+import { triggerPushPrompt } from '@/lib/push-trigger';
 import {
   getToken,
   fetchBookmarks,
@@ -232,6 +233,7 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
         if (prev.some((b) => b.id === clean.id)) return prev;
         return [...prev, clean];
       });
+      triggerPushPrompt("bookmark");
     },
     [],
   );

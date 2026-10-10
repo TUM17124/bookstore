@@ -1929,10 +1929,30 @@ export type HiddenBookEntry = {
   hidden_at: string
 }
 
-export async function hideBook(bookId: number, reason = ""): Promise<void> {
+export type HideReason = { key: string; label: string }
+
+let _reasonsCache: HideReason[] | null = null
+
+export async function getHideReasons(): Promise<HideReason[]> {
+  if (_reasonsCache) return _reasonsCache
+  try {
+    const res = await api<HideReason[]>("/hide-reasons/")
+    _reasonsCache = Array.isArray(res) ? res : []
+    return _reasonsCache
+  } catch {
+    return [
+      { key: "not_my_genre", label: "Not my genre" },
+      { key: "already_read", label: "Already read it" },
+      { key: "dislike_author", label: "Don't like author" },
+      { key: "other", label: "Other" },
+    ]
+  }
+}
+
+export async function hideBook(bookId: number, reason = "", otherReason = ""): Promise<void> {
   await api(`/books/${bookId}/hide/`, {
     method: "POST",
-    body: JSON.stringify({ reason }),
+    body: JSON.stringify({ reason, ...(otherReason ? { other_reason: otherReason } : {}) }),
     headers: visitorHeader(),
   })
 }
