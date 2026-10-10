@@ -10,7 +10,7 @@ const baseMetadata: Metadata = {
   alternates: {
     canonical: "https://plugyard.com/terms/",
   },
-  robots: { index: false, follow: true },
+  robots: { index: true, follow: true },
 }
 
 export function generateMetadata(): Promise<Metadata> {
