@@ -1,18 +1,6 @@
 User-agent: *
 Allow: /
-Disallow: /bookmarks/
-Disallow: /checkout/
-Disallow: /checkout/success/
-Disallow: /credits/paid/
-Disallow: /dashboard/
-Disallow: /library/guest/
-Disallow: /publish/
-Disallow: /purchases/
-Disallow: /settings/
-Disallow: /settings/hidden-books/
-Disallow: /verify-email/
-Disallow: /reset-password/
-Disallow: /forgot-password/
-Disallow: /tools/pdf-editor/documents/
+Disallow: /admin/
+Disallow: /api/
 
 Sitemap: https://plugyard.com/sitemap.xml

@@ -105,10 +105,16 @@ describe("sitemap.xml", () => {
       "https://plugyard.com/terms-of-use/",
       "https://plugyard.com/refund-policy/",
       "https://plugyard.com/privacy/",
+      "https://plugyard.com/login/",
+      "https://plugyard.com/signup/",
     ]
     for (const url of required) {
       expect(sitemap, `sitemap must include ${url}`).toContain(`<loc>${url}</loc>`)
     }
+  })
+
+  it("does not list the defunct /login-merchant/ redirect target", () => {
+    expect(sitemap).not.toContain("login-merchant")
   })
 
   it("uses only https:// URLs", () => {
@@ -136,10 +142,17 @@ describe("robots.txt", () => {
     expect(robots).toContain("Sitemap: https://plugyard.com/sitemap.xml")
   })
 
-  it("disallows private pages", () => {
-    const expected = ["/bookmarks/", "/checkout/", "/dashboard/", "/publish/", "/purchases/", "/settings/"]
-    for (const p of expected) {
-      expect(robots, `robots.txt must disallow ${p}`).toContain(`Disallow: ${p}`)
+  it("disallows /admin/ and /api/ (backend paths)", () => {
+    expect(robots).toContain("Disallow: /admin/")
+    expect(robots).toContain("Disallow: /api/")
+  })
+
+  it("does not disallow private app pages — those use noindex instead", () => {
+    // Blocking a page in robots.txt prevents Google from seeing the noindex tag.
+    // Private pages are kept out of the index via <meta name="robots" content="noindex">.
+    const shouldNotBlock = ["/bookmarks/", "/checkout/", "/dashboard/", "/publish/", "/purchases/", "/settings/"]
+    for (const p of shouldNotBlock) {
+      expect(robots, `robots.txt must NOT disallow ${p} — use noindex on the page instead`).not.toContain(`Disallow: ${p}`)
     }
   })
 })
