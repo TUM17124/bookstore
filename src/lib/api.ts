@@ -39,6 +39,8 @@ export type ApiBook = {
   hasEbook?: boolean
   /** Owner only: state of an upload that is converted to PDF (DOCX, ODT, PPTX, ...). */
   conversion?: { status: 'queued' | 'running' | 'ok' | 'failed'; format: string; error?: string; pages?: number } | null
+  /** Public: page count from the latest successful conversion (null if unknown). */
+  pageCount?: number | null
   hasAudiobook?: boolean
   ebookDownloadable?: boolean
   audiobookDownloadable?: boolean
