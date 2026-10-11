@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 // first opened (or the pointer/finger first touches the shelf), not with the page.
 import type * as THREE from 'three';
 import {
-  CH, CT, CW, GAP, bookDims, backPivotZ, blockBox, endPageZ, frontPivotZ, leafFlippedZ, leafProfile, leafRestZ, leafSize, spineBox,
+  CH, CT, CW, GAP, bookDims, backPivotZ, blockBox, endPageZ, frontPivotZ, leafHinge, leafProfile, leafSize, spineBox,
   type BookDims,
 } from '@/lib/book3d/geometry';
 import { PAGE_H, PAGE_W, paintFace, paintPaper, planFaces } from '@/lib/book3d/pages';
@@ -1580,8 +1580,9 @@ export function BooksShowcase({
       const frontTex = mk();
       const backTex = mk();
       const mesh = new THREE.Mesh(geo, [
-        std({ map: frontTex, roughness: 0.9, envMapIntensity: 0.2 }),
-        std({ map: backTex, roughness: 0.9, envMapIntensity: 0.2 }),
+        // The emissive map is the page itself, so paper stays bright and ink stays dark in any lighting.
+        std({ map: frontTex, emissive: 0xffffff, emissiveMap: frontTex, emissiveIntensity: 0.3, roughness: 0.9, envMapIntensity: 0.2 }),
+        std({ map: backTex, emissive: 0xffffff, emissiveMap: backTex, emissiveIntensity: 0.3, roughness: 0.9, envMapIntensity: 0.2 }),
       ]);
       mesh.frustumCulled = false;
       void w; void h;
@@ -1593,14 +1594,12 @@ export function BooksShowcase({
       const d = b.dims;
       const { w, h } = leafSize(d);
       const f = L.f.v;
-      const fs = clamp(f, 0, 1);
-      const smooth = fs * fs * (3 - 2 * fs);
-      const zh = leafRestZ(d, k) + (leafFlippedZ(d, k) - leafRestZ(d, k)) * smooth;
+      const [hx, zh] = leafHinge(d, k, f, ang);
       const psi = f * ang;
       const prof = leafProfile(w, SEGS, psi, curl);
       const n = prof.length;
       for (let i = 0; i < n; i++) {
-        const x = GAP + prof[i][0];
+        const x = hx + prof[i][0];
         const z = zh + prof[i][1];
         const o = i * 6;
         L.pos.set([x, h / 2, z, x, -h / 2, z], o);
@@ -2932,6 +2931,9 @@ export function BooksShowcase({
           >
             Reset view
           </button>
+          <span className="sr-only" role="status" aria-live="polite">
+            {lookInside ? `Book open, showing pages ${pageInfo.turned * 2 + 1} of the preview. Use Next page and Previous page to turn.` : 'Book closed.'}
+          </span>
           {lookInside && (
             <>
               <button

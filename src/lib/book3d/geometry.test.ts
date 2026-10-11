@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   CT, GAP, SPINE_W, aabb, backBoardCorners, backPivotZ, blockBox, bookDims, frontBoardCorners, frontPivotZ,
-  endPageZ, leafFlippedZ, leafProfile, leafRestZ, leafSize, spineBox, rotY,
+  endPageZ, leafHinge, leafProfile, leafRestZ, leafSize, spineBox, rotY,
 } from "./geometry"
 
 const EPS = 1e-9
@@ -86,10 +86,34 @@ describe("book geometry fits at every page count", () => {
       expect(leafRestZ(d, k)).toBeLessThan(d.T / 2)
       expect(leafRestZ(d, k)).toBeLessThanOrEqual(block.max[2] + 1e-12)
       expect(leafRestZ(d, k)).toBeGreaterThan(endPageZ(d))
-      expect(leafFlippedZ(d, k)).toBeGreaterThan(d.T / 2)
     }
     expect(endPageZ(d)).toBeGreaterThan(block.min[2])
     expect(SPINE_W).toBeGreaterThan(0)
+  })
+
+  it("a leaf turned onto the open board lies above the board's inner face at every opening angle", () => {
+    for (const pages of [8, 72, 300]) {
+      const d = bookDims(pages, 8)
+      const zp = frontPivotZ(d)
+      for (const ang of ANGLES.filter((a) => a > 0)) {
+        const n: [number, number] = [Math.sin(ang), -Math.cos(ang)] // inner-face normal
+        for (let k = 0; k < 8; k++) {
+          const [hx, hz] = leafHinge(d, k, 1, ang)
+          const above = n[0] * (hx - 0) + n[1] * (hz - zp) - CT / 2
+          expect(above).toBeGreaterThan(0.0007)
+          // points along the leaf stay at that height (parallel to the board)
+          const [px, pz] = [hx + 1.2 * Math.cos(ang), hz + 1.2 * Math.sin(ang)]
+          expect(n[0] * px + n[1] * (pz - zp) - CT / 2).toBeCloseTo(above, 9)
+        }
+      }
+      // resting on the block, closed: just under the front board's inner face
+      for (let k = 0; k < 8; k++) {
+        const [hx, hz] = leafHinge(d, k, 0, 0)
+        expect(hx).toBeCloseTo(GAP, 12)
+        expect(hz).toBeLessThan(d.T / 2)
+        expect(hz).toBeLessThanOrEqual(blockBox(d).max[2] + 1e-12)
+      }
+    }
   })
 
   it("a bent leaf keeps its length", () => {

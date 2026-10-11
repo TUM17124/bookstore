@@ -87,9 +87,22 @@ export function leafSize(d: BookDims): { w: number; h: number } {
 export function leafRestZ(d: BookDims, k: number) {
   return d.T / 2 - CLEAR - k * LEAF_DZ
 }
-export function leafFlippedZ(d: BookDims, k: number) {
-  // Flipped leaves stack on the board's inner face: the first flipped is lowest.
-  return d.T / 2 + 0.0008 + k * LEAF_DZ
+/**
+ * Where leaf k's hinge is: resting on the block (f = 0) or lying on the inner
+ * face of the front board, which is open by `ang` (f = 1). A flipped leaf
+ * sits just above the board's inner face (on its normal), the first flipped
+ * lowest, so it never sinks into the board at any opening angle.
+ */
+export function leafHinge(d: BookDims, k: number, f: number, ang: number): [number, number] {
+  const fs = Math.max(0, Math.min(1, f))
+  const m = fs * fs * (3 - 2 * fs)
+  const dist = d.CT / 2 + 0.0008 + k * LEAF_DZ
+  const zp = frontPivotZ(d)
+  const fx = GAP * Math.cos(ang) + dist * Math.sin(ang)
+  const fz = zp + GAP * Math.sin(ang) - dist * Math.cos(ang)
+  const rx = GAP
+  const rz = leafRestZ(d, k)
+  return [rx + (fx - rx) * m, rz + (fz - rz) * m]
 }
 
 /** Rotate p about the y axis through pivot, the way three.js does for rotation.y = phi. */
