@@ -82,7 +82,7 @@ export function RichNoteEditor({
 
   const editor = useEditor({
     immediatelyRender: false, // static export: render on the client only
-    autofocus: autoFocus ? 'end' : false,
+    ...(autoFocus ? { autofocus: 'end' as const } : {}),
     content: value as never,
     extensions: [
       StarterKit.configure({

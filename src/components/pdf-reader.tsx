@@ -2211,7 +2211,7 @@ function renderReaderNotices() {
           ) : null}
           {editingNote || !draft.quote ? (
             <div className="mx-auto mt-2 max-w-2xl rounded-xl bg-background text-foreground">
-              <RichNoteEditor value={draft.body} onChange={(body) => setDraft((d) => (d ? { ...d, body } : d))} autoFocus={!phonePip} ariaLabel="New note" minHeight={88} />
+              <RichNoteEditor value={draft.body} onChange={(body) => setDraft((d) => (d ? { ...d, body } : d))} autoFocus ariaLabel="New note" minHeight={88} />
             </div>
           ) : null}
         </div>
