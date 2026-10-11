@@ -50,6 +50,7 @@ export type SiteConfig = {
   features?: Partial<Record<FeatureName, boolean>>
   limits?: {
     default_preview_pages: number
+    book_description_max_chars: number
     payout_every_days: number
     editor_trash_days: number
     editor_upload_max_mb: number
@@ -63,6 +64,7 @@ export type SiteConfig = {
 export const DEFAULT_TEXTS = defaults.texts as Record<string, TextValue>
 export const DEFAULT_LIMITS = {
   default_preview_pages: 4,
+  book_description_max_chars: 2000,
   payout_every_days: 30,
   editor_trash_days: 30,
   editor_upload_max_mb: 80,

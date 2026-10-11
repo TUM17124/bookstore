@@ -12,6 +12,7 @@ import { ActionButton } from '@/components/ui/action-button'
 import { AuthFetchError } from '@/lib/auth-fetch'
 import { UserError } from '@/lib/user-error'
 import { useCategories } from '@/lib/categories'
+import { DescriptionField } from '@/components/description-field'
 
 
 function PublishPageInner() {
@@ -184,7 +185,7 @@ function PublishPageInner() {
           ))}
         </select>
 
-        <textarea name="description" rows={4} placeholder="Short blurb" className="rounded-lg border border-foreground/15 bg-transparent px-3 py-2" />
+        <DescriptionField />
 
         <label className="text-sm font-medium">Front cover *</label>
         <input name="image_front" type="file" accept="image/*" required />
