@@ -16,7 +16,6 @@ import { useBookmarks } from '@/components/bookmarks-context';
 import { useAsyncAction } from '@/hooks/use-async-action';
 import { ActionButton, ActionStatus } from '@/components/ui/action-button';
 import { createPortal } from 'react-dom';
-import { Menu as MenuPrimitive } from '@base-ui/react/menu';
 import { searchTrack, sendAdEvent, queueSignal, currentPlacement, getRatings, getRelatedBooks, getBookAccess, downloadBook, hideBook, unhideBook, getHideReasons, type ApiBook, type ApiOffer, type BookAccess, type HideReason } from '@/lib/api';
 import { PriceTag } from '@/components/offers/price-tag';
 import dynamic from 'next/dynamic';
@@ -233,7 +232,7 @@ function StarsRow({ value, className }: { value: number; className?: string }) {
   );
 }
 
-function GridBookCard({
+export function GridBookCard({
   book,
   onOpen,
   spinning,
@@ -401,34 +400,37 @@ function GridBookCard({
 </div>
       </div>
     </button>
-    {/* ⋯ "Not interested" button — appears on hover, positioned over cover top-right */}
+    {/* ✕ "Not interested" button — always visible, frosted glass, top-right of cover */}
     {onHide && !spinning && (
-      <MenuPrimitive.Root>
-        <MenuPrimitive.Trigger
-          render={
-            <button
-              type="button"
-              aria-label="More options"
-              onClick={(e) => e.stopPropagation()}
-              className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/60 focus:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11"
-            />
-          }
+      <button
+        type="button"
+        aria-label={`Not interested in ${book.title}`}
+        onClick={handleHide}
+        className="absolute right-1 top-1 z-10 rounded-full p-[10px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--bs-pink)]"
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            'flex h-[22px] w-[22px] items-center justify-center rounded-full md:h-[26px] md:w-[26px]',
+            'bg-white/15 backdrop-blur-md ring-1 ring-white/30 shadow-sm',
+            'text-[var(--bs-pink)] opacity-85',
+            'dark:bg-white/10 dark:ring-white/20',
+            'supports-[not_(backdrop-filter:blur(1px))]:bg-white/40',
+            'dark:supports-[not_(backdrop-filter:blur(1px))]:bg-black/40',
+          )}
         >
-          ···
-        </MenuPrimitive.Trigger>
-        <MenuPrimitive.Portal>
-          <MenuPrimitive.Positioner sideOffset={4} align="end">
-            <MenuPrimitive.Popup className="z-50 min-w-[160px] origin-(--transform-origin) overflow-hidden rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
-              <MenuPrimitive.Item
-                className="flex cursor-default items-center rounded-md px-2 py-1.5 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground data-disabled:opacity-50"
-                onClick={handleHide}
-              >
-                Not interested
-              </MenuPrimitive.Item>
-            </MenuPrimitive.Popup>
-          </MenuPrimitive.Positioner>
-        </MenuPrimitive.Portal>
-      </MenuPrimitive.Root>
+          <svg
+            viewBox="0 0 20 20"
+            className="h-[10px] w-[10px] md:h-[11px] md:w-[11px]"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          >
+            <path d="M5 5l10 10M15 5L5 15" />
+          </svg>
+        </span>
+      </button>
     )}
     </div>
   );
