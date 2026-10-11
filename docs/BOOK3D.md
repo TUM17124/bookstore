@@ -13,10 +13,16 @@ for several page counts, closed and at several opening angles.
 - Page thickness comes from `pageCount` (`blockThickness`, log curve, 0.247 at 8 pages to 0.62 at 300+).
 - Nothing else moves when the cover turns: no spine rotation, no block squeeze, no fanning pages.
 
-Why it used to misalign (before this change): the block was `W - 0.015` wide inside boards `W + 0.05` wide (1.5 % of a
-unit of overhang, 15 mm-equivalents less than the top/bottom), its depth (`0.72·T`) was off-centre by `0.06·T` so the
-front board floated `0.2·T` off the pages, the page leaves were `W - 0.02` wide and fanned out as the cover turned, the
-spine box was rotated by `0.16 × angle` and the block scaled in z while opening. See the PR for measurements.
+Why it used to misalign (numbers from the old constants, `W = 1.42`, `OV = 0.05`, `H = 2.14`):
+- Boards spanned x = -0.76 … 0.71 while the page block spanned -0.71 … 0.695 and the loose page leaves -0.70 … 0.70:
+  only **0.015 / 0.010** of overhang at the fore-edge, against 0.05 (block) / 0.06 (leaves) at top and bottom. Seen
+  from the shelf angle the fore-edge showed as a white strip along the right edge of the front cover.
+- The block was `0.72·T` deep but centred at `-0.06·T`, so it spanned z = -0.42·T … +0.30·T between boards whose inner
+  faces are at ±0.5·T: a **0.2·T hollow** behind the front board and 0.08·T behind the back one.
+- Twelve leaves (and six at the back) were separate planes that rotated by `0.3·angle` when the cover turned and
+  swayed on their own, so loose white pages fanned out at the top edge; the spine box turned by `0.16·angle` and the
+  block was squeezed in z while opening, so boards and spine drifted apart.
+- Cover edges used `cfg.edge`, which is often a page-white, instead of the cover/spine colour.
 
 ## States
 - The book rests **closed**. "Look inside" / Enter / dragging the cover's fore-edge opens it (`OPEN_ANGLE` 2.35 rad).
