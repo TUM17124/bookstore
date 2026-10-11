@@ -20,6 +20,7 @@ import { useAsyncAction } from '@/hooks/use-async-action'
 import { PromoPrice } from '@/components/offers/promo-price'
 import { noteServerTime } from '@/components/offers/countdown'
 import { ActionButton } from '@/components/ui/action-button'
+import { usePaymentHandoff } from '@/components/payment-handoff'
 import { useFeature, useOffMessage, usePairs, useText } from '@/lib/site-config'
 
 // Icons for the benefits, in order; the texts are admin-editable
@@ -150,11 +151,17 @@ function ProInner() {
   // The price shown is sent along: if it is no longer the price (a
   // promotion just started/ended or filled up), nothing is charged and the
   // new price is shown for the user to confirm with another press.
+  const handoff = usePaymentHandoff()
   const upgrade = useAsyncAction((ctx) => subscribePro(quote?.final_amount ?? (price || undefined), ctx, planCode || undefined), {
     successMs: 60_000, // "Redirecting…" while the browser leaves for Paystack
     errorFallback: 'Could not start checkout. Please try again.',
     onSuccess: (res) => {
-      if (res?.checkout_url) window.location.href = res.checkout_url
+      if (res?.checkout_url) {
+        handoff.start(res.checkout_url, {
+          what: 'PlugYard Pro',
+          amount: quote?.final_amount ? money(quote.final_amount) : price ? money(price) : undefined,
+        })
+      }
     },
     onError: (err) => {
       if (err instanceof ProductPriceChangedError) setQuote(err.quote)
@@ -191,6 +198,7 @@ function ProInner() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-16">
+      {handoff.node}
       <div className="text-center">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[#d4af37]/15 px-3 py-1 text-xs font-bold uppercase tracking-wider text-[#a3811f]">
           ★ PlugYard Pro
