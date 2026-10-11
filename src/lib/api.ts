@@ -1628,7 +1628,7 @@ function contentHeaders(guestToken?: string | null): Record<string, string> {
  * error bodies into ContentError with the server's message + code. */
 export async function contentFetch(
   pathOrUrl: string,
-  init: RequestInit & Pick<RequestOptions, "pure" | "timeoutMs" | "retries" | "signal" | "onRetry"> = {},
+  init: RequestInit & Pick<RequestOptions, "pure" | "timeoutMs" | "retries" | "signal" | "onRetry" | "idempotencyKey"> = {},
   guestToken?: string | null,
 ): Promise<Response> {
   const url = /^https?:/.test(pathOrUrl)

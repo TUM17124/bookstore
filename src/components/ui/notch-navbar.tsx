@@ -257,6 +257,14 @@ function NotchNavbarInner({
         Purchases
       </Link>
       <Link
+        href="/notes"
+        onClick={() => setAccountOpen(false)}
+        className="flex items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5"
+      >
+        <Bookmark className="w-4 h-4" />
+        My notes
+      </Link>
+      <Link
         href="/publish"
         onClick={() => setAccountOpen(false)}
         className="flex items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5"
@@ -538,6 +546,10 @@ function NotchNavbarInner({
               <Link href="/purchases" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
                 <BookOpen className="w-5 h-5 opacity-70" />
                 <span className="font-medium text-foreground/90">Purchases</span>
+              </Link>
+              <Link href="/notes" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
+                <Bookmark className="w-5 h-5 opacity-70" />
+                <span className="font-medium text-foreground/90">My notes</span>
               </Link>
               <Link href="/bookmarks" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
                 <Bookmark className="w-5 h-5 opacity-70" />

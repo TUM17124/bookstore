@@ -1,23 +1,26 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { getToken, getAudioStreamUrl, fetchBookDownload, ContentError } from '@/lib/api'
-import { useAsyncAction, type ActionContext } from '@/hooks/use-async-action'
+import { useAsyncAction } from '@/hooks/use-async-action'
 import { ActionButton } from '@/components/ui/action-button'
 import {
   getAudioProgress,
   saveAudioProgress,
-  getAudioNotes,
-  addAudioNote,
-  updateAudioNote,
-  deleteAudioNote,
   getProStatus,
 } from '@/lib/api'
 import { usePictureInPicture } from '@/lib/pip'
 import { ProGateModal } from '@/components/pro-gate-modal'
 import { useReadingTime } from '@/hooks/use-reading-time'
+import { useNotes } from '@/lib/notes/use-notes'
+import { downloadNotesExport } from '@/lib/notes/api'
+import { EMPTY_DOC, formatTime, isDocEmpty } from '@/lib/notes/doc'
+import type { NoteDoc, NoteRow } from '@/lib/notes/types'
+import { NotesPanel } from '@/components/notes/notes-panel'
+import { RichNoteEditor } from '@/components/notes/rich-note-editor'
+import { SaveIndicator } from '@/components/notes/save-indicator'
 
 function fmt(sec: number) {
   if (!Number.isFinite(sec) || sec < 0) return '0:00'
@@ -246,12 +249,15 @@ export function AudioPlayer({
   const [sleepLeft, setSleepLeft] = useState(0)
   const [sleepTick, setSleepTick] = useState(0)
   const [resumeAt, setResumeAt] = useState(0)
-   const [noteText, setNoteText] = useState('')
-  const [notes, setNotes] = useState<Array<{ id: number; position: number; note: string }>>([])
-  const [editingNote, setEditingNote] = useState<{
-    id: number
-    position: number
-  } | null>(null)
+  // Notes at a timestamp: local-first, synced, rich text (same store as the reader).
+  const canNote = loggedIn || !!guestToken
+  const { store: notesStore, notes: allNotes, status: noteStatus } = useNotes(canNote ? bookId : undefined, guestToken)
+  const audioNotes = useMemo(() => allNotes.filter((n: NoteRow) => n.kind === 'audio'), [allNotes])
+  const [notesOpen, setNotesOpen] = useState(false)
+  const [composer, setComposer] = useState<{ position: number; body: NoteDoc; wasPlaying: boolean } | null>(null)
+  const [pauseToWrite, setPauseToWrite] = useState(() => {
+    try { return localStorage.getItem('plugyard-audio-note-pause') !== '0' } catch { return true }
+  })
   const [offlineMsg, setOfflineMsg] = useState('')
   const [shakeMsg, setShakeMsg] = useState('')
 
@@ -358,19 +364,6 @@ export function AudioPlayer({
     setDur(0)
     setBuffered(0)
   }, [url, title, bookId])
-
-  useEffect(() => {
-    if (!loggedIn || !bookId) return
-    let cancelled = false
-    getAudioNotes(bookId)
-      .then((rows) => {
-        if (!cancelled) setNotes(rows)
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
-  }, [loggedIn, bookId])
 
   useEffect(() => {
     const a = audioRef.current
@@ -535,78 +528,35 @@ export function AudioPlayer({
     else a.pause()
   }
 
-  type NoteRow = { id: number; position: number; note: string }
+  function setPause(v: boolean) {
+    setPauseToWrite(v)
+    try { localStorage.setItem('plugyard-audio-note-pause', v ? '1' : '0') } catch { /* ignore */ }
+  }
 
-  // Add/update note: idempotent server-side, retried with ONE key.
-  const noteSave = useAsyncAction(
-    async (
-      ctx: ActionContext,
-      text: string,
-      editing: { id: number; position: number } | null,
-      position: number,
-    ): Promise<{ row: NoteRow; replaces: number | null }> => {
-      if (editing) {
-        try {
-          return { row: (await updateAudioNote(editing.id, text, editing.position, ctx)) as NoteRow, replaces: editing.id }
-        } catch (err) {
-          if ((err as { status?: number }).status !== 404) throw err
-          // The note vanished server-side: save it again as a new one.
-          return { row: (await addAudioNote(bookId, editing.position, text, ctx)) as NoteRow, replaces: editing.id }
-        }
-      }
-      return { row: (await addAudioNote(bookId, position, text, ctx)) as NoteRow, replaces: null }
-    },
-    {
-      errorFallback: 'Could not save note. Try again.',
-      onSuccess: (res) => {
-        if (!res) return
-        setNotes((prev) =>
-          res.replaces != null ? prev.map((n) => (n.id === res.replaces ? res.row : n)) : [...prev, res.row],
-        )
-        if (res.replaces != null) setEditingNote(null)
-        setNoteText('')
-      },
-    },
-  )
-  const savingNote = noteSave.busy
-
-  function markMoment() {
+  /** "Add note at current time": optionally pauses while the note is written. */
+  function openComposer() {
     const a = audioRef.current
-    if (!a || !loggedIn || savingNote) return
-    setShakeMsg('')
-    void noteSave.run(noteText.trim(), editingNote, a.currentTime)
+    if (!a || !canNote) return
+    const wasPlaying = !a.paused
+    if (pauseToWrite && wasPlaying) a.pause()
+    setComposer({ position: Math.floor(a.currentTime * 10) / 10, body: EMPTY_DOC, wasPlaying: pauseToWrite && wasPlaying })
   }
 
-  function startEditAudioNote(n: { id: number; position: number; note: string }) {
-    setEditingNote({ id: n.id, position: n.position })
-    setNoteText(n.note || '')
-    setShakeMsg('')
-  }
-
-  function cancelEditAudioNote() {
-    setEditingNote(null)
-    setNoteText('')
-  }
-
-  // Delete: removed from the list right away; put back with a message if
-  // the server says no (it used to just vanish locally on failure).
-  const noteRemove = useAsyncAction(
-    (ctx: ActionContext, n: NoteRow) => deleteAudioNote(n.id, ctx),
-    { successMs: 0, errorFallback: 'Could not delete note. Try again.' },
-  )
-
-  async function removeAudioNote(n: NoteRow) {
-    if (!loggedIn) return
-    setNotes((prev) => prev.filter((x) => x.id !== n.id))
-    if (editingNote?.id === n.id) {
-      setEditingNote(null)
-      setNoteText('')
+  function closeComposer(save: boolean) {
+    if (!composer) return
+    if (save && notesStore && !isDocEmpty(composer.body)) {
+      notesStore.create({ kind: 'audio', position: composer.position, body: composer.body })
     }
-    const ok = await noteRemove.run(n)
-    if (ok === undefined) {
-      // failed (or the player closed mid-request): put the note back
-      setNotes((prev) => (prev.some((x) => x.id === n.id) ? prev : [...prev, n].sort((x, y) => x.position - y.position)))
-    }
+    const resume = composer.wasPlaying
+    setComposer(null)
+    if (resume) void audioRef.current?.play()
+  }
+
+  /** One tap: a bookmark with no text at the current time (edit it later in the notes list). */
+  function bookmarkNow() {
+    const a = audioRef.current
+    if (!a || !canNote || !notesStore) return
+    notesStore.create({ kind: 'audio', position: Math.floor(a.currentTime * 10) / 10 })
   }
 
   // Saving offline is a download: it goes through the download endpoint,
@@ -954,104 +904,45 @@ export function AudioPlayer({
             </div>
 
             <div className="w-full max-w-md rounded-2xl border border-foreground/10 p-3">
-              <p className="mb-2 text-[12px] uppercase tracking-wider text-foreground/40">
-                Bookmark this moment
-              </p>
-              {loggedIn ? (
+              <p className="mb-2 text-[12px] uppercase tracking-wider text-foreground/40">Notes at this moment</p>
+              {canNote ? (
                 <>
-                                    <div className="flex gap-2">
-                    <input
-                      value={noteText}
-                      onChange={(e) => setNoteText(e.target.value)}
-                      placeholder={
-                        editingNote
-                          ? 'Edit this note'
-                          : 'Optional note'
-                      }
-                      maxLength={280}
-                      disabled={savingNote}
-                      className="min-w-0 flex-1 rounded-full bg-foreground/10 px-3 py-2 text-sm outline-none disabled:opacity-50"
-                    />
-                    <ActionButton
-                      action={noteSave}
-                      onClick={markMoment}
-                      loadingLabel={editingNote ? 'Updating…' : 'Saving…'}
-                      successLabel="Saved"
-                      errorPlacement="none"
-                      className="rounded-full bg-[var(--brand-pink)] px-3 py-2 text-sm font-bold text-[var(--on-brand)] disabled:opacity-60"
-                    >
-                      {editingNote ? 'Update' : 'Save'}
-                    </ActionButton>
-                    {editingNote ? (
-                      <button
-                        type="button"
-                        disabled={savingNote}
-                        onClick={cancelEditAudioNote}
-                        className="rounded-full bg-foreground/10 px-3 py-2 text-sm font-semibold text-foreground disabled:opacity-60"
-                      >
-                        Cancel
-                      </button>
-                    ) : null}
-                  </div>
-                  {editingNote ? (
-                    <p className="mt-2 text-center text-[11px] text-[var(--brand-pink-text)]">
-                      Editing note at {fmt(editingNote.position)}
-                    </p>
-                  ) : null}
-                  {noteSave.errorText || noteRemove.errorText ? (
-                    <p role="alert" className="mt-2 text-center text-[12px] text-[var(--brand-pink-text)]">
-                      {noteSave.errorText || noteRemove.errorText}
-                    </p>
-                  ) : null}
-                  {/*
-                    No `truncate` and no `max-h` cap on the note text (it was
-                    clipped to one ellipsised line, so a user could never read
-                    back a note they had written). The LIST keeps its own
-                    overflow-y-auto so many notes still scroll, but each note
-                    shows in full: break-words stops a long word overflowing,
-                    whitespace-pre-wrap keeps the user's own line breaks.
-                  */}
-                  <ul
-                    aria-label="Saved audiobook notes"
-                    className="mt-3 max-h-[40vh] space-y-2 overflow-y-auto overscroll-contain pr-1"
-                  >
-                    {notes.map((n) => (
-                      <li
-                        key={n.id}
-                        className="flex items-start gap-2 rounded-lg bg-foreground/5 p-2 text-sm"
-                      >
+                  {composer ? (
+                    <div className="space-y-2" role="group" aria-label={`New note at ${formatTime(composer.position)}`}>
+                      <p className="text-[12px] font-semibold text-[var(--brand-pink-text)]">Note at {formatTime(composer.position)}</p>
+                      <RichNoteEditor value={composer.body} onChange={(body) => setComposer((c) => (c ? { ...c, body } : c))} autoFocus ariaLabel="New audio note" minHeight={88} />
+                      <div className="flex items-center justify-end gap-2">
+                        <button type="button" onClick={() => closeComposer(false)} className="rounded-full bg-foreground/10 px-3 py-2 text-sm font-semibold text-foreground">Cancel</button>
                         <button
                           type="button"
-                          onClick={() => seek(n.position)}
-                          className="shrink-0 text-[var(--brand-pink-text)]"
+                          onClick={() => closeComposer(true)}
+                          disabled={isDocEmpty(composer.body)}
+                          className="rounded-full bg-[var(--brand-pink)] px-4 py-2 text-sm font-bold text-[var(--on-brand)] disabled:opacity-50"
                         >
-                          {fmt(n.position)}
+                          Save note
                         </button>
-                        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-foreground/70">
-                          {n.note}
-                        </span>
-                        <span className="flex shrink-0 flex-col items-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => startEditAudioNote(n)}
-                            className="text-[var(--brand-pink-text)]"
-                            aria-label="Edit note"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void removeAudioNote(n)}
-                            disabled={noteRemove.busy}
-                            className="text-foreground/40 disabled:opacity-40"
-                            aria-label="Delete note"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button type="button" onClick={openComposer} className="rounded-full bg-[var(--brand-pink)] px-4 py-2 text-sm font-bold text-[var(--on-brand)]">
+                          ＋ Add note at {fmt(t)}
+                        </button>
+                        <button type="button" onClick={bookmarkNow} className="rounded-full bg-foreground/10 px-3 py-2 text-sm font-semibold text-foreground">
+                          🔖 Bookmark
+                        </button>
+                        <button type="button" onClick={() => setNotesOpen(true)} className="rounded-full bg-foreground/10 px-3 py-2 text-sm font-semibold text-foreground">
+                          📋 Notes{audioNotes.length ? ` (${audioNotes.length})` : ''}
+                        </button>
+                      </div>
+                      <label className="flex cursor-pointer items-center gap-2 text-[12px] text-foreground/60">
+                        <input type="checkbox" checked={pauseToWrite} onChange={(e) => setPause(e.target.checked)} />
+                        Pause while I write a note
+                      </label>
+                      <div className="flex justify-end"><SaveIndicator status={noteStatus} /></div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <p className="text-[13px] text-foreground/50">
@@ -1066,6 +957,20 @@ export function AudioPlayer({
                 </p>
               )}
             </div>
+
+            <NotesPanel
+              open={notesOpen}
+              onClose={() => setNotesOpen(false)}
+              notes={canNote ? audioNotes : []}
+              status={noteStatus}
+              title="Audio notes"
+              emptyHint="Tap “Add note” while listening."
+              onJump={(n: NoteRow) => { seek(n.position ?? 0); if (typeof window !== 'undefined' && !window.matchMedia('(min-width: 768px)').matches) setNotesOpen(false) }}
+              onChange={(id: string, patch: Partial<NoteRow>) => notesStore?.update(id, patch)}
+              onDelete={(id: string) => notesStore?.remove(id)}
+              onRestore={(id: string) => notesStore?.restore(id)}
+              onExport={(as: 'md' | 'pdf') => downloadNotesExport(bookId, as, guestToken)}
+            />
 
             {downloadable ? (
               <ActionButton
