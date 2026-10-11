@@ -308,6 +308,8 @@ export function PdfReader({
   const visibleThoughts = canNote ? thoughts : []
   const [lastColor, setLastColor] = useState<NoteColor>('yellow')
   const [panelEditId, setPanelEditId] = useState<string | null>(null)
+  // Set when a highlight is tapped: the panel scrolls to that note and marks it.
+  const [focusNoteId, setFocusNoteId] = useState<string | null>(null)
   const [draft, setDraft] = useState<{
     page: number
     quote: string
@@ -467,6 +469,7 @@ export function PdfReader({
             if (highlightMode || !piece.noteId) return
             e.stopPropagation()
             setPanelEditId(null)
+            setFocusNoteId(piece.noteId)
             setNotesOpen(true)
           }}
           className={`cursor-pointer rounded-sm px-0.5 text-inherit ${COLOR_BG[piece.color]}`}
@@ -526,9 +529,9 @@ export function PdfReader({
     return fallback()
   }
 
-   function captureCurrentSelection() {
+   function captureCurrentSelection(win: Window = window) {
     if (!canNote || !highlightMode) return
-    const selection = window.getSelection()
+    const selection = win.getSelection()
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
     const quote = normalizeNoteText(selection.toString()).replace(/\s+/g, ' ').trim().slice(0, 500)
     if (quote.length < 2) return
@@ -536,9 +539,11 @@ export function PdfReader({
     const element = anchor instanceof Element ? anchor : anchor?.parentElement
     if (element?.closest('input, textarea, button, a')) return
     const section = element?.closest('section[id^="read-page-"]')
+    // The pop-out shows one page (the one being read aloud, else the current one).
+    const fallbackPage = win === window ? pageRef.current : ttsPageLoadedRef.current ?? pageRef.current
     const pageNum = section
-      ? Number(section.id.replace('read-page-', '')) || pageRef.current
-      : pageRef.current
+      ? Number(section.id.replace('read-page-', '')) || fallbackPage
+      : fallbackPage
     const offsets = offsetsFromSelection(selection, pageNum)
     setDraft((prev) => {
       if (
@@ -784,6 +789,8 @@ function renderReaderNotices() {
 
     useEffect(() => {
     if (!canNote || !highlightMode) return
+    // The main page and, when it is open, the pop-out window both take highlights.
+    let activeWin: Window = window
 
     let mouseDown = false
     let touches = 0
@@ -802,7 +809,7 @@ function renderReaderNotices() {
       idleTimer = window.setTimeout(() => {
         idleTimer = null
         if (selecting()) return
-        captureCurrentSelection()
+        captureCurrentSelection(activeWin)
       }, ms)
     }
 
@@ -847,24 +854,46 @@ function renderReaderNotices() {
       openWhenIdle(160)
     }
 
-    document.addEventListener('contextmenu', blockNativeMenu, true)
-    document.addEventListener('touchstart', onTouchStart, { capture: true, passive: true })
-    document.addEventListener('touchend', onTouchEnd, { capture: true })
-    document.addEventListener('touchcancel', onTouchCancel, { capture: true })
-    document.addEventListener('mousedown', onMouseDown, true)
-    document.addEventListener('mouseup', onMouseUp, true)
-    document.addEventListener('selectionchange', onSelectionChange)
+    const targets: Window[] = pipWindow ? [window, pipWindow] : [window]
+    const bound = targets.map((win) => {
+      const doc = win.document
+      const mark = <T extends Event>(fn: (e: T) => void) => (e: T) => { activeWin = win; fn(e) }
+      const h = {
+        contextmenu: blockNativeMenu,
+        touchstart: mark(onTouchStart),
+        touchend: mark(onTouchEnd),
+        touchcancel: mark(onTouchCancel),
+        mousedown: mark(onMouseDown),
+        mouseup: mark(onMouseUp),
+        selectionchange: mark(onSelectionChange),
+      }
+      doc.addEventListener('contextmenu', h.contextmenu, true)
+      doc.addEventListener('touchstart', h.touchstart as EventListener, { capture: true, passive: true })
+      doc.addEventListener('touchend', h.touchend as EventListener, { capture: true })
+      doc.addEventListener('touchcancel', h.touchcancel as EventListener, { capture: true })
+      doc.addEventListener('mousedown', h.mousedown as EventListener, true)
+      doc.addEventListener('mouseup', h.mouseup as EventListener, true)
+      doc.addEventListener('selectionchange', h.selectionchange as EventListener)
+      return { doc, h }
+    })
     return () => {
       clearIdle()
-      document.removeEventListener('contextmenu', blockNativeMenu, true)
-      document.removeEventListener('touchstart', onTouchStart, true)
-      document.removeEventListener('touchend', onTouchEnd, true)
-      document.removeEventListener('touchcancel', onTouchCancel, true)
-      document.removeEventListener('mousedown', onMouseDown, true)
-      document.removeEventListener('mouseup', onMouseUp, true)
-      document.removeEventListener('selectionchange', onSelectionChange)
+      for (const { doc, h } of bound) {
+        doc.removeEventListener('contextmenu', h.contextmenu, true)
+        doc.removeEventListener('touchstart', h.touchstart as EventListener, true)
+        doc.removeEventListener('touchend', h.touchend as EventListener, true)
+        doc.removeEventListener('touchcancel', h.touchcancel as EventListener, true)
+        doc.removeEventListener('mousedown', h.mousedown as EventListener, true)
+        doc.removeEventListener('mouseup', h.mouseup as EventListener, true)
+        doc.removeEventListener('selectionchange', h.selectionchange as EventListener)
+      }
     }
-  }, [canNote, highlightMode])
+  }, [canNote, highlightMode, pipWindow])
+
+  function clearAllSelections() {
+    window.getSelection()?.removeAllRanges()
+    pipWindowRef.current?.getSelection()?.removeAllRanges()
+  }
 
   function toggleHighlightMode() {
     const next = !highlightMode
@@ -872,7 +901,7 @@ function renderReaderNotices() {
     if (!next) {
       setDraft(null)
       setEditingNote(false)
-      window.getSelection()?.removeAllRanges()
+      clearAllSelections()
     }
     setNoteMsg('')
   }
@@ -904,7 +933,7 @@ function renderReaderNotices() {
     setDraft(null)
     setEditingNote(false)
     setNoteMsg('')
-    window.getSelection()?.removeAllRanges()
+    clearAllSelections()
   }
 
   function chapterForPage(n: number): string {
@@ -928,7 +957,7 @@ function renderReaderNotices() {
   function cancelEditThought() {
     setDraft(null)
     setEditingNote(false)
-    window.getSelection()?.removeAllRanges()
+    clearAllSelections()
   }
 
   /** Jump to a note from the panel (or a tapped highlight). */
@@ -1953,6 +1982,69 @@ function renderReaderNotices() {
     )
   }
 
+  function renderNotesPanel() {
+    return (
+      <NotesPanel
+        key={panelEditId || 'notes'}
+        open={notesOpen}
+        onClose={() => { setNotesOpen(false); setFocusNoteId(null); clearAllSelections() }}
+        notes={canNote ? readerNotes : []}
+        status={noteStatus}
+        emptyHint={canNote ? 'Tap Highlight, then tap and hold a passage — or use Page note.' : 'Log in to keep notes and highlights.'}
+        initialEditId={panelEditId}
+        focusId={focusNoteId}
+        onJump={(n: NoteRow) => void jumpToNote(n)}
+        onChange={(id: string, patch: Partial<NoteRow>) => notesStore?.update(id, patch)}
+        onDelete={(id: string) => notesStore?.remove(id)}
+        onRestore={(id: string) => notesStore?.restore(id)}
+        onExport={(as: 'md' | 'pdf') => downloadNotesExport(bookId, as, guestToken)}
+      />
+    )
+  }
+
+  function renderDraftBar() {
+    return (
+      canNote && draft ? (
+        <div className="shrink-0 border-b border-black/10 bg-[#f6e27a] px-3 py-2 text-[#1a1a1a]" role="group" aria-label={draft.quote ? 'New highlight' : 'New page note'}>
+          <div className="mx-auto flex max-w-2xl items-center gap-2">
+            <p className="min-w-0 flex-1 truncate text-[12px] font-semibold">
+              <span className="opacity-60">p.{draft.page} · </span>
+              {draft.quote || 'Note on this page'}
+            </p>
+            <button type="button" onClick={saveThought} className="shrink-0 rounded-full bg-[var(--on-brand)] px-3 py-1.5 text-[13px] font-bold text-white">
+              {draft.quote ? 'Save highlight' : 'Save note'}
+            </button>
+            <button type="button" onClick={cancelEditThought} aria-label="Discard" className="shrink-0 rounded-full bg-black/10 px-2 py-1.5 text-[13px] font-bold">×</button>
+          </div>
+          {draft.quote ? (
+            <div className="mx-auto mt-1.5 flex max-w-2xl items-center gap-2">
+              <span role="group" aria-label="Highlight colour" className="flex items-center gap-1.5">
+                {NOTE_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-label={`${c} highlight`}
+                    aria-pressed={draft.color === c}
+                    onClick={() => setDraft({ ...draft, color: c })}
+                    className={`h-6 w-6 rounded-full border border-black/20 ${COLOR_BG[c].split(' ')[0]} ${draft.color === c ? 'ring-2 ring-[#1a1a1a] ring-offset-1 ring-offset-[#f6e27a]' : ''}`}
+                  />
+                ))}
+              </span>
+              <button type="button" onClick={() => setEditingNote(!editingNote)} aria-expanded={editingNote} className="rounded-full bg-black/10 px-3 py-1 text-[13px] font-bold">
+                {editingNote ? 'Hide note' : 'Add a note'}
+              </button>
+            </div>
+          ) : null}
+          {editingNote || !draft.quote ? (
+            <div className="mx-auto mt-2 max-w-2xl rounded-xl bg-background text-foreground">
+              <RichNoteEditor value={draft.body} onChange={(body) => setDraft((d) => (d ? { ...d, body } : d))} autoFocus ariaLabel="New note" minHeight={88} />
+            </div>
+          ) : null}
+        </div>
+      ) : null
+    )
+  }
+
   function renderPipPane(opts?: { floating?: boolean }) {
     const voiceOptions = ttsVoices.length ? ttsVoices : FALLBACK_VOICES
     const maxPages = total || maxPagesRef.current
@@ -1984,6 +2076,8 @@ function renderReaderNotices() {
           ) : null}
         </div>
         {renderReaderNotices()}
+        {renderDraftBar()}
+        {notesOpen ? renderNotesPanel() : null}
         <div
           ref={(node: HTMLDivElement | null) => { pipScrollRef.current = node }}
           className="min-h-0 flex-1 overflow-auto px-4 py-3"
@@ -2026,6 +2120,13 @@ function renderReaderNotices() {
               ))}
             </div>
           </div>
+          {canNote ? (
+            <div className="flex items-center gap-1.5" role="group" aria-label="Notes">
+              <button type="button" onClick={toggleHighlightMode} aria-pressed={highlightMode} className={`h-7 flex-1 rounded-full px-2 text-xs font-bold ${highlightMode ? 'bg-[#f6e27a] text-[var(--on-brand)]' : 'bg-foreground/10 text-foreground'}`}>✏️ Highlight</button>
+              <button type="button" onClick={() => { setFocusNoteId(null); setNotesOpen((v: boolean) => !v) }} aria-pressed={notesOpen} className={`h-7 flex-1 rounded-full px-2 text-xs font-bold ${notesOpen ? 'bg-[#f591ac] text-[var(--on-brand)]' : 'bg-foreground/10 text-foreground'}`}>📋 Notes{readerNotes.length ? ` (${readerNotes.length})` : ''}</button>
+              <button type="button" onClick={startPageNote} className="h-7 flex-1 rounded-full bg-foreground/10 px-2 text-xs font-bold text-foreground">📝 Page note</button>
+            </div>
+          ) : null}
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={() => void gotoPageAndRead(page - 1)} disabled={page <= 1 || ttsBusy} className="h-8 flex-1 rounded-full bg-foreground/10 px-2.5 text-xs font-bold text-foreground disabled:opacity-40">← Prev</button>
             <button type="button" onClick={() => void gotoPageAndRead(page + 1)} disabled={(maxPages > 0 && page >= maxPages) || ttsBusy} className="h-8 flex-1 rounded-full bg-foreground/10 px-2.5 text-xs font-bold text-foreground disabled:opacity-40">Next →</button>
@@ -2178,44 +2279,7 @@ function renderReaderNotices() {
         </div>
       )}
 
-      {canNote && draft ? (
-        <div className="shrink-0 border-b border-black/10 bg-[#f6e27a] px-3 py-2 text-[#1a1a1a]" role="group" aria-label={draft.quote ? 'New highlight' : 'New page note'}>
-          <div className="mx-auto flex max-w-2xl items-center gap-2">
-            <p className="min-w-0 flex-1 truncate text-[12px] font-semibold">
-              <span className="opacity-60">p.{draft.page} · </span>
-              {draft.quote || 'Note on this page'}
-            </p>
-            <button type="button" onClick={saveThought} className="shrink-0 rounded-full bg-[var(--on-brand)] px-3 py-1.5 text-[13px] font-bold text-white">
-              {draft.quote ? 'Save highlight' : 'Save note'}
-            </button>
-            <button type="button" onClick={cancelEditThought} aria-label="Discard" className="shrink-0 rounded-full bg-black/10 px-2 py-1.5 text-[13px] font-bold">×</button>
-          </div>
-          {draft.quote ? (
-            <div className="mx-auto mt-1.5 flex max-w-2xl items-center gap-2">
-              <span role="group" aria-label="Highlight colour" className="flex items-center gap-1.5">
-                {NOTE_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    aria-label={`${c} highlight`}
-                    aria-pressed={draft.color === c}
-                    onClick={() => setDraft({ ...draft, color: c })}
-                    className={`h-6 w-6 rounded-full border border-black/20 ${COLOR_BG[c].split(' ')[0]} ${draft.color === c ? 'ring-2 ring-[#1a1a1a] ring-offset-1 ring-offset-[#f6e27a]' : ''}`}
-                  />
-                ))}
-              </span>
-              <button type="button" onClick={() => setEditingNote(!editingNote)} aria-expanded={editingNote} className="rounded-full bg-black/10 px-3 py-1 text-[13px] font-bold">
-                {editingNote ? 'Hide note' : 'Add a note'}
-              </button>
-            </div>
-          ) : null}
-          {editingNote || !draft.quote ? (
-            <div className="mx-auto mt-2 max-w-2xl rounded-xl bg-background text-foreground">
-              <RichNoteEditor value={draft.body} onChange={(body) => setDraft((d) => (d ? { ...d, body } : d))} autoFocus ariaLabel="New note" minHeight={88} />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      {!pipOpen ? renderDraftBar() : null}
 
       {highlightMode && canNote && !draft ? (
         <div className="shrink-0 border-b border-black/10 bg-[#f6e27a]/60 dark:bg-[#f6e27a]/85 px-3 py-1.5 text-center text-[12px] font-semibold text-[#1a1a1a]/70">
@@ -2227,20 +2291,7 @@ function renderReaderNotices() {
         <p className="shrink-0 px-3 py-1.5 text-center text-[12px] font-semibold text-[var(--brand-pink-text)]">{noteMsg}</p>
       ) : null}
 
-      <NotesPanel
-        key={panelEditId || 'notes'}
-        open={notesOpen}
-        onClose={() => { setNotesOpen(false); window.getSelection()?.removeAllRanges() }}
-        notes={canNote ? readerNotes : []}
-        status={noteStatus}
-        emptyHint={canNote ? 'Tap Highlight, then tap and hold a passage — or use Page note.' : 'Log in to keep notes and highlights.'}
-        initialEditId={panelEditId}
-        onJump={(n: NoteRow) => void jumpToNote(n)}
-        onChange={(id: string, patch: Partial<NoteRow>) => notesStore?.update(id, patch)}
-        onDelete={(id: string) => notesStore?.remove(id)}
-        onRestore={(id: string) => notesStore?.restore(id)}
-        onExport={(as: 'md' | 'pdf') => downloadNotesExport(bookId, as, guestToken)}
-      />
+      {!pipOpen ? renderNotesPanel() : null}
 
       {renderReaderNotices()}
 
