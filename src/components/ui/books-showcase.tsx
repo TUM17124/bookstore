@@ -9,7 +9,7 @@ import {
   type BookDims,
 } from '@/lib/book3d/geometry';
 import { PAGE_H, PAGE_W, paintFace, paintPaper, planFaces } from '@/lib/book3d/pages';
-import { PHONE_TOP, TOOL_H, fitArea, phoneBookHeight } from '@/lib/book3d/layout';
+import { HINT_H, PHONE_TOP, TOOL_H, fitArea, phoneBookHeight } from '@/lib/book3d/layout';
 import { loadPreviewPages } from '@/lib/book3d/preview';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -1901,7 +1901,7 @@ export function BooksShowcase({
         SLOTS.detail = { p: [0, (yw - rootY) / fit, 0.8], r: [-0.02, -0.4, 0.06], s: S / fit };
         const toolTop = areaBottom + 4;
         const panelTop = toolTop + TOOL_H + 4;
-        pushLayout({ phone: true, toolTop, toolX: dims.w / 2, panelTop, wrapMin: Math.ceil(panelTop + need + 24) });
+        pushLayout({ phone: true, toolTop, toolX: dims.w / 2, panelTop, wrapMin: Math.ceil(panelTop + need + HINT_H) });
       } else {
         const panelLeft = dims.w * 0.95 - Math.min(520, dims.w * 0.4);
         const left = 16;
@@ -2987,7 +2987,7 @@ export function BooksShowcase({
           after it, sits below the fold instead of overlapping the book. */}
       <div
         className={cn('relative w-full shrink-0', shelfActive ? 'h-full' : 'h-0 overflow-hidden')}
-        style={shelfActive && layout?.phone ? ({ minHeight: layout.wrapMin, '--bs-panel-top': `${layout.panelTop}px` } as React.CSSProperties) : undefined}
+        style={shelfActive && layout?.phone ? ({ minHeight: layout.wrapMin, '--bs-panel-top': `${layout.panelTop}px`, '--bs-hint-h': `${HINT_H}px` } as React.CSSProperties) : undefined}
       >
       <canvas
         ref={canvasRef}
@@ -3004,16 +3004,6 @@ export function BooksShowcase({
             uiMode === 'detail' ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
           }`}
         >
-          {/* On phones the "back to the shelf" button lives here so nothing sits over the book. */}
-          <button
-            type="button"
-            aria-label="Close detail view"
-            title="Back to the shelf"
-            onClick={() => sceneApiRef.current?.closeCurrent()}
-            className={`${TOOL_BTN_BASE} hidden @max-[760px]:inline-flex`}
-          >
-            <IconClose />
-          </button>
           <button
             type="button"
             aria-pressed={lookInside}
@@ -3072,7 +3062,7 @@ export function BooksShowcase({
           type="button"
           aria-label="Close detail view"
           onClick={() => sceneApiRef.current?.closeCurrent()}
-          className={`book-close-btn absolute left-[18px] top-[30px] z-[80] inline-flex h-[52px] w-[52px] items-center justify-center rounded-full border-[1.5px] border-current/30 bg-transparent text-[17px] leading-none text-current transition-[opacity,border-color] duration-300 delay-150 hover:border-current/70 @max-[760px]:hidden ${
+          className={`book-close-btn absolute left-[18px] top-[30px] z-[80] inline-flex h-[52px] w-[52px] items-center justify-center rounded-full border-[1.5px] border-current/30 bg-transparent text-[17px] leading-none text-current transition-[opacity,border-color] duration-300 delay-150 hover:border-current/70 @max-[760px]:left-[14px] @max-[760px]:top-[80px] ${
             uiMode === 'detail' ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
           }`}
         >
@@ -3089,7 +3079,7 @@ export function BooksShowcase({
             if (!root) return;
             root.scrollTo({ top: root.scrollHeight, behavior: 'smooth' });
           }}
-          className={`pointer-events-auto absolute bottom-2 left-1/2 z-[20] flex -translate-x-1/2 flex-col items-center gap-0.5 text-current/65 transition-opacity duration-300 ${
+          className={`pointer-events-auto absolute bottom-2 left-1/2 z-[20] flex -translate-x-1/2 flex-col items-center gap-0.5 text-current/65 transition-opacity duration-300 @max-[760px]:bottom-1 ${
             uiMode === 'detail' ? 'opacity-100 delay-500' : 'pointer-events-none opacity-0'
           }`}
         >
@@ -3105,7 +3095,7 @@ export function BooksShowcase({
           ref={dpRef}
           aria-live="polite"
           className={`absolute right-[5%] top-8 bottom-4 z-[15] flex w-[min(520px,40%)] flex-col justify-start pt-0 pointer-events-none
-            @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-[var(--bs-panel-top,200px)] @max-[760px]:bottom-4
+            @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-[var(--bs-panel-top,200px)] @max-[760px]:bottom-[var(--bs-hint-h,16px)]
             @max-[760px]:w-[min(560px,92cqw)] @max-[760px]:max-h-none @max-[760px]:-translate-x-1/2
             ${panelVisible ? 'visible' : 'invisible delay-[500ms]'}`}
         >

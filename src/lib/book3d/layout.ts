@@ -5,7 +5,8 @@ export const FOV_K = 0.4617
 export const BOOK_H = 2.3 // book height incl. a little perspective
 export const BOOK_W = 1.6 // closed, turned a little
 export const TOOL_H = 56 // toolbar row under the book
-export const PHONE_TOP = 76 // below the site header
+export const PHONE_TOP = 134 // below the site header and the ✕ (52 px) in the top-left corner
+export const HINT_H = 52 // strip under the action card that holds "More below"
 export const PHONE_MIN_BOOK_H = 210
 
 export function spreadWidth(phone: boolean) {
@@ -23,5 +24,5 @@ export function fitArea(o: { viewH: number; areaW: number; areaH: number; camZ: 
 
 /** Phone: the book gets everything the panel does not need (at least 210 px, at most 46 % of the screen). */
 export function phoneBookHeight(viewH: number, panelNeed: number) {
-  return Math.max(PHONE_MIN_BOOK_H, Math.min(viewH * 0.46, viewH - PHONE_TOP - TOOL_H - panelNeed - 24))
+  return Math.max(PHONE_MIN_BOOK_H, Math.min(viewH * 0.46, viewH - PHONE_TOP - TOOL_H - panelNeed - HINT_H))
 }
