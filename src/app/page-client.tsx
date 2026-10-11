@@ -56,6 +56,8 @@ function toCfg(b: ApiBook): BookCfg {
     offers: b.offers ?? null,
     sponsored: b.sponsored ?? null,
     pageCount: b.pageCount ?? null,
+    slug: b.slug,
+    shareUrl: b.shareUrl ?? undefined,
   }
 }
 

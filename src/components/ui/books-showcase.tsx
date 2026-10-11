@@ -45,6 +45,8 @@ import { useCurrency, formatMoney } from '@/lib/money';
 import { edgeMask, useScrollEdges } from '@/components/category-nav/use-scroll-edges';
 import { useSignalsOn } from '@/lib/site-config';
 import { Banners } from '@/components/offers/banners';
+import { nativeShare } from '@/lib/share';
+import { ShareSheet } from '@/components/share-sheet';
 
 export interface BookCfg {
   id: string;
@@ -88,6 +90,9 @@ export interface BookCfg {
   sponsored?: { token: string; label: string } | null;
   /** Part 6: PDF page count, used to derive spine thickness. */
   pageCount?: number | null;
+  /** Public share page (/b/<slug>/), see lib/share.ts. */
+  slug?: string;
+  shareUrl?: string;
 }
 
 /** Where a card sits, for the interaction signals (Part E, PR 3). */
@@ -909,22 +914,14 @@ export function BooksShowcase({
     });
   }, [uiMode, selectedCfg?.id]);
 
+  const [shareOpen, setShareOpen] = useState(false);
+
+  // Web Share API with the public /b/<slug>/ link; without it the share panel
+  // (copy link, WhatsApp, Facebook, X, Telegram, LinkedIn, email).
   async function shareBook() {
     if (!selectedCfg) return;
-    const shareUrl = `${window.location.origin}/?book=${encodeURIComponent(selectedCfg.id)}`;
-    const data = { title: selectedCfg.title, text: `Read ${selectedCfg.title} on PlugYard`, url: shareUrl };
-    try {
-      if (navigator.share) {
-        await navigator.share(data);
-        return;
-      }
-    } catch {}
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      alert('Link copied');
-    } catch {
-      window.prompt('Copy this link', shareUrl);
-    }
+    const result = await nativeShare(selectedCfg);
+    if (result === 'unsupported') setShareOpen(true);
   }
 
   useEffect(() => {
@@ -3182,6 +3179,7 @@ export function BooksShowcase({
                       <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
                     </svg>
                   </button>
+                  {selectedCfg ? <ShareSheet book={selectedCfg} open={shareOpen} onClose={() => setShareOpen(false)} /> : null}
                   {selectedCfg && selectedCfg.hasEbook !== false && !canReadEbook && eb?.read === 'preview' && (
                     <button
                       type="button"

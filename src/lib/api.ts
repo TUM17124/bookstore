@@ -37,6 +37,10 @@ export type ApiBook = {
   audiobook_price?: number
   stock?: number
   hasEbook?: boolean
+  /** Public share page (/b/<slug>/) and its preview images. */
+  slug?: string
+  shareUrl?: string | null
+  shareImage?: { og?: string; square?: string } | null
   /** Owner only: state of an upload that is converted to PDF (DOCX, ODT, PPTX, ...). */
   conversion?: { status: 'queued' | 'running' | 'ok' | 'failed'; format: string; error?: string; pages?: number } | null
   /** Public: page count from the latest successful conversion (null if unknown). */
