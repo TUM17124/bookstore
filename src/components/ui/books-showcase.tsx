@@ -4,6 +4,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 // Types only: the three.js code (~130 KB gzipped) is loaded when a book is
 // first opened (or the pointer/finger first touches the shelf), not with the page.
 import type * as THREE from 'three';
+import {
+  CH, CT, CW, GAP, bookDims, backPivotZ, blockBox, endPageZ, frontPivotZ, leafFlippedZ, leafProfile, leafRestZ, leafSize, spineBox,
+  type BookDims,
+} from '@/lib/book3d/geometry';
+import { PAGE_H, PAGE_W, paintFace, paintPaper, planFaces } from '@/lib/book3d/pages';
+import { loadPreviewPages } from '@/lib/book3d/preview';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useBookmarks } from '@/components/bookmarks-context';
@@ -744,7 +750,9 @@ export function BooksShowcase({
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
   const dpRef = useRef<HTMLDivElement | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
-  const sceneApiRef = useRef<{ openById: (id: string) => void; closeCurrent: () => void } | null>(null);
+  const sceneApiRef = useRef<{ openById: (id: string) => void; closeCurrent: () => void; toggleLook: () => void; turnPage: (d: number) => void; resetView: () => void } | null>(null);
+  const [lookInside, setLookInside] = useState(false);
+  const [pageInfo, setPageInfo] = useState({ turned: 0, leaves: 4 });
   const pendingOpenIdRef = useRef<string | null>(null);
   // The 3D scene (and three.js) is set up the first time a book is opened.
   const [sceneWanted, setSceneWanted] = useState(false);
@@ -1045,8 +1053,6 @@ export function BooksShowcase({
       window.matchMedia('(max-width: 760px)').matches || window.matchMedia('(pointer: coarse)').matches;
     const COVER_W = 1024;
     const COVER_H = 1536;
-    const PAGE_N = 12;
-    const PAGE_B = 6;
     const MAX_TEX = 1024;
     const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
@@ -1458,95 +1464,62 @@ export function BooksShowcase({
       x.fillRect(w / 2 - 26, h - 95, 52, 3);
       x.globalAlpha = 1;
     }
-    function trimToWidth(x: CanvasRenderingContext2D, text: string, maxW: number) {
-      if (x.measureText(text).width <= maxW) return text;
-      let t = text;
-      while (t.length > 1 && x.measureText(t + '...').width > maxW) t = t.slice(0, -1);
-      return t + '...';
-    }
-    function makeIndexPageTex(chapters?: string[]) {
-      const w = COVER_W,
-        h = COVER_H,
-        c = mkCanvas(w, h),
-        x = c.getContext('2d')!;
-      x.fillStyle = '#f4efdf';
-      x.fillRect(0, 0, w, h);
-      x.fillStyle = 'rgba(130,110,80,0.07)';
-      for (let i = 0; i < 1600; i++) x.fillRect(Math.random() * w, Math.random() * h, 1.1, 1.1);
-      x.fillStyle = '#2f2a23';
-      x.textAlign = 'center';
-      x.font = '700 84px Georgia';
-      x.fillText('INDEX', w / 2, 190);
-      x.globalAlpha = 0.26;
-      x.fillRect(220, 225, w - 440, 3);
-      x.globalAlpha = 1;
-      const list =
-        chapters && chapters.length
-          ? chapters
-          : ['Introduction', 'Main Ideas', 'Practical Lessons', 'Case Studies', 'Takeaways', 'Final Notes'];
-      x.textAlign = 'left';
-      x.font = '500 46px Georgia';
-      let y = 318;
-      for (let i = 0; i < list.length; i++) {
-        const n = String(i + 1).padStart(2, '0');
-        const pageNo = String(7 + i * 14).padStart(3, ' ');
-        const left = n + '. ' + trimToWidth(x, list[i], 650);
-        x.fillStyle = '#2f2a23';
-        x.fillText(left, 150, y);
-        x.textAlign = 'right';
-        x.fillStyle = '#5d5043';
-        x.fillText(pageNo, w - 150, y);
-        x.textAlign = 'left';
-        x.globalAlpha = 0.22;
-        x.fillRect(150, y + 16, w - 300, 2);
-        x.globalAlpha = 1;
-        y += 112;
-      }
-      return tex(c);
-    }
-
-    const W = 1.42,
-      H = 2.14,
-      CT = 0.032,
-      OV = 0.05,
-      HINGE_OVERLAP = 0.05;
-    const PW = W - 0.02,
-      PH = H - 0.02;
-    const coverGeo = new THREE.BoxGeometry(W + OV, H + OV * 2, CT);
-    const pageGeo = new THREE.PlaneGeometry(PW, PH);
+    const LEAVES = 4;
+    const SEGS = 14;
+    /** Cover angle when the book is held open (radians). */
+    const OPEN_ANGLE = 2.35;
+    // The cover/spine/pages geometry lives in lib/book3d/geometry.ts and is unit-tested.
+    const coverGeo = new THREE.BoxGeometry(CW, CH, CT);
+    coverGeo.translate(CW / 2, 0, 0); // hinge line at x = 0
     const hitGeo = new THREE.BoxGeometry(1.8, 2.5, 1.15);
     // Cover face aspect ratio for texture letterboxing
-    const COVER_AR = (W + OV) / (H + OV * 2);
+    const COVER_AR = CW / CH;
     const blobGeo = new THREE.PlaneGeometry(1, 1);
     const hitMat = new THREE.MeshBasicMaterial({ visible: false });
     function std(o: THREE.MeshStandardMaterialParameters) {
       return new THREE.MeshStandardMaterial(Object.assign({ metalness: 0.02 }, o));
     }
-    const paperFlat = std({ color: 0xf5f6f8, roughness: 0.85, envMapIntensity: 0.2 });
+    const paperFlat = std({ color: 0xf1ecde, roughness: 0.85, envMapIntensity: 0.2 });
     const striMatV = std({ map: striV, bumpMap: striV, bumpScale: 0.0012, roughness: 0.85, envMapIntensity: 0.2 });
     const striMatH = std({ map: striH, bumpMap: striH, bumpScale: 0.0012, roughness: 0.85, envMapIntensity: 0.2 });
     const endpaperMat = std({ map: endpaperTex, roughness: 0.8, envMapIntensity: 0.25 });
-    const pageMats = [0xf6f7f9, 0xf3f4f6, 0xf8f9fa].map((c) =>
-      std({ color: c, roughness: 0.85, envMapIntensity: 0.22, side: THREE.DoubleSide }),
-    );
+    const unseenMat = new THREE.MeshBasicMaterial({ visible: false });
 
+    type Leaf = {
+      mesh: THREE.Mesh;
+      geo: THREE.BufferGeometry;
+      pos: Float32Array;
+      /** 0 = resting on the block, 1 = turned onto the open front board. */
+      f: Spring;
+      /** Seconds to wait before this leaf starts moving (riffle stagger). */
+      wait: number;
+      frontTex: THREE.CanvasTexture;
+      backTex: THREE.CanvasTexture;
+      lastF: number;
+      pendingT?: number;
+    };
     type Book = {
       cfg: BookCfg;
       index: number;
+      dims: BookDims;
       pivotZ: number;
       backPivotZ: number;
-      blockZ: number;
       root: THREE.Group;
       float: THREE.Group;
+      shell: THREE.Group;
       pivot: THREE.Group;
       backPivot: THREE.Group;
       frontMesh: THREE.Mesh;
       spine: THREE.Mesh;
       block: THREE.Mesh;
-      pages: THREE.Group[];
-      pageF: number[];
-      pagesB: THREE.Group[];
-      pageFB: number[];
+      leaves: Leaf[];
+      /** How many leaves are turned (0..LEAVES). */
+      turned: number;
+      lastAng: number;
+      dirty: boolean;
+      /** The reader asked for the book to be open (cover held at OPEN_ANGLE). */
+      wantOpen: boolean;
+      previewRequested: boolean;
       hit: THREE.Mesh;
       springs: Record<string, Spring>;
       phase: number;
@@ -1558,49 +1531,121 @@ export function BooksShowcase({
       orbPhase: string;
       orbTarget: number;
       orbXs: Spring;
+      orbRs: Spring;
+      orbR: number;
+      restT: number;
+      blob: THREE.Mesh;
+      coverDrag: boolean;
+      dragAng: number;
       exit: { segs: any[]; i: number; t: number } | null;
     };
     const bookInstances: Book[] = [];
     const hitMeshes: THREE.Mesh[] = [];
+
+    function makeLeaf(d: BookDims): Leaf {
+      const { w, h } = leafSize(d);
+      const n = SEGS + 1;
+      const pos = new Float32Array(n * 4 * 3);
+      const uv = new Float32Array(n * 4 * 2);
+      const idx: number[] = [];
+      for (let i = 0; i < n; i++) {
+        const u = i / SEGS;
+        uv.set([u, 1, u, 0], i * 4);
+        uv.set([1 - u, 1, 1 - u, 0], (n + i) * 4);
+      }
+      const base = n * 2;
+      for (let i = 0; i < SEGS; i++) {
+        const a = 2 * i, b = 2 * i + 1, c = 2 * i + 2, e = 2 * i + 3;
+        idx.push(a, b, c, b, e, c);
+      }
+      for (let i = 0; i < SEGS; i++) {
+        const a = base + 2 * i, b = base + 2 * i + 1, c = base + 2 * i + 2, e = base + 2 * i + 3;
+        idx.push(a, c, b, b, c, e);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      geo.setIndex(idx);
+      geo.addGroup(0, SEGS * 6, 0);
+      geo.addGroup(SEGS * 6, SEGS * 6, 1);
+      const mk = () => {
+        const c = mkCanvas(PAGE_W, PAGE_H);
+        const x = c.getContext('2d')!;
+        paintPaper(x);
+        const t = new THREE.CanvasTexture(c);
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = 4;
+        return t;
+      };
+      const frontTex = mk();
+      const backTex = mk();
+      const mesh = new THREE.Mesh(geo, [
+        std({ map: frontTex, roughness: 0.9, envMapIntensity: 0.2 }),
+        std({ map: backTex, roughness: 0.9, envMapIntensity: 0.2 }),
+      ]);
+      mesh.frustumCulled = false;
+      void w; void h;
+      return { mesh, geo, pos, f: new Spring(0, 70, 11), wait: 0, frontTex, backTex, lastF: -1 };
+    }
+    /** Bend and place a leaf: turned by f of the cover angle, curled by how fast it moves. */
+    function layoutLeaf(b: Book, k: number, ang: number, curl: number) {
+      const L = b.leaves[k];
+      const d = b.dims;
+      const { w, h } = leafSize(d);
+      const f = L.f.v;
+      const fs = clamp(f, 0, 1);
+      const smooth = fs * fs * (3 - 2 * fs);
+      const zh = leafRestZ(d, k) + (leafFlippedZ(d, k) - leafRestZ(d, k)) * smooth;
+      const psi = f * ang;
+      const prof = leafProfile(w, SEGS, psi, curl);
+      const n = prof.length;
+      for (let i = 0; i < n; i++) {
+        const x = GAP + prof[i][0];
+        const z = zh + prof[i][1];
+        const o = i * 6;
+        L.pos.set([x, h / 2, z, x, -h / 2, z], o);
+        L.pos.set([x, h / 2, z, x, -h / 2, z], n * 6 + o);
+      }
+      L.geo.attributes.position.needsUpdate = true;
+      L.geo.computeVertexNormals();
+      // Leaves are only drawn once the book is open (or being opened).
+      L.mesh.visible = ang > 0.002;
+    }
+    function repaintLeaves(b: Book, preview: string[] | null) {
+      const plan = planFaces(LEAVES * 2, preview);
+      const meta = { title: b.cfg.title, author: b.cfg.author };
+      b.leaves.forEach((leaf, k) => {
+        for (const [tex, face] of [[leaf.frontTex, plan[2 * k]], [leaf.backTex, plan[2 * k + 1]]] as const) {
+          const cv = tex.image as HTMLCanvasElement;
+          paintFace(cv.getContext('2d')!, face, meta);
+          tex.needsUpdate = true;
+        }
+      });
+    }
 
     function buildBook(cfg: BookCfg, index: number): Book {
       const root = new THREE.Group();
       const float = new THREE.Group();
       root.add(float);
       bookRoot.add(root);
+      // Everything is built in book space (spine/board meeting plane at x = 0);
+      // the shell centres the closed book on the slot.
+      const shell = new THREE.Group();
+      shell.position.x = -CW / 2;
+      float.add(shell);
 
-      // Per-book thickness from page count: 400 pages ≈ default 0.34 units
-      const rawPages = cfg.pageCount ?? 0;
-      // Logarithmic curve: thin books get a readable spine, long books don't balloon out of proportion.
-      // 8 pages→0.247, 40 pages→0.386, 72 pages→0.446, 300 pages→0.560, max→0.620
-      const T = rawPages > 0
-        ? Math.min(0.62, 0.14 + 0.46 * Math.log(1 + rawPages / 5) / Math.log(1 + 300 / 5))
-        : 0.34;
-      const PIVOT_Z = T / 2 + CT / 2;
-      const BPIVOT_Z = -(T / 2 + CT / 2);
-      const BLOCK_D = Math.max(0.04, T * 0.72);
-      const BLOCK_Z = -T * 0.06;
-      const pageStartZ = T / 2 - 0.004;
+      const d = bookDims(cfg.pageCount, LEAVES);
+      const T = d.T;
+      const PIVOT_Z = frontPivotZ(d);
+      const BPIVOT_Z = backPivotZ(d);
 
-      // Per-book geometries that depend on T
-      const spineGeo = new THREE.BoxGeometry(HINGE_OVERLAP, H + OV * 2, T + CT * 2 + 0.006);
-      const blockGeo = new THREE.BoxGeometry(W - 0.015, H, BLOCK_D);
-
-      const indexPageMat = std({
-        map: makeIndexPageTex(cfg.chapters),
-        roughness: 0.92,
-        envMapIntensity: 0.2,
-        side: THREE.DoubleSide,
-      });
-      const edgeColor = cfg.edge ?? cfg.spineBg ?? cfg.backBg ?? '#2a2d36';
+      const indexless = null;
+      void indexless;
+      const edgeColor = cfg.spineBg ?? cfg.backBg ?? cfg.edge ?? '#2a2d36';
       const mEdge = std({ color: edgeColor, bumpMap: laminateBump, bumpScale: 0.0015, roughness: 0.5, envMapIntensity: 0.32 });
       const mFront = std({ bumpMap: laminateBump, bumpScale: 0.0012, roughness: 0.4, envMapIntensity: 0.3 });
       const mBack = std({ bumpMap: laminateBump, bumpScale: 0.0012, roughness: 0.42, envMapIntensity: 0.28 });
       const mSpine = std({ bumpMap: clothBump, bumpScale: 0.0025, roughness: 0.55, envMapIntensity: 0.26 });
-      // Negative offset pulls spine in front of the cover edge where they overlap at the hinge
-      mSpine.polygonOffset = true;
-      mSpine.polygonOffsetFactor = -1;
-      mSpine.polygonOffsetUnits = -1;
       loadOrPaint(mFront, cfg.images?.front ?? cfg.coverURL ?? null, () => {
         const c = mkCanvas(COVER_W, COVER_H);
         const ctx = c.getContext('2d')!;
@@ -1615,8 +1660,8 @@ export function BooksShowcase({
         else paintBack(ctx, COVER_W, COVER_H, { backBg: cfg.backBg ?? '#22252b', backInk: cfg.backInk ?? '255,255,255' });
         return c;
       }, COVER_AR);
-      // Spine canvas width matches the shelf face (Z-depth × H ratio) to avoid stretching
-      const spineCanvasW = Math.max(64, Math.round(COVER_H * (T + CT * 2 + 0.006) / (H + OV * 2)));
+      // The spine's outer face is (T + 2 boards) deep and CH high; the canvas keeps that aspect ratio.
+      const spineCanvasW = Math.max(64, Math.round((COVER_H * (T + CT * 2)) / CH));
       loadOrPaint(mSpine, cfg.images?.spine ?? null, () => {
         const sw = spineCanvasW;
         const c = mkCanvas(sw, COVER_H);
@@ -1632,56 +1677,48 @@ export function BooksShowcase({
           });
         return c;
       });
+
       const backPivot = new THREE.Group();
-      backPivot.position.set(-W / 2 - HINGE_OVERLAP, 0, BPIVOT_Z);
+      backPivot.position.set(0, 0, BPIVOT_Z);
       const backMesh = new THREE.Mesh(coverGeo, [mEdge, mEdge, mEdge, mEdge, endpaperMat, mBack]);
-      backMesh.position.x = (W + OV) / 2;
       backMesh.castShadow = backMesh.receiveShadow = true;
       backPivot.add(backMesh);
-      float.add(backPivot);
+      shell.add(backPivot);
       const pivot = new THREE.Group();
-      pivot.position.set(-W / 2 - HINGE_OVERLAP, 0, PIVOT_Z);
+      pivot.position.set(0, 0, PIVOT_Z);
       const frontMesh = new THREE.Mesh(coverGeo, [mEdge, mEdge, mEdge, mEdge, mFront, endpaperMat]);
-      frontMesh.position.x = (W + OV) / 2;
       frontMesh.castShadow = frontMesh.receiveShadow = true;
       pivot.add(frontMesh);
-      float.add(pivot);
-      const spine = new THREE.Mesh(spineGeo, mSpine);
-      // Centre the spine so its left face is flush with the cover hinge and
-      // its right face meets the page-block edge — no gap at any angle.
-      spine.position.set(-W / 2 - HINGE_OVERLAP / 2, 0, 0);
+      shell.add(pivot);
+
+      const sb = spineBox(d);
+      const spineGeo = new THREE.BoxGeometry(sb.max[0] - sb.min[0], sb.max[1] - sb.min[1], sb.max[2] - sb.min[2]);
+      // Only the outer (-x) face carries the spine artwork; the rest is cover colour.
+      const spine = new THREE.Mesh(spineGeo, [mEdge, mSpine, mEdge, mEdge, mEdge, mEdge]);
+      spine.position.set((sb.min[0] + sb.max[0]) / 2, 0, (sb.min[2] + sb.max[2]) / 2);
       spine.castShadow = true;
-      float.add(spine);
-      const block = new THREE.Mesh(blockGeo, [striMatV, paperFlat, striMatH, striMatH, paperFlat, paperFlat]);
-      block.position.set(-0.0075, 0, BLOCK_Z);
+      shell.add(spine);
+
+      // Page block: inset from the boards; its front face is not drawn (the leaves
+      // cover it), an end page sits under the last leaf.
+      const bb = blockBox(d);
+      const blockGeo = new THREE.BoxGeometry(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2]);
+      const block = new THREE.Mesh(blockGeo, [striMatV, paperFlat, striMatH, striMatH, unseenMat, paperFlat]);
+      block.position.set((bb.min[0] + bb.max[0]) / 2, 0, (bb.min[2] + bb.max[2]) / 2);
       block.castShadow = block.receiveShadow = true;
-      float.add(block);
-      const pages: THREE.Group[] = [],
-        pageF: number[] = [];
-      for (let i = 0; i < PAGE_N; i++) {
-        const pp = new THREE.Group();
-        pp.position.set(-W / 2 + 0.01, (Math.random() - 0.5) * 0.006, pageStartZ - i * 0.0042);
-        const pm = new THREE.Mesh(pageGeo, i === 0 ? indexPageMat : pageMats[i % 3]);
-        pm.position.x = PW / 2;
-        pm.rotation.z = (Math.random() - 0.5) * 0.006;
-        pp.add(pm);
-        float.add(pp);
-        pages.push(pp);
-        pageF.push(0.3 * Math.pow(1 - i / PAGE_N, 2.6));
+      shell.add(block);
+      const { w: lw, h: lh } = leafSize(d);
+      const endPage = new THREE.Mesh(new THREE.PlaneGeometry(lw, lh), std({ color: 0xf1ecde, roughness: 0.9, envMapIntensity: 0.2 }));
+      endPage.position.set(GAP + lw / 2, 0, endPageZ(d));
+      shell.add(endPage);
+
+      const leaves: Leaf[] = [];
+      for (let k = 0; k < LEAVES; k++) {
+        const leaf = makeLeaf(d);
+        shell.add(leaf.mesh);
+        leaves.push(leaf);
       }
-      const pagesB: THREE.Group[] = [],
-        pageFB: number[] = [];
-      for (let i = 0; i < PAGE_B; i++) {
-        const pp = new THREE.Group();
-        pp.position.set(-W / 2 + 0.01, (Math.random() - 0.5) * 0.006, -pageStartZ + i * 0.0042);
-        const pm = new THREE.Mesh(pageGeo, pageMats[i % 3]);
-        pm.position.x = PW / 2;
-        pm.rotation.z = (Math.random() - 0.5) * 0.006;
-        pp.add(pm);
-        float.add(pp);
-        pagesB.push(pp);
-        pageFB.push(0.3 * Math.pow(1 - i / PAGE_B, 2.6));
-      }
+
       const blobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, opacity: blobOpacity(), depthWrite: false });
       blobMats.push(blobMat);
       const blob = new THREE.Mesh(blobGeo, blobMat);
@@ -1705,24 +1742,30 @@ export function BooksShowcase({
         cover: new Spring(0, 90, 12),
         coverB: new Spring(0, 90, 12),
         drag: new Spring(0, 160, 16),
+        visY: new Spring(0, 150, 17),
+        visX: new Spring(0, 150, 17),
+        visR: new Spring(0, 150, 17),
       };
       const b: Book = {
         cfg,
         index,
+        dims: d,
         pivotZ: PIVOT_Z,
         backPivotZ: BPIVOT_Z,
-        blockZ: BLOCK_Z,
         root,
         float,
+        shell,
         pivot,
         backPivot,
         frontMesh,
         spine,
         block,
-        pages,
-        pageF,
-        pagesB,
-        pageFB,
+        leaves,
+        turned: 0,
+        lastAng: -1,
+        dirty: true,
+        wantOpen: false,
+        previewRequested: false,
         hit,
         springs,
         phase: Math.random() * 6.28,
@@ -1734,8 +1777,15 @@ export function BooksShowcase({
         orbPhase: 'idle',
         orbTarget: 0,
         orbXs: new Spring(0, 60, 12),
+        orbRs: new Spring(0, 16, 8),
+        orbR: 0,
+        restT: 0,
+        blob,
+        coverDrag: false,
+        dragAng: 0,
         exit: null,
       };
+      repaintLeaves(b, null);
       bookInstances[index] = b;
       return b;
     }
@@ -1829,6 +1879,49 @@ export function BooksShowcase({
       }
     }
 
+    /** Turn leaves so that `n` of them lie on the open board. `stagger` seconds between leaves. */
+    function turnTo(b: Book, n: number, stagger: number) {
+      const to = clamp(n, 0, LEAVES);
+      const from = b.turned;
+      if (to === from) return;
+      for (let k = 0; k < LEAVES; k++) {
+        const L = b.leaves[k];
+        const target = k < to ? 1 : 0;
+        if (target === (k < from ? 1 : 0) && L.pendingT === undefined) continue;
+        const order = to > from ? k - from : from - 1 - k;
+        L.pendingT = target;
+        L.wait = RM ? 0 : Math.max(0, order) * stagger;
+      }
+      b.turned = to;
+      setPageInfo({ turned: to, leaves: LEAVES });
+    }
+    function setBookOpen(b: Book, want: boolean) {
+      if (b.wantOpen === want) return;
+      b.wantOpen = want;
+      setLookInside(want);
+      if (want && !b.previewRequested) {
+        b.previewRequested = true;
+        loadPreviewPages(b.cfg.id).then((pages) => {
+          if (cancelled || !pages) return;
+          repaintLeaves(b, pages);
+          b.dirty = true;
+        });
+      }
+      if (!want) turnTo(b, 0, 0.04);
+    }
+    function toggleLook() {
+      if (state.mode === 'detail' && state.selected) setBookOpen(state.selected, !state.selected.wantOpen);
+    }
+    function turnPage(delta: number) {
+      const b = state.selected;
+      if (!b || state.mode !== 'detail') return;
+      if (!b.wantOpen) {
+        if (delta > 0) setBookOpen(b, true);
+        return;
+      }
+      turnTo(b, b.turned + delta, 0.07);
+    }
+
     function open(book: Book | null) {
       if (!book) return;
       if (state.selected === book && (state.mode === 'opening' || state.mode === 'detail')) return;
@@ -1839,10 +1932,17 @@ export function BooksShowcase({
         prev.orbTarget = Math.round(prev.orbY / 6.2832) * 6.2832 + 6.2832;
         prev.orbYv = Math.max(prev.orbYv, 3);
         prev.orbPhase = 'return';
-        prev.orbXs.t = 0;
+        prev.orbXs.t = Math.round(prev.orbXs.v / 6.2832) * 6.2832;
+        prev.orbRs.t = Math.round(prev.orbRs.v / 6.2832) * 6.2832;
       }
       state.mode = 'opening';
       setUiMode('opening');
+      book.wantOpen = false;
+      book.turned = 0;
+      for (const L of book.leaves) { L.f.set(0); L.pendingT = undefined; }
+      book.dirty = true;
+      setLookInside(false);
+      setPageInfo({ turned: 0, leaves: LEAVES });
       state.selected = book;
       book.exit = null;
       root!.classList.add('bs-transit');
@@ -1867,6 +1967,8 @@ export function BooksShowcase({
         book.orbPhase = 'return';
         book.orbTarget = 0;
         book.orbXs.set(0);
+        book.orbRs.set(0);
+        book.orbR = 0;
         applyMode();
         camTo('detail');
       }, switching ? 0 : 200);
@@ -1887,10 +1989,12 @@ export function BooksShowcase({
       orbit.drag = false;
       const b = state.selected;
       if (b) {
+        setBookOpen(b, false);
         b.orbTarget = Math.round(b.orbY / 6.2832) * 6.2832 + 6.2832;
         b.orbYv = Math.max(b.orbYv, 3);
         b.orbPhase = 'return';
-        b.orbXs.t = 0;
+        b.orbXs.t = Math.round(b.orbXs.v / 6.2832) * 6.2832;
+        b.orbRs.t = Math.round(b.orbRs.v / 6.2832) * 6.2832;
       }
       setT(() => {
         root!.classList.remove('bs-transit');
@@ -1923,7 +2027,7 @@ export function BooksShowcase({
       pendingTouchRotate: false,
     };
     let rayBook: Book | null = null;
-    const orbit = { drag: false, dxAcc: 0, dyAcc: 0 };
+    const orbit = { drag: false, dxAcc: 0, dyAcc: 0, rAcc: 0, roll: false };
     const ray = new THREE.Raycaster();
     const tmpV = new THREE.Vector3();
     const canvas = canvasEl;
@@ -1932,7 +2036,107 @@ export function BooksShowcase({
       const r = root!.getBoundingClientRect();
       return { x: e.clientX - r.left, y: e.clientY - r.top };
     };
+
+    // What the pointer grabbed: the cover's fore-edge, or a page (turn it by dragging).
+    type Grab = { kind: 'cover'; startAng: number } | { kind: 'page'; dir: 1 | -1 };
+    let grab: Grab | null = null;
+    const samples: { t: number; x: number }[] = [];
+    let lastTap = { t: 0, x: 0, y: 0 };
+    const two = { id: null as number | null, x: 0, y: 0, ang: 0 };
+    const frontLocal = new THREE.Vector3();
+
+    function pickGrab(b: Book): Grab | null {
+      ray.setFromCamera({ x: ptr.ndcX, y: ptr.ndcY } as THREE.Vector2, camera);
+      const objs: THREE.Object3D[] = [b.frontMesh, ...b.leaves.filter((l) => l.mesh.visible).map((l) => l.mesh)];
+      const hits = ray.intersectObjects(objs, false);
+      if (!hits.length) return null;
+      const h = hits[0];
+      if (h.object === b.frontMesh) {
+        frontLocal.copy(h.point);
+        b.frontMesh.worldToLocal(frontLocal);
+        return frontLocal.x > CW * 0.62 ? { kind: 'cover', startAng: b.springs.cover.v } : null;
+      }
+      const k = b.leaves.findIndex((l) => l.mesh === h.object);
+      if (k < 0 || !b.wantOpen) return null;
+      return { kind: 'page', dir: k < b.turned ? -1 : 1 };
+    }
+    function pointerSpeed() {
+      // Screen widths per second over the last ~120 ms, positive = moving right.
+      const n = samples.length;
+      if (n < 2) return 0;
+      const a0 = samples[0];
+      const a1 = samples[n - 1];
+      const dtS = Math.max(0.016, (a1.t - a0.t) / 1000);
+      return (a1.x - a0.x) / dtS / Math.max(1, dims.w);
+    }
+    function pushSample(x: number) {
+      const now = performance.now();
+      samples.push({ t: now, x });
+      while (samples.length > 2 && now - samples[0].t > 120) samples.shift();
+    }
+    function updateGrab(cx: number) {
+      const b = state.selected;
+      if (!b || !grab) return;
+      const dxN = (cx - ptr.downX) / Math.max(1, dims.w);
+      if (grab.kind === 'cover') {
+        b.dragAng = clamp(grab.startAng - dxN * 6, 0, OPEN_ANGLE + 0.25);
+      } else {
+        const idx = grab.dir > 0 ? b.turned : b.turned - 1;
+        const L = b.leaves[idx];
+        if (!L) return;
+        const pr = clamp(-grab.dir * dxN * 5, 0, 1);
+        L.pendingT = undefined;
+        L.f.t = grab.dir > 0 ? pr : 1 - pr;
+      }
+    }
+    function endGrab() {
+      const b = state.selected;
+      const g = grab;
+      grab = null;
+      if (!b || !g) return;
+      if (g.kind === 'cover') {
+        b.coverDrag = false;
+        // Past the threshold it opens; released early it springs back shut.
+        setBookOpen(b, b.dragAng > OPEN_ANGLE * 0.4);
+        b.dirty = true;
+        return;
+      }
+      const idx = g.dir > 0 ? b.turned : b.turned - 1;
+      const L = b.leaves[idx];
+      if (!L) return;
+      const pr = g.dir > 0 ? L.f.t : 1 - L.f.t;
+      const flick = (-g.dir * pointerSpeed()); // > 0 = moving the way the page turns
+      if (pr > 0.35 || flick > 1.2) {
+        const avail = g.dir > 0 ? LEAVES - b.turned : b.turned;
+        const n = !RM && flick > 2.6 ? clamp(2 + Math.floor(flick - 2.6), 2, avail) : 1; // a hard flick riffles several
+        turnTo(b, b.turned + g.dir * n, n > 1 ? 0.06 : 0);
+      } else {
+        L.f.t = g.dir > 0 ? 0 : 1; // spring back
+      }
+    }
+    function resetView(b: Book) {
+      b.orbTarget = Math.round(b.orbY / TAU_) * TAU_;
+      b.orbXs.t = Math.round(b.orbXs.v / TAU_) * TAU_;
+      b.orbRs.t = Math.round(b.orbRs.v / TAU_) * TAU_;
+      b.orbPhase = 'return';
+      b.orbYv = Math.max(-6, Math.min(6, b.orbYv));
+    }
+
     const onPointerMove = (e: PointerEvent) => {
+      if (two.id === e.pointerId) {
+        two.x = e.clientX;
+        two.y = e.clientY;
+        const rect = root!.getBoundingClientRect();
+        const ang = Math.atan2(two.y - (ptr.cy + rect.top), two.x - (ptr.cx + rect.left));
+        let dA = ang - two.ang;
+        if (dA > Math.PI) dA -= TAU_;
+        if (dA < -Math.PI) dA += TAU_;
+        two.ang = ang;
+        orbit.drag = true;
+        orbit.rAcc += dA;
+        e.preventDefault();
+        return;
+      }
       if (ptr.id !== null && e.pointerId !== ptr.id) return;
       const { x: cx, y: cy } = localXY(e);
       ptr.type = e.pointerType || 'mouse';
@@ -1950,6 +2154,7 @@ export function BooksShowcase({
             ptr.lastY = cy;
             ptr.down = true;
             orbit.drag = true;
+            orbit.roll = false;
             orbit.dxAcc = 0;
             orbit.dyAcc = 0;
             canvas.setPointerCapture(e.pointerId);
@@ -1976,15 +2181,37 @@ export function BooksShowcase({
       ptr.cy = cy;
       ptr.ndcX = (cx / dims.w) * 2 - 1;
       ptr.ndcY = -(cy / dims.h) * 2 + 1;
+      if (ptr.down && grab) {
+        pushSample(cx);
+        updateGrab(cx);
+        if (ptr.type === 'touch') e.preventDefault();
+        return;
+      }
       if (ptr.down && orbit.drag) {
         orbit.dxAcc += dxN;
         orbit.dyAcc += dyN;
+        pushSample(cx);
         if (ptr.type === 'touch') e.preventDefault();
       }
     };
     canvas.addEventListener('pointermove', onPointerMove);
     const onPointerDown = (e: PointerEvent) => {
-      if (ptr.id !== null) return;
+      if (ptr.id !== null) {
+        // Second finger on the book: twist to roll it.
+        if (e.pointerType === 'touch' && two.id === null && (ptr.down || ptr.pendingTouchRotate) && state.mode === 'detail') {
+          two.id = e.pointerId;
+          two.x = e.clientX;
+          two.y = e.clientY;
+          const rect = root!.getBoundingClientRect();
+          two.ang = Math.atan2(two.y - (ptr.cy + rect.top), two.x - (ptr.cx + rect.left));
+          ptr.pendingTouchRotate = false;
+          ptr.down = true;
+          orbit.drag = true;
+          orbit.roll = false;
+          try { canvas.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+        }
+        return;
+      }
       root.focus({ preventScroll: true });
       ptr.id = e.pointerId;
       const { x: cx, y: cy } = localXY(e);
@@ -1999,13 +2226,26 @@ export function BooksShowcase({
       ptr.type = e.pointerType || 'mouse';
       ptr.seen = true;
       ptr.pendingTouchRotate = false;
+      samples.length = 0;
+      pushSample(cx);
       castRay();
       if (state.mode === 'detail' && rayBook === state.selected) {
-        if (ptr.type === 'touch') {
+        const b = state.selected!;
+        const g = pickGrab(b);
+        if (g) {
+          grab = g;
+          ptr.down = true;
+          canvas.setPointerCapture(e.pointerId);
+          if (g.kind === 'cover') {
+            b.coverDrag = true;
+            b.dragAng = g.startAng;
+          }
+        } else if (ptr.type === 'touch') {
           ptr.pendingTouchRotate = true;
         } else {
           ptr.down = true;
           orbit.drag = true;
+          orbit.roll = e.altKey || e.shiftKey || e.ctrlKey || e.metaKey;
           orbit.dxAcc = 0;
           orbit.dyAcc = 0;
           canvas.setPointerCapture(e.pointerId);
@@ -2014,15 +2254,56 @@ export function BooksShowcase({
     };
     canvas.addEventListener('pointerdown', onPointerDown);
     const onPointerUp = (e: PointerEvent) => {
+      if (two.id === e.pointerId) {
+        two.id = null;
+        return;
+      }
       if (ptr.id !== null && e.pointerId !== ptr.id) return;
+      const wasDown = ptr.down || ptr.pendingTouchRotate;
+      const moved = Math.hypot(ptr.cx - ptr.downX, ptr.cy - ptr.downY);
+      const b = state.selected;
+      if (grab) endGrab();
+      else if (b && state.mode === 'detail' && orbit.drag && !RM && b.wantOpen && Math.abs(b.orbYv) > 8 && moved > 30) {
+        // A hard flick of the open book riffles the pages the way it was thrown.
+        turnTo(b, b.turned + (b.orbYv < 0 ? 1 : -1) * 3, 0.06);
+      }
+      if (wasDown && b && state.mode === 'detail' && moved < 8) {
+        const now = performance.now();
+        if (now - lastTap.t < 330 && Math.hypot(ptr.cx - lastTap.x, ptr.cy - lastTap.y) < 30) {
+          resetView(b); // double-tap / double-click: back to the front view
+          lastTap = { t: 0, x: 0, y: 0 };
+        } else {
+          lastTap = { t: now, x: ptr.cx, y: ptr.cy };
+        }
+      }
       ptr.id = null;
       ptr.pendingTouchRotate = false;
       orbit.drag = false;
+      orbit.roll = false;
       ptr.down = false;
     };
     window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
     const onKeydown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close();
+      const b = state.selected;
+      const onRoot = e.target === root;
+      if (!b || state.mode !== 'detail') return;
+      if (e.key === 'Enter' && onRoot) { e.preventDefault(); toggleLook(); }
+      else if (e.key === 'PageDown') { e.preventDefault(); turnPage(1); }
+      else if (e.key === 'PageUp') { e.preventDefault(); turnPage(-1); }
+      else if (onRoot && (e.key === 'r' || e.key === 'R')) { e.preventDefault(); resetView(b); }
+      else if (onRoot && e.key.startsWith('Arrow')) {
+        // Arrow keys spin the book (a push with inertia).
+        e.preventDefault();
+        b.orbPhase = 'spin';
+        b.orbXs.k = 0;
+        b.orbXs.d = 2.6;
+        if (e.key === 'ArrowLeft') b.orbYv -= 3.2;
+        else if (e.key === 'ArrowRight') b.orbYv += 3.2;
+        else if (e.key === 'ArrowUp') b.orbXs.vel -= 2.2;
+        else b.orbXs.vel += 2.2;
+      }
     };
     root.addEventListener('keydown', onKeydown);
     function castRay() {
@@ -2034,69 +2315,120 @@ export function BooksShowcase({
     const timer = new THREE.Timer();
     timer.connect(document);
     const idle = RM ? 0 : 1;
-    const DETAIL_OPEN_ANGLE = 0.88;
     const DETAIL_OPEN_SWAY = 0.035;
     function screenPos(b: Book) {
       b.root.getWorldPosition(tmpV).project(camera);
       b.scr.x = (tmpV.x * 0.5 + 0.5) * dims.w;
       b.scr.y = (-tmpV.y * 0.5 + 0.5) * dims.h;
     }
+    const TAU_ = Math.PI * 2;
+    const dbg = { hold: false, x: 0, r: 0 };
     function tickBook(b: Book, dt: number, t: number) {
       const s = b.springs;
       const inDetail = state.mode === 'detail' && state.selected === b;
       const orbitActive = state.selected === b && state.mode !== 'hero';
       let activity = 0;
       if (orbitActive) {
+        const xs = b.orbXs;
+        const rs = b.orbRs;
         if (orbit.drag && inDetail) {
-          const step = orbit.dxAcc * 6.5;
-          orbit.dxAcc = 0;
-          b.orbY += step;
-          b.orbYv = clamp(b.orbYv * 0.5 + (step / Math.max(dt, 0.001)) * 0.5, -14, 14);
-          b.orbXs.t = clamp(b.orbXs.t + orbit.dyAcc * 3.2, -0.55, 0.55);
-          orbit.dyAcc = 0;
+          // Free spin about both axes while dragging (Alt/Shift/Ctrl-drag or a two-finger twist rolls).
+          if (orbit.roll) {
+            b.orbR += orbit.dxAcc * 5;
+            rs.v = b.orbR;
+          } else {
+            const stepY = orbit.dxAcc * 6.5;
+            const stepX = orbit.dyAcc * 5;
+            b.orbY += stepY;
+            xs.v += stepX;
+            b.orbYv = clamp(b.orbYv * 0.5 + (stepY / Math.max(dt, 0.001)) * 0.5, -16, 16);
+            xs.vel = clamp(xs.vel * 0.5 + (stepX / Math.max(dt, 0.001)) * 0.5, -12, 12);
+          }
+          b.orbR += orbit.rAcc;
+          orbit.dxAcc = orbit.dyAcc = orbit.rAcc = 0;
+          xs.k = 0;
+          xs.d = 2.6;
+          xs.t = xs.v;
+          rs.t = b.orbR;
           b.orbPhase = 'drag';
+          b.restT = 0;
+        } else if (b.orbPhase === 'return') {
+          // Back to the front view (intro, closing, reset): the nearest upright, front-facing pose.
+          const acc = 16 * (b.orbTarget - b.orbY) - 8 * b.orbYv;
+          b.orbYv += acc * dt;
+          b.orbY += b.orbYv * dt;
+          xs.k = 16;
+          xs.d = 8;
+          rs.k = 16;
+          rs.d = 8;
+          xs.update(dt);
+          rs.update(dt);
+          b.orbR = rs.v;
+          if (Math.abs(b.orbTarget - b.orbY) < 0.002 && Math.abs(b.orbYv) < 0.01 && Math.abs(xs.t - xs.v) < 0.003 && Math.abs(rs.t - rs.v) < 0.003) {
+            b.orbY = b.orbTarget;
+            b.orbYv = 0;
+            xs.set(xs.t);
+            rs.set(rs.t);
+            b.orbR = rs.v;
+            b.orbPhase = 'idle';
+          }
         } else {
-          b.orbXs.t = 0;
           if (b.orbPhase === 'drag') {
-            if (Math.abs(b.orbYv) > 0.6) b.orbPhase = 'spin';
-            else {
-              b.orbPhase = 'return';
-              b.orbTarget = Math.round((b.orbY + b.orbYv * 1.2) / Math.PI) * Math.PI;
-            }
+            b.orbPhase = Math.abs(b.orbYv) > 0.15 || Math.abs(xs.vel) > 0.15 ? 'spin' : 'rest';
+            if (b.orbPhase === 'rest') b.restT = 0;
+            if (xs.k !== 0) { xs.k = 0; xs.d = 2.6; }
           }
           if (b.orbPhase === 'spin') {
-            b.orbYv *= Math.exp(-0.9 * dt);
+            // Weighty inertia: the spin coasts and slows; pitch settles faster than yaw.
+            b.orbYv *= Math.exp(-1.7 * dt);
             b.orbY += b.orbYv * dt;
-            if (Math.abs(b.orbYv) < 0.5) {
-              b.orbPhase = 'return';
-              b.orbTarget = Math.round((b.orbY + b.orbYv * 1.2) / Math.PI) * Math.PI;
-            }
-          } else if (b.orbPhase === 'return') {
-            const acc = 16 * (b.orbTarget - b.orbY) - 8 * b.orbYv;
-            b.orbYv += acc * dt;
-            b.orbY += b.orbYv * dt;
-            if (Math.abs(b.orbTarget - b.orbY) < 0.002 && Math.abs(b.orbYv) < 0.01) {
-              b.orbY = b.orbTarget;
+            xs.update(dt);
+            xs.d = 2.6;
+            rs.t = rs.v;
+            if (Math.abs(b.orbYv) < 0.15 && Math.abs(xs.vel) < 0.15) {
               b.orbYv = 0;
-              b.orbPhase = 'idle';
+              xs.vel = 0;
+              b.orbPhase = 'rest';
+              b.restT = 0;
+            }
+          } else if (b.orbPhase === 'rest' || b.orbPhase === 'settle') {
+            b.restT += dt;
+            if (b.orbPhase === 'rest' && b.restT > 0.9) {
+              // Never stay upside down: if the book came to rest tipped past the horizontal, ease it upright.
+              const upside = Math.cos(xs.v) < 0;
+              xs.k = 16;
+              xs.d = 8;
+              xs.t = upside ? Math.round(xs.v / TAU_) * TAU_ : xs.v;
+              rs.k = 16;
+              rs.d = 8;
+              rs.t = Math.round(rs.v / TAU_) * TAU_;
+              b.orbPhase = 'settle';
+            }
+            if (b.orbPhase === 'settle') {
+              xs.update(dt);
+              rs.update(dt);
+              b.orbR = rs.v;
+              if (Math.abs(xs.t - xs.v) < 0.003 && Math.abs(rs.t - rs.v) < 0.003 && Math.abs(xs.vel) < 0.02) b.orbPhase = 'idle';
             }
           }
         }
-        const distRest = Math.abs(b.orbY - Math.round(b.orbY / 6.2832) * 6.2832);
+        const distRest = Math.abs(b.orbY - Math.round(b.orbY / TAU_) * TAU_) + Math.abs(xs.v) + Math.abs(b.orbR);
         activity = clamp(Math.abs(b.orbYv) * 1.5 + (orbit.drag ? 1 : 0) + distRest * 2, 0, 1);
       }
-      b.orbXs.update(dt);
-      let coverBase = 0;
-      if (inDetail) coverBase = DETAIL_OPEN_ANGLE + Math.sin(t * 0.8 + b.phase) * DETAIL_OPEN_SWAY * idle;
-      const fan = orbitActive ? clamp(b.orbYv * 0.16, 0, 0.75) : 0;
-      const fanB = orbitActive ? clamp(-b.orbYv * 0.16, 0, 0.75) : 0;
-      let coverBBase = 0;
-      if (inDetail) coverBBase = 0.2 + Math.sin(t * 0.8 + b.phase + 1.7) * 0.02 * idle;
+      if (dbg.hold) {
+        b.orbXs.k = 0;
+        b.orbXs.d = 0;
+        b.orbXs.set(dbg.x);
+        b.orbRs.set(dbg.r);
+        b.orbR = dbg.r;
+      }
+      // The book rests CLOSED; it is only open while the reader has opened it.
+      const coverBase = inDetail && b.wantOpen ? OPEN_ANGLE + Math.sin(t * 0.8 + b.phase) * DETAIL_OPEN_SWAY * idle : 0;
       s.tiltY.t = 0;
       s.tiltX.t = 0;
       s.lift.t = 0;
-      s.cover.t = coverBase + fan;
-      s.coverB.t = coverBBase + fanB;
+      s.cover.t = b.coverDrag ? b.dragAng : coverBase;
+      s.coverB.t = 0;
       s.sc.t = b.slotScale;
       s.px.update(dt);
       s.py.update(dt);
@@ -2111,26 +2443,63 @@ export function BooksShowcase({
       s.cover.update(dt);
       s.coverB.update(dt);
       s.drag.update(dt);
-      b.float.position.y = Math.sin(t * 0.7 + b.phase) * 0.035 * idle;
+      b.float.position.y = dbg.hold ? 0 : Math.sin(t * 0.7 + b.phase) * 0.035 * idle;
       b.float.rotation.z = Math.sin(t * 0.9 + b.phase * 1.7) * 0.006 * idle;
       b.root.position.set(s.px.v, s.py.v, s.pz.v + s.lift.v);
       const sway = inDetail ? Math.sin(t * 0.45 + b.phase) * 0.035 * idle * (1 - activity) : 0;
-      b.root.rotation.set(s.rx.v + s.tiltX.v + b.orbXs.v, s.ry.v + s.tiltY.v + b.orbY + sway, s.rz.v);
-      b.root.scale.setScalar(Math.max(s.sc.v, 0.001));
-      const ang = Math.max(0, s.cover.v + s.drag.v);
-      const angB = Math.max(0, s.coverB.v);
-      b.pivot.rotation.y = -ang;
-      b.pivot.position.z = b.pivotZ + ang * 0.022;
-      b.backPivot.rotation.y = angB;
-      b.backPivot.position.z = b.backPivotZ - angB * 0.022;
-      b.spine.rotation.y = -ang * 0.16 + angB * 0.16;
-      b.block.scale.z = 1 - (ang + angB) * 0.05;
-      b.block.position.z = b.blockZ - ang * 0.006 + angB * 0.006;
-      for (let i = 0; i < b.pages.length; i++) {
-        const fl = idle * Math.sin(t * 1.15 + b.phase + i * 0.6) * 0.006 * (1 - i / b.pages.length);
-        b.pages[i].rotation.y = -(ang * b.pageF[i] + Math.max(0, fl));
+      // The picture follows the physics through a small spring: a little weight and lag.
+      const physics = b.orbPhase === 'drag' || b.orbPhase === 'spin' || b.orbPhase === 'rest' || b.orbPhase === 'settle';
+      if (physics && !RM && !dbg.hold) {
+        s.visY.t = b.orbY;
+        s.visX.t = b.orbXs.v;
+        s.visR.t = b.orbR;
+        s.visY.update(dt);
+        s.visX.update(dt);
+        s.visR.update(dt);
+      } else {
+        s.visY.set(b.orbY);
+        s.visX.set(b.orbXs.v);
+        s.visR.set(b.orbR);
       }
-      for (let i = 0; i < b.pagesB.length; i++) b.pagesB[i].rotation.y = angB * b.pageFB[i];
+      b.root.rotation.set(s.rx.v + s.tiltX.v + s.visX.v, s.ry.v + s.tiltY.v + s.visY.v + sway, s.rz.v + s.visR.v);
+      // Soft shadow stays under/behind the book and slides a little as it turns.
+      b.blob.rotation.y = -b.root.rotation.y;
+      b.blob.position.x = 0.1 - Math.sin(s.visY.v) * 0.18;
+      b.blob.scale.set(3.1 * (0.92 + 0.08 * Math.abs(Math.cos(s.visY.v))), 3.9, 1);
+      b.root.scale.setScalar(Math.max(s.sc.v, 0.001));
+      const ang = clamp(s.cover.v + s.drag.v, 0, Math.PI - 0.1);
+      // Boards turn exactly about the spine edge; nothing else moves with them.
+      b.pivot.rotation.y = -ang;
+      b.backPivot.rotation.y = 0;
+      // Keep the open spread centred, and a little smaller so it fits.
+      const openFrac = clamp(ang / OPEN_ANGLE, 0, 1);
+      b.shell.position.x = -(CW + Math.min(0, CW * Math.cos(ang))) / 2;
+      b.root.scale.setScalar(Math.max(s.sc.v * (1 - 0.18 * openFrac), 0.001));
+      let moving = Math.abs(ang - b.lastAng) > 1e-4;
+      b.lastAng = ang;
+      for (let k = 0; k < b.leaves.length; k++) {
+        const L = b.leaves[k];
+        if (L.pendingT !== undefined) {
+          L.wait -= dt;
+          if (L.wait <= 0) {
+            if (RM) L.f.set(L.pendingT);
+            else L.f.t = L.pendingT;
+            L.pendingT = undefined;
+          }
+        }
+        L.f.update(dt);
+        if (Math.abs(L.f.v - L.lastF) > 1e-5 || Math.abs(L.f.vel) > 1e-4) moving = true;
+        L.lastF = L.f.v;
+      }
+      if (moving || b.dirty) {
+        b.dirty = false;
+        for (let k = 0; k < b.leaves.length; k++) {
+          const L = b.leaves[k];
+          // Trailing edge lags the hinge while the page is moving; it settles as it stops.
+          const curl = RM ? 0 : -clamp(L.f.vel * 0.2, -1.1, 1.1);
+          layoutLeaf(b, k, ang, curl);
+        }
+      }
     }
 
     let rafId = 0;
@@ -2207,7 +2576,27 @@ export function BooksShowcase({
     sceneApiRef.current = {
       openById,
       closeCurrent: () => close(),
+      toggleLook,
+      turnPage,
+      resetView: () => state.selected && resetView(state.selected),
     };
+    if (process.env.NODE_ENV !== 'production') {
+      // Test hook for the visual checks (never in production builds).
+      (window as unknown as { __book3d: unknown }).__book3d = {
+        view: (y: number, x: number, r = 0) => {
+          const b = state.selected;
+          if (!b) return;
+          dbg.hold = true;
+          dbg.x = x;
+          dbg.r = r;
+          b.orbY = y;
+          b.orbYv = 0;
+          b.orbPhase = 'idle';
+        },
+        open: (v: boolean) => state.selected && setBookOpen(state.selected, v),
+        turn: (n: number) => state.selected && turnTo(state.selected, n, 0.07),
+      };
+    }
     if (pendingOpenIdRef.current) {
       setT(() => openById(pendingOpenIdRef.current!), 80);
     }
@@ -2257,6 +2646,7 @@ export function BooksShowcase({
       if (visualViewportHandler && window.visualViewport) window.visualViewport.removeEventListener('resize', visualViewportHandler);
       window.removeEventListener('pointerup', onPointerUp);
       root.removeEventListener('keydown', onKeydown);
+      window.removeEventListener('pointercancel', onPointerUp);
       scene.traverse((obj: any) => {
         if (obj.geometry) obj.geometry.dispose();
         if (obj.material) {
@@ -2518,6 +2908,54 @@ export function BooksShowcase({
         aria-hidden="true"
         className={cn('absolute inset-0 z-[2] block h-full w-full touch-pan-y', !shelfActive && 'pointer-events-none opacity-0')}
       />
+
+      {shelfActive && (
+        <div
+          role="group"
+          aria-label="Book view controls"
+          className={`absolute bottom-10 left-[18px] z-[80] flex flex-wrap items-center gap-2 text-[13px] font-semibold transition-opacity duration-300 @max-[760px]:bottom-auto @max-[760px]:left-1/2 @max-[760px]:top-[20px] @max-[760px]:-translate-x-1/2 ${
+            uiMode === 'detail' ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+          }`}
+        >
+          <button
+            type="button"
+            aria-pressed={lookInside}
+            onClick={() => sceneApiRef.current?.toggleLook()}
+            className="rounded-full border-[1.5px] border-current/30 bg-[var(--bs-bg-light)]/70 px-3.5 py-2 backdrop-blur hover:border-current/70 dark:bg-[var(--bs-bg-dark)]/70"
+          >
+            {lookInside ? 'Close book' : 'Look inside'}
+          </button>
+          <button
+            type="button"
+            onClick={() => sceneApiRef.current?.resetView()}
+            className="rounded-full border-[1.5px] border-current/30 bg-[var(--bs-bg-light)]/70 px-3.5 py-2 backdrop-blur hover:border-current/70 dark:bg-[var(--bs-bg-dark)]/70"
+          >
+            Reset view
+          </button>
+          {lookInside && (
+            <>
+              <button
+                type="button"
+                aria-label="Previous page"
+                disabled={pageInfo.turned <= 0}
+                onClick={() => sceneApiRef.current?.turnPage(-1)}
+                className="rounded-full border-[1.5px] border-current/30 bg-[var(--bs-bg-light)]/70 px-3 py-2 backdrop-blur hover:border-current/70 disabled:opacity-40 dark:bg-[var(--bs-bg-dark)]/70"
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                aria-label="Next page"
+                disabled={pageInfo.turned >= pageInfo.leaves}
+                onClick={() => sceneApiRef.current?.turnPage(1)}
+                className="rounded-full border-[1.5px] border-current/30 bg-[var(--bs-bg-light)]/70 px-3 py-2 backdrop-blur hover:border-current/70 disabled:opacity-40 dark:bg-[var(--bs-bg-dark)]/70"
+              >
+                ›
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {shelfActive && (
         <button
