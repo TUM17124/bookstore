@@ -1571,7 +1571,11 @@ export function BooksShowcase({
 
       // Per-book thickness from page count: 400 pages ≈ default 0.34 units
       const rawPages = cfg.pageCount ?? 0;
-      const T = rawPages > 0 ? Math.max(0.04, Math.min(0.80, (rawPages / 400) * 0.34)) : 0.34;
+      // Logarithmic curve: thin books get a readable spine, long books don't balloon out of proportion.
+      // 8 pages→0.247, 40 pages→0.386, 72 pages→0.446, 300 pages→0.560, max→0.620
+      const T = rawPages > 0
+        ? Math.min(0.62, 0.14 + 0.46 * Math.log(1 + rawPages / 5) / Math.log(1 + 300 / 5))
+        : 0.34;
       const PIVOT_Z = T / 2 + CT / 2;
       const BPIVOT_Z = -(T / 2 + CT / 2);
       const BLOCK_D = Math.max(0.04, T * 0.72);
@@ -1588,15 +1592,15 @@ export function BooksShowcase({
         envMapIntensity: 0.2,
         side: THREE.DoubleSide,
       });
-      const edgeColor = cfg.edge ?? '#eceff2';
+      const edgeColor = cfg.edge ?? cfg.spineBg ?? cfg.backBg ?? '#2a2d36';
       const mEdge = std({ color: edgeColor, bumpMap: laminateBump, bumpScale: 0.0015, roughness: 0.5, envMapIntensity: 0.32 });
       const mFront = std({ bumpMap: laminateBump, bumpScale: 0.0012, roughness: 0.4, envMapIntensity: 0.3 });
       const mBack = std({ bumpMap: laminateBump, bumpScale: 0.0012, roughness: 0.42, envMapIntensity: 0.28 });
       const mSpine = std({ bumpMap: clothBump, bumpScale: 0.0025, roughness: 0.55, envMapIntensity: 0.26 });
-      // Prevent z-fighting where the spine overlaps the cover hinge area
+      // Negative offset pulls spine in front of the cover edge where they overlap at the hinge
       mSpine.polygonOffset = true;
-      mSpine.polygonOffsetFactor = 1;
-      mSpine.polygonOffsetUnits = 1;
+      mSpine.polygonOffsetFactor = -1;
+      mSpine.polygonOffsetUnits = -1;
       loadOrPaint(mFront, cfg.images?.front ?? cfg.coverURL ?? null, () => {
         const c = mkCanvas(COVER_W, COVER_H);
         const ctx = c.getContext('2d')!;
