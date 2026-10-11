@@ -1489,6 +1489,8 @@ export type HomeSectionData = {
   personal: boolean
   /** "Why am I seeing this?" (personal sections only). */
   why: string
+  /** ML-ranked sections only: the reason for each book, keyed by book id. */
+  reasons?: Record<string, string>
   books: SectionBook[]
 }
 
