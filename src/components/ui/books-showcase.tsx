@@ -1861,12 +1861,12 @@ export function BooksShowcase({
       const FOV_K = 0.4617; // 2·tan(13°): the camera's visible height per unit of distance
       const BOOK_H = 2.3; // book height incl. a little perspective
       const BOOK_W = 1.6; // closed, turned a little
-      const SPREAD_W = 2.75; // open
+      const SPREAD_W = SLOTS.portrait ? 3.7 : 4.4; // open (the turned-up left board is nearer the camera, so it looks wider)
       const TOOL_H = 56;
       const fitArea = (areaW: number, areaH: number, camZp: number, zw: number) => {
         const ppu = dims.h / (FOV_K * (camZp - zw)); // px per world unit at the book
         const S = Math.min((areaH * 0.9) / (BOOK_H * ppu), (areaW * 0.94) / (BOOK_W * ppu));
-        const mul = clamp((areaW * 0.96) / (SPREAD_W * ppu * S), 0.55, 1);
+        const mul = clamp((areaW * 0.96) / (SPREAD_W * ppu * S), 0.3, 1);
         return { ppu, S, mul };
       };
       const zw = 0.8 * fit;
