@@ -151,6 +151,8 @@ export interface ShowcaseSection {
   description: string;
   personal: boolean;
   why: string;
+  /** ML-ranked sections: why each book is here, keyed by book id. */
+  reasons?: Record<string, string>;
   books: BookCfg[];
 }
 
@@ -483,6 +485,18 @@ function SectionRow({
           <a href="/settings/?section=personalisation" className="font-semibold underline">
             Turn off personalisation
           </a>
+          {section.reasons && Object.keys(section.reasons).length ? (
+            <ul className="mt-2 list-disc space-y-0.5 pl-5">
+              {section.books
+                .filter((b) => section.reasons?.[b.id])
+                .slice(0, 6)
+                .map((b) => (
+                  <li key={b.id}>
+                    <span className="font-semibold">{b.title}</span> — {section.reasons?.[b.id]}
+                  </li>
+                ))}
+            </ul>
+          ) : null}
         </p>
       ) : null}
       <ul

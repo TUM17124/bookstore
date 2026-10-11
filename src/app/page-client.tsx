@@ -92,6 +92,7 @@ function useHomeSections(category: string, enabled: boolean) {
             description: sec.description,
             personal: sec.personal,
             why: sec.why,
+            reasons: sec.reasons,
             books: sec.books.map(toCfg),
           })),
           error: "",
