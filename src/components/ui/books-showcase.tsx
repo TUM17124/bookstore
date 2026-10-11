@@ -9,6 +9,7 @@ import {
   type BookDims,
 } from '@/lib/book3d/geometry';
 import { PAGE_H, PAGE_W, paintFace, paintPaper, planFaces } from '@/lib/book3d/pages';
+import { PHONE_TOP, TOOL_H, fitArea, phoneBookHeight } from '@/lib/book3d/layout';
 import { loadPreviewPages } from '@/lib/book3d/preview';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -1858,21 +1859,12 @@ export function BooksShowcase({
         return;
       }
       // Place the book to fill its own area; the toolbar sits under it, never over it.
-      const FOV_K = 0.4617; // 2·tan(13°): the camera's visible height per unit of distance
-      const BOOK_H = 2.3; // book height incl. a little perspective
-      const BOOK_W = 1.6; // closed, turned a little
-      const SPREAD_W = SLOTS.portrait ? 3.7 : 4.4; // open (the turned-up left board is nearer the camera, so it looks wider)
-      const TOOL_H = 56;
-      const fitArea = (areaW: number, areaH: number, camZp: number, zw: number) => {
-        const ppu = dims.h / (FOV_K * (camZp - zw)); // px per world unit at the book
-        const S = Math.min((areaH * 0.9) / (BOOK_H * ppu), (areaW * 0.94) / (BOOK_W * ppu));
-        const mul = clamp((areaW * 0.96) / (SPREAD_W * ppu * S), 0.3, 1);
-        return { ppu, S, mul };
-      };
+      const fitAreaPx = (areaW: number, areaH: number, camZp: number, zw: number) =>
+        fitArea({ viewH: dims.h, areaW, areaH, camZ: camZp, zw, phone: SLOTS.portrait });
       const zw = 0.8 * fit;
       const rootY = -(1 - fit) * 0.28;
       if (SLOTS.portrait) {
-        const top = 76;
+        const top = PHONE_TOP;
         const el = dpRef.current;
         const inner = el?.firstElementChild as HTMLElement | null;
         if (inner && !observedPanel.has(inner)) {
@@ -1885,10 +1877,10 @@ export function BooksShowcase({
           const h = inner.lastElementChild.getBoundingClientRect().bottom - inner.firstElementChild.getBoundingClientRect().top;
           if (h > 40) need = h + 8;
         }
-        const bookH = clamp(dims.h - top - TOOL_H - need - 24, 210, dims.h * 0.46);
+        const bookH = phoneBookHeight(dims.h, need);
         const areaBottom = top + bookH;
         const camZp = 10.4;
-        const { ppu, S, mul } = fitArea(dims.w - 24, bookH, camZp, zw);
+        const { ppu, S, mul } = fitAreaPx(dims.w - 24, bookH, camZp, zw);
         SLOTS.openMul = mul;
         const yPx = (top + areaBottom) / 2;
         const yw = 0.1 + (dims.h / 2 - yPx) / ppu;
@@ -1903,7 +1895,7 @@ export function BooksShowcase({
         const top = 84;
         const areaBottom = Math.max(top + 200, dims.h - 24 - TOOL_H);
         const camZp = 9.6;
-        const { ppu, S, mul } = fitArea(right - left, areaBottom - top, camZp, zw);
+        const { ppu, S, mul } = fitAreaPx(right - left, areaBottom - top, camZp, zw);
         SLOTS.openMul = mul;
         const cx = (left + right) / 2;
         const cy = (top + areaBottom) / 2;
