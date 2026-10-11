@@ -39,9 +39,6 @@ const TOOL_BTN_BASE =
   'h-[44px] min-w-[44px] items-center justify-center rounded-full border-[1.5px] border-current/30 bg-[var(--bs-bg-light)]/80 text-current backdrop-blur transition-colors hover:border-current/70 dark:bg-[var(--bs-bg-dark)]/80';
 const TOOL_BTN = `inline-flex ${TOOL_BTN_BASE}`;
 const iconProps = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const;
-const IconClose = () => (
-  <svg {...iconProps}><path d="M6 6l12 12M18 6L6 18" /></svg>
-);
 const IconReset = () => (
   <svg {...iconProps}><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /></svg>
 );
