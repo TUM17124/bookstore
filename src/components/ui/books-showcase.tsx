@@ -9,6 +9,7 @@ import {
   type BookDims,
 } from '@/lib/book3d/geometry';
 import { PAGE_H, PAGE_W, paintFace, paintPaper, planFaces } from '@/lib/book3d/pages';
+import { PHONE_TOP, TOOL_H, fitArea, phoneBookHeight } from '@/lib/book3d/layout';
 import { loadPreviewPages } from '@/lib/book3d/preview';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -34,6 +35,26 @@ function PanelLoading() {
 const PdfReader = dynamic(() => import('@/components/pdf-reader').then((m) => m.PdfReader), { ssr: false, loading: PanelLoading });
 const AudioPlayer = dynamic(() => import('@/components/audio-player').then((m) => m.AudioPlayer), { ssr: false, loading: PanelLoading });
 const BookReviews = dynamic(() => import('@/components/book-reviews').then((m) => m.BookReviews), { ssr: false, loading: PanelLoading });
+
+const TOOL_BTN_BASE =
+  'h-[44px] min-w-[44px] items-center justify-center rounded-full border-[1.5px] border-current/30 bg-[var(--bs-bg-light)]/80 text-current backdrop-blur transition-colors hover:border-current/70 dark:bg-[var(--bs-bg-dark)]/80';
+const TOOL_BTN = `inline-flex ${TOOL_BTN_BASE}`;
+const iconProps = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const;
+const IconClose = () => (
+  <svg {...iconProps}><path d="M6 6l12 12M18 6L6 18" /></svg>
+);
+const IconReset = () => (
+  <svg {...iconProps}><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /></svg>
+);
+const IconChevron = ({ dir }: { dir: 'left' | 'right' }) => (
+  <svg {...iconProps}><path d={dir === 'left' ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7'} /></svg>
+);
+const IconBookOpen = () => (
+  <svg {...iconProps}><path d="M2 5.5C5 4 8.5 4 12 6c3.5-2 7-2 10-.5V19c-3-1.500-6.500-1.500-10 .5-3.500-2-7-2-10-.5z" /><path d="M12 6v13.500" /></svg>
+);
+const IconBookClosed = () => (
+  <svg {...iconProps}><path d="M5 4h13a1 1 0 0 1 1 1v15H6a1 1 0 0 1-1-1z" /><path d="M5 17h14" /></svg>
+);
 
 let threePromise: Promise<typeof import('three')> | null = null;
 /** Start (once) downloading three.js; the 3D book view needs it. */
@@ -752,6 +773,10 @@ export function BooksShowcase({
   const gridRef = useRef<HTMLDivElement | null>(null);
   const sceneApiRef = useRef<{ openById: (id: string) => void; closeCurrent: () => void; toggleLook: () => void; turnPage: (d: number) => void; resetView: () => void } | null>(null);
   const [lookInside, setLookInside] = useState(false);
+  // True once the book has been turned away from the front view (shows "Reset view").
+  const [viewRotated, setViewRotated] = useState(false);
+  // Where the book's area, its toolbar and (on phones) the detail panel go, in px of the showcase.
+  const [layout, setLayout] = useState<{ phone: boolean; toolTop: number; toolX: number; panelTop: number; wrapMin: number } | null>(null);
   const [pageInfo, setPageInfo] = useState({ turned: 0, leaves: 4 });
   const pendingOpenIdRef = useRef<string | null>(null);
   // The 3D scene (and three.js) is set up the first time a book is opened.
@@ -1805,11 +1830,21 @@ export function BooksShowcase({
       hovered: Book | null;
     } = { mode: 'hero', selected: null, hovered: null };
     type Slot = { p: [number, number, number]; r: [number, number, number]; s: number };
-    const SLOTS: { hero: Slot[]; detail: Slot | null; portrait: boolean } = { hero: [], detail: null, portrait: false };
+    const SLOTS: { hero: Slot[]; detail: Slot | null; portrait: boolean; openMul: number } = { hero: [], detail: null, portrait: false, openMul: 0.82 };
+    const observedPanel = new Set<Element>();
+    let roPanel: ResizeObserver | null = null;
+    let lastLayout = '';
+    function pushLayout(l: { phone: boolean; toolTop: number; toolX: number; panelTop: number; wrapMin: number }) {
+      const key = [l.phone, Math.round(l.toolTop), Math.round(l.toolX), Math.round(l.panelTop), Math.round(l.wrapMin)].join();
+      if (key === lastLayout) return;
+      lastLayout = key;
+      setLayout(l);
+    }
 
     function computeSlots() {
       const a = dims.w / Math.max(1, dims.h);
-      const portrait = a < 0.85;
+      // Same breakpoint as the panel's own layout (container width 760px).
+      const portrait = dims.w <= 760;
       const fit = portrait ? clamp(a / 1.08, 0.38, 0.74) : clamp(a / 1.62, 0.52, 1);
       bookRoot.scale.setScalar(fit);
       bookRoot.position.y = -(1 - fit) * 0.28;
@@ -1823,24 +1858,51 @@ export function BooksShowcase({
         SLOTS.detail = { p: [0, -0.05, 0.75], r: [0.02, -0.34, 0.05], s: SLOTS.portrait ? 0.94 : 1.08 };
         return;
       }
+      // Place the book to fill its own area; the toolbar sits under it, never over it.
+      const fitAreaPx = (areaW: number, areaH: number, camZp: number, zw: number) =>
+        fitArea({ viewH: dims.h, areaW, areaH, camZ: camZp, zw, phone: SLOTS.portrait });
+      const zw = 0.8 * fit;
+      const rootY = -(1 - fit) * 0.28;
       if (SLOTS.portrait) {
+        const top = PHONE_TOP;
         const el = dpRef.current;
-        const panelH = el && el.offsetHeight > 40 ? el.offsetHeight : dims.h * 0.44;
-        const gap = dims.h * 0.035,
-          navB = dims.h * 0.1;
-        const freeTop = navB;
-        const freeBot = Math.max(dims.h - panelH - gap, freeTop + 140);
-        const midPx = (freeTop + freeBot) / 2;
-        const T13 = 0.23087,
-          camZp = 9.9,
-          zw = 0.8 * fit,
-          rootY = -(1 - fit) * 0.28;
-        const yw = 0.1 + (1 - (2 * midPx) / dims.h) * T13 * (camZp - zw);
-        const availW = (((freeBot - freeTop) * 0.92) / dims.h) * 2 * T13 * (camZp - zw);
-        const s = clamp(availW / fit / 2.65, 0.42, 0.92);
-        SLOTS.detail = { p: [0, (yw - rootY) / fit, 0.8], r: [-0.02, -0.4, 0.06], s };
+        const inner = el?.firstElementChild as HTMLElement | null;
+        if (inner && !observedPanel.has(inner)) {
+          observedPanel.add(inner);
+          roPanel?.observe(inner);
+        }
+        // Height the panel's own content needs (not the box it sits in).
+        let need = dims.h * 0.45;
+        if (inner && inner.firstElementChild && inner.lastElementChild) {
+          const h = inner.lastElementChild.getBoundingClientRect().bottom - inner.firstElementChild.getBoundingClientRect().top;
+          if (h > 40) need = h + 8;
+        }
+        const bookH = phoneBookHeight(dims.h, need);
+        const areaBottom = top + bookH;
+        const camZp = 10.4;
+        const { ppu, S, mul } = fitAreaPx(dims.w - 24, bookH, camZp, zw);
+        SLOTS.openMul = mul;
+        const yPx = (top + areaBottom) / 2;
+        const yw = 0.1 + (dims.h / 2 - yPx) / ppu;
+        SLOTS.detail = { p: [0, (yw - rootY) / fit, 0.8], r: [-0.02, -0.4, 0.06], s: S / fit };
+        const toolTop = areaBottom + 4;
+        const panelTop = toolTop + TOOL_H + 4;
+        pushLayout({ phone: true, toolTop, toolX: dims.w / 2, panelTop, wrapMin: Math.ceil(panelTop + need + 24) });
       } else {
-        SLOTS.detail = { p: [-1.68, 0.0, 0.85], r: [0.02, -0.44, 0.08], s: 1.06 };
+        const panelLeft = dims.w * 0.95 - Math.min(520, dims.w * 0.4);
+        const left = 16;
+        const right = Math.max(left + 200, panelLeft - 24);
+        const top = 84;
+        const areaBottom = Math.max(top + 200, dims.h - 24 - TOOL_H);
+        const camZp = 9.6;
+        const { ppu, S, mul } = fitAreaPx(right - left, areaBottom - top, camZp, zw);
+        SLOTS.openMul = mul;
+        const cx = (left + right) / 2;
+        const cy = (top + areaBottom) / 2;
+        const xw = -0.3 + (cx - dims.w / 2) / ppu;
+        const yw = 0.12 + (dims.h / 2 - cy) / ppu;
+        SLOTS.detail = { p: [xw / fit, (yw - rootY) / fit, 0.85], r: [0.02, -0.44, 0.08], s: clamp(S / fit, 0.6, 2.2) };
+        pushLayout({ phone: false, toolTop: areaBottom + 8, toolX: cx, panelTop: 0, wrapMin: 0 });
       }
     }
     function setTargets(b: Book, slot: Slot) {
@@ -2321,6 +2383,7 @@ export function BooksShowcase({
       b.scr.y = (-tmpV.y * 0.5 + 0.5) * dims.h;
     }
     const TAU_ = Math.PI * 2;
+    let rotatedFlag = false;
     const dbg = { hold: false, x: 0, r: 0 };
     function tickBook(b: Book, dt: number, t: number) {
       const s = b.springs;
@@ -2411,7 +2474,12 @@ export function BooksShowcase({
             }
           }
         }
-        const distRest = Math.abs(b.orbY - Math.round(b.orbY / TAU_) * TAU_) + Math.abs(xs.v) + Math.abs(b.orbR);
+        const distRest = Math.abs(b.orbY - Math.round(b.orbY / TAU_) * TAU_) + Math.abs(xs.v - Math.round(xs.v / TAU_) * TAU_) + Math.abs(b.orbR - Math.round(b.orbR / TAU_) * TAU_);
+        const rotatedNow = distRest > 0.06;
+        if (rotatedNow !== rotatedFlag) {
+          rotatedFlag = rotatedNow;
+          setViewRotated(rotatedNow);
+        }
         activity = clamp(Math.abs(b.orbYv) * 1.5 + (orbit.drag ? 1 : 0) + distRest * 2, 0, 1);
       }
       if (dbg.hold) {
@@ -2473,7 +2541,7 @@ export function BooksShowcase({
       // Keep the open spread centred, and a little smaller so it fits.
       const openFrac = clamp(ang / OPEN_ANGLE, 0, 1);
       b.shell.position.x = -(CW + Math.min(0, CW * Math.cos(ang))) / 2;
-      b.root.scale.setScalar(Math.max(s.sc.v * (1 - 0.18 * openFrac), 0.001));
+      b.root.scale.setScalar(Math.max(s.sc.v * (1 - (1 - SLOTS.openMul) * openFrac), 0.001));
       let moving = Math.abs(ang - b.lastAng) > 1e-4;
       b.lastAng = ang;
       for (let k = 0; k < b.leaves.length; k++) {
@@ -2629,6 +2697,7 @@ export function BooksShowcase({
     }
     const ro = new ResizeObserver(() => relayout());
     ro.observe(root);
+    roPanel = new ResizeObserver(() => relayout());
 
     return () => {
       cancelled = true;
@@ -2640,6 +2709,7 @@ export function BooksShowcase({
       timer.dispose();
       themeObserver.disconnect();
       ro.disconnect();
+      roPanel?.disconnect();
       window.removeEventListener('resize', onWindowResize);
       window.removeEventListener('orientationchange', onWindowResize);
       if (visualViewportHandler && window.visualViewport) window.visualViewport.removeEventListener('resize', visualViewportHandler);
@@ -2901,7 +2971,10 @@ export function BooksShowcase({
       {/* Occupies exactly one screenful in normal flow (unlike its
           absolutely-positioned children) so Recommendations, appended
           after it, sits below the fold instead of overlapping the book. */}
-      <div className={cn('relative w-full shrink-0', shelfActive ? 'h-full' : 'h-0 overflow-hidden')}>
+      <div
+        className={cn('relative w-full shrink-0', shelfActive ? 'h-full' : 'h-0 overflow-hidden')}
+        style={shelfActive && layout?.phone ? ({ minHeight: layout.wrapMin, '--bs-panel-top': `${layout.panelTop}px` } as React.CSSProperties) : undefined}
+      >
       <canvas
         ref={canvasRef}
         aria-hidden="true"
@@ -2910,52 +2983,72 @@ export function BooksShowcase({
 
       {shelfActive && (
         <div
-          role="group"
+          role="toolbar"
           aria-label="Book view controls"
-          className={`absolute bottom-10 left-[18px] z-[80] flex flex-wrap items-center gap-2 text-[13px] font-semibold transition-opacity duration-300 @max-[760px]:bottom-auto @max-[760px]:left-1/2 @max-[760px]:top-[20px] @max-[760px]:-translate-x-1/2 ${
+          style={layout ? { top: layout.toolTop, left: layout.toolX } : undefined}
+          className={`absolute z-[80] flex h-[48px] -translate-x-1/2 items-center justify-center gap-2 ${layout ? '' : 'bottom-6 left-1/2'} transition-opacity duration-300 ${
             uiMode === 'detail' ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
           }`}
         >
+          {/* On phones the "back to the shelf" button lives here so nothing sits over the book. */}
+          <button
+            type="button"
+            aria-label="Close detail view"
+            title="Back to the shelf"
+            onClick={() => sceneApiRef.current?.closeCurrent()}
+            className={`${TOOL_BTN_BASE} hidden @max-[760px]:inline-flex`}
+          >
+            <IconClose />
+          </button>
           <button
             type="button"
             aria-pressed={lookInside}
+            aria-label={lookInside ? 'Close book' : 'Look inside'}
+            title={lookInside ? 'Close book' : 'Look inside'}
             onClick={() => sceneApiRef.current?.toggleLook()}
-            className="rounded-full border-[1.5px] border-current/30 bg-[var(--bs-bg-light)]/70 px-3.5 py-2 backdrop-blur hover:border-current/70 dark:bg-[var(--bs-bg-dark)]/70"
+            className={`${TOOL_BTN} shrink-0 gap-2 whitespace-nowrap px-4 text-[13px] font-semibold`}
           >
-            {lookInside ? 'Close book' : 'Look inside'}
+            {lookInside ? <IconBookClosed /> : <IconBookOpen />}
+            <span>{lookInside ? 'Close book' : 'Look inside'}</span>
           </button>
-          <button
-            type="button"
-            onClick={() => sceneApiRef.current?.resetView()}
-            className="rounded-full border-[1.5px] border-current/30 bg-[var(--bs-bg-light)]/70 px-3.5 py-2 backdrop-blur hover:border-current/70 dark:bg-[var(--bs-bg-dark)]/70"
-          >
-            Reset view
-          </button>
-          <span className="sr-only" role="status" aria-live="polite">
-            {lookInside ? `Book open, showing pages ${pageInfo.turned * 2 + 1} of the preview. Use Next page and Previous page to turn.` : 'Book closed.'}
-          </span>
           {lookInside && (
             <>
               <button
                 type="button"
                 aria-label="Previous page"
+                title="Previous page"
                 disabled={pageInfo.turned <= 0}
                 onClick={() => sceneApiRef.current?.turnPage(-1)}
-                className="rounded-full border-[1.5px] border-current/30 bg-[var(--bs-bg-light)]/70 px-3 py-2 backdrop-blur hover:border-current/70 disabled:opacity-40 dark:bg-[var(--bs-bg-dark)]/70"
+                className={`${TOOL_BTN} disabled:opacity-40`}
               >
-                ‹
+                <IconChevron dir="left" />
               </button>
               <button
                 type="button"
                 aria-label="Next page"
+                title="Next page"
                 disabled={pageInfo.turned >= pageInfo.leaves}
                 onClick={() => sceneApiRef.current?.turnPage(1)}
-                className="rounded-full border-[1.5px] border-current/30 bg-[var(--bs-bg-light)]/70 px-3 py-2 backdrop-blur hover:border-current/70 disabled:opacity-40 dark:bg-[var(--bs-bg-dark)]/70"
+                className={`${TOOL_BTN} disabled:opacity-40`}
               >
-                ›
+                <IconChevron dir="right" />
               </button>
             </>
           )}
+          {viewRotated && (
+            <button
+              type="button"
+              aria-label="Reset view"
+              title="Reset view"
+              onClick={() => sceneApiRef.current?.resetView()}
+              className={TOOL_BTN}
+            >
+              <IconReset />
+            </button>
+          )}
+          <span className="sr-only" role="status" aria-live="polite">
+            {lookInside ? `Book open, showing pages ${pageInfo.turned * 2 + 1} of the preview. Use Next page and Previous page to turn.` : 'Book closed.'}
+          </span>
         </div>
       )}
 
@@ -2965,7 +3058,7 @@ export function BooksShowcase({
           type="button"
           aria-label="Close detail view"
           onClick={() => sceneApiRef.current?.closeCurrent()}
-          className={`book-close-btn absolute left-[18px] top-[30px] z-[80] inline-flex h-[52px] w-[52px] items-center justify-center rounded-full border-[1.5px] border-current/30 bg-transparent text-[17px] leading-none text-current transition-[opacity,border-color] duration-300 delay-150 hover:border-current/70 @max-[760px]:top-[88px] ${
+          className={`book-close-btn absolute left-[18px] top-[30px] z-[80] inline-flex h-[52px] w-[52px] items-center justify-center rounded-full border-[1.5px] border-current/30 bg-transparent text-[17px] leading-none text-current transition-[opacity,border-color] duration-300 delay-150 hover:border-current/70 @max-[760px]:hidden ${
             uiMode === 'detail' ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
           }`}
         >
@@ -2998,7 +3091,7 @@ export function BooksShowcase({
           ref={dpRef}
           aria-live="polite"
           className={`absolute right-[5%] top-8 bottom-4 z-[15] flex w-[min(520px,40%)] flex-col justify-start pt-0 pointer-events-none
-            @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-50 @max-[760px]:bottom-4
+            @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-[var(--bs-panel-top,200px)] @max-[760px]:bottom-4
             @max-[760px]:w-[min(560px,92cqw)] @max-[760px]:max-h-none @max-[760px]:-translate-x-1/2
             ${panelVisible ? 'visible' : 'invisible delay-[500ms]'}`}
         >
