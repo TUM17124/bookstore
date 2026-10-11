@@ -4,3 +4,4 @@ Disallow: /admin/
 Disallow: /api/
 
 Sitemap: https://plugyard.com/sitemap.xml
+Sitemap: https://plugyard.com/sitemap-books.xml

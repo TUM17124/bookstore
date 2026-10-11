@@ -1,5 +1,6 @@
 "use client";
 
+import { ShareYourBook } from "@/components/share-sheet"
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BookOpen } from "lucide-react";
@@ -1251,6 +1252,7 @@ function BookBoostRow({
 
   const [editing, setEditing] =
     useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
 
   // Attached from the PDF editor's "Edit published book" deep link - the
@@ -1400,6 +1402,17 @@ function BookBoostRow({
               : "Edit"}
           </button>
 
+          {book.status === "published" && book.slug ? (
+            <button
+              type="button"
+              onClick={() => setShareOpen((v) => !v)}
+              aria-expanded={shareOpen}
+              className="px-4 py-2 rounded-lg border"
+            >
+              Share
+            </button>
+          ) : null}
+
           <ActionButton
             action={remove}
             onClick={onDelete}
@@ -1428,6 +1441,12 @@ function BookBoostRow({
         <p role="alert" className="text-sm text-red-600">
           {remove.errorText}
         </p>
+      ) : null}
+
+      {shareOpen && book.slug ? (
+        <ShareYourBook
+          book={{ id: book.id, title: book.title, author: book.author, slug: book.slug, shareUrl: book.shareUrl, shareImage: book.shareImage }}
+        />
       ) : null}
 
       {editing && (
