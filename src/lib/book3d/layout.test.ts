@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { BOOK_H, BOOK_W, FOV_K, PHONE_MIN_BOOK_H, TOOL_H, PHONE_TOP, fitArea, phoneBookHeight, spreadWidth } from "./layout"
+import { BOOK_H, BOOK_W, FOV_K, HINT_H, PHONE_MIN_BOOK_H, TOOL_H, PHONE_TOP, fitArea, phoneBookHeight, spreadWidth } from "./layout"
 
 const PHONES = [[360, 740], [375, 667], [390, 844], [430, 932]]
 
@@ -26,6 +26,20 @@ describe("3D book layout", () => {
       expect(panelTop).toBeGreaterThanOrEqual(toolTop + TOOL_H)
     })
   }
+
+  it("phones: the close button, the book, the toolbar, the panel and the hint strip never share space", () => {
+    for (const [, h] of PHONES) {
+      const closeTop = 80, closeH = 52
+      expect(PHONE_TOP).toBeGreaterThanOrEqual(closeTop + closeH) // the book's area starts below the ✕
+      const bookH = phoneBookHeight(h, h * 0.4)
+      const toolTop = PHONE_TOP + bookH + 4
+      const panelTop = toolTop + TOOL_H + 4
+      const wrapMin = panelTop + h * 0.4 + HINT_H
+      expect(panelTop).toBeGreaterThan(toolTop + TOOL_H - 1)
+      expect(wrapMin - HINT_H).toBeGreaterThanOrEqual(panelTop + h * 0.4) // the hint strip is below the panel's content
+      expect(HINT_H).toBeGreaterThanOrEqual(48)
+    }
+  })
 
   it("the book gets the room the panel does not need on tall phones, and never less than 210 px", () => {
     expect(phoneBookHeight(932, 330)).toBeGreaterThan(phoneBookHeight(667, 330))
