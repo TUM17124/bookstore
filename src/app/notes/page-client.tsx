@@ -1,18 +1,21 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { NotesPanel } from '@/components/notes/notes-panel'
 import { downloadNotesExport, fetchAllNotes } from '@/lib/notes/api'
 import { useLoggedIn } from '@/lib/use-logged-in'
-import type { NoteRow } from '@/lib/notes/types'
+import { getNotesStore } from '@/lib/notes/registry'
+import type { NoteRow, SyncStatus } from '@/lib/notes/types'
 
 const PAGE = 200
 const CAP = 1000
 
-/** Every note and highlight across all the reader's books. Read-only here:
- * editing happens in the book, where the note's context is. */
+/** Every note and highlight across all the reader's books. Notes can be
+ * edited, recoloured and deleted here: the first change in a book pulls that
+ * book's notes into the same local-first store the reader uses (so the edit
+ * syncs, works offline and shows up in the book), then applies the change. */
 export default function NotesPage() {
   const loggedIn = useLoggedIn()
   const router = useRouter()
@@ -21,6 +24,10 @@ export default function NotesPage() {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [exportBook, setExportBook] = useState('')
   const [exportMsg, setExportMsg] = useState('')
+  // Books whose store we have touched; their copy of a note wins over the list's.
+  const [touched, setTouched] = useState<string[]>([])
+  const [tick, bump] = useReducer((n: number) => n + 1, 0)
+  const ready = useRef(new Map<string, Promise<void>>())
 
   useEffect(() => {
     if (!loggedIn) return
@@ -45,6 +52,57 @@ export default function NotesPage() {
     })()
     return () => { cancelled = true }
   }, [loggedIn])
+
+  useEffect(() => {
+    const offs = touched.map((b) => getNotesStore(b, null).subscribe(bump))
+    return () => offs.forEach((off) => off())
+  }, [touched])
+
+  const shownNotes = useMemo(() => {
+    void tick
+    return notes.flatMap((n) => {
+      if (!touched.includes(String(n.book_id))) return [n]
+      const mine = getNotesStore(String(n.book_id), null).get(n.id)
+      if (!mine) return [n]
+      return mine.deleted ? [] : [{ ...mine, book_title: n.book_title }]
+    })
+  }, [notes, touched, tick])
+
+  const status: SyncStatus = useMemo(() => {
+    void tick
+    for (const b of touched) {
+      const st = getNotesStore(b, null).status()
+      if (st !== 'saved') return st
+    }
+    return 'saved'
+  }, [touched, tick])
+
+  /** The note's book store, with that book's notes pulled in once. */
+  const storeFor = useCallback(async (bookIdOfNote: string | number) => {
+    const b = String(bookIdOfNote)
+    const store = getNotesStore(b, null)
+    setTouched((cur) => (cur.includes(b) ? cur : [...cur, b]))
+    let p = ready.current.get(b)
+    if (!p) {
+      p = store.sync().catch(() => {})
+      ready.current.set(b, p)
+    }
+    await p
+    return store
+  }, [])
+
+  const edit = useCallback(async (id: string, patch: Partial<NoteRow>) => {
+    const row = notes.find((n) => n.id === id)
+    if (row) (await storeFor(row.book_id)).update(id, patch)
+  }, [notes, storeFor])
+  const del = useCallback(async (id: string) => {
+    const row = notes.find((n) => n.id === id)
+    if (row) (await storeFor(row.book_id)).remove(id)
+  }, [notes, storeFor])
+  const restore = useCallback(async (id: string) => {
+    const row = notes.find((n) => n.id === id)
+    if (row) (await storeFor(row.book_id)).restore(id)
+  }, [notes, storeFor])
 
   const books = useMemo(() => {
     const m = new Map<number | string, string>()
@@ -80,11 +138,13 @@ export default function NotesPage() {
           <NotesPanel
             open
             variant="page"
-            readOnly
             showBook
             title="All notes"
-            notes={notes}
-            status="saved"
+            notes={shownNotes}
+            status={status}
+            onChange={(id, patch) => void edit(id, patch)}
+            onDelete={(id) => void del(id)}
+            onRestore={(id) => void restore(id)}
             emptyHint="Highlights and notes you make while reading or listening appear here."
             onClose={() => {}}
             onJump={(n: NoteRow) => router.push(`/?book=${encodeURIComponent(String(n.book_id))}${n.kind === 'audio' ? '&view=listen' : ''}`)}

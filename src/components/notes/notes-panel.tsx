@@ -10,6 +10,7 @@ import { filterNotes, groupNotes, locationLabel, sortNotes, type SortKey, type T
 
 type ItemProps = {
   note: NoteRow
+  focused?: boolean
   editing: boolean
   status: SyncStatus
   showBook?: boolean
@@ -20,7 +21,7 @@ type ItemProps = {
   onDelete: (n: NoteRow) => void
 }
 
-function NoteItem({ note, editing, status, showBook, readOnly, onJump, onEdit, onChange, onDelete }: ItemProps) {
+function NoteItem({ note, focused, editing, status, showBook, readOnly, onJump, onEdit, onChange, onDelete }: ItemProps) {
   const [draft, setDraft] = useState<NoteDoc>(note.body)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latest = useRef<NoteDoc | null>(null)
@@ -38,9 +39,18 @@ function NoteItem({ note, editing, status, showBook, readOnly, onJump, onEdit, o
 
   const hasQuote = !!note.quote
   const loc = locationLabel(note)
+  const itemRef = useRef<HTMLLIElement>(null)
+  useEffect(() => {
+    if (focused) itemRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+  }, [focused])
 
   return (
-    <li className="rounded-xl border border-foreground/10 bg-foreground/[0.03] p-3">
+    <li
+      ref={itemRef}
+      data-note-id={note.id}
+      aria-current={focused ? 'true' : undefined}
+      className={`rounded-xl border bg-foreground/[0.03] p-3 ${focused ? 'border-[#f591ac] ring-2 ring-[#f591ac]/60' : 'border-foreground/10'}`}
+    >
       <div className="flex items-start gap-2">
         <span aria-hidden className={`mt-1 h-3 w-3 shrink-0 rounded-full ${note.color ? COLOR_SWATCH[note.color as NoteColor] : 'border border-foreground/30'}`} />
         <button
@@ -133,6 +143,8 @@ export type NotesPanelProps = {
   onExport?: (as: 'md' | 'pdf') => Promise<void> | void
   emptyHint?: string
   initialEditId?: string | null
+  /** Scroll to this note and mark it (set when a highlight is tapped in the text). */
+  focusId?: string | null
 }
 
 const TYPES: { key: TypeFilter; label: string }[] = [
@@ -161,6 +173,14 @@ export function NotesPanel(p: NotesPanelProps) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [p.open, p.variant]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A tapped highlight must be findable even if a filter would hide it.
+  useEffect(() => {
+    if (!p.focusId) return
+    setQ('')
+    setType('all')
+    setColor('all')
+  }, [p.focusId])
 
   const shown = useMemo(() => sortNotes(filterNotes(p.notes, { q, type, color }), sort), [p.notes, q, type, color, sort])
   const groups = useMemo(() => (sort === 'position' ? groupNotes(shown) : [{ label: '', notes: shown }]), [shown, sort])
@@ -261,6 +281,7 @@ export function NotesPanel(p: NotesPanelProps) {
                   <NoteItem
                     key={n.id}
                     note={n}
+                    focused={p.focusId === n.id}
                     editing={editId === n.id}
                     status={p.status}
                     showBook={p.showBook}

@@ -192,4 +192,15 @@ describe("NotesPanel", () => {
     await act(async () => ([...el!.querySelectorAll("button")].find((b) => b.textContent === "PDF") as HTMLButtonElement).click())
     expect(onExport).toHaveBeenCalledWith("pdf")
   })
+
+  it("focusId scrolls to that note, marks it and clears filters that would hide it", async () => {
+    const scroll = vi.fn()
+    ;(Element.prototype as unknown as Record<string, unknown>).scrollIntoView = scroll
+    await render(<NotesPanel {...base} notes={notes} focusId={null} />)
+    await act(async () => root!.render(<NotesPanel {...base} notes={notes} focusId="a" />))
+    const li = el!.querySelector('li[data-note-id="a"]')!
+    expect(li.getAttribute("aria-current")).toBe("true")
+    expect(scroll).toHaveBeenCalled()
+    expect(el!.querySelectorAll('li[aria-current="true"]').length).toBe(1)
+  })
 })
