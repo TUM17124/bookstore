@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { RichNoteEditor } from '@/components/notes/rich-note-editor'
 import { NoteView } from '@/components/notes/note-view'
 import { SaveIndicator } from '@/components/notes/save-indicator'
-import { COLOR_BG, COLOR_LABEL, COLOR_SWATCH, docPlainText } from '@/lib/notes/doc'
+import { COLOR_BG, COLOR_LABEL, COLOR_SWATCH } from '@/lib/notes/doc'
 import { NOTE_COLORS, type NoteColor, type NoteDoc, type NoteRow, type SyncStatus } from '@/lib/notes/types'
 import { filterNotes, groupNotes, locationLabel, sortNotes, type SortKey, type TypeFilter } from '@/lib/notes/view'
 

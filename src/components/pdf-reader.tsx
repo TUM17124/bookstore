@@ -1,24 +1,27 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useCurrency, useMoney } from '@/lib/money'
 import Link from 'next/link'
 import { getToken, getReaderManifest, getReaderPage, ContentError, ProductPriceChangedError, type ReaderManifest, type ReaderBlock, type ReaderChapter } from '@/lib/api'
 import { EpubBlocks, ChapterList, chapterIndexFor, hasFigures } from '@/components/epub-blocks'
 import { UserError } from '@/lib/user-error'
-import { getPdfProgress, savePdfProgress, getPdfNotes, addPdfNote, updatePdfNote, deletePdfNote, type PdfNoteRow } from '@/lib/api'
+import { getPdfProgress, savePdfProgress } from '@/lib/api'
+import { useNotes } from '@/lib/notes/use-notes'
+import { downloadNotesExport } from '@/lib/notes/api'
+import { colouredPieces, type ColoredPiece } from '@/lib/notes/paint'
+import { COLOR_BG, EMPTY_DOC, isDocEmpty } from '@/lib/notes/doc'
+import { NOTE_COLORS, type NoteColor, type NoteDoc, type NoteRow } from '@/lib/notes/types'
+import { NotesPanel } from '@/components/notes/notes-panel'
+import { RichNoteEditor } from '@/components/notes/rich-note-editor'
 import { useAsyncAction } from '@/hooks/use-async-action'
 import { ActionButton } from '@/components/ui/action-button'
-import { newIdempotencyKey } from '@/lib/auth-fetch'
 import {
   notesStorageKey,
   normalizeNoteText,
-  piecesBetween,
-  quoteRanges,
   occurrenceIndex,
   nthOccurrence,
   rawToNormalizedOffset,
   type PdfThought,
-  type TextPiece,
 } from '@/lib/pdf-notes'
 import {
   getProStatus,
@@ -146,28 +149,6 @@ function splitForTts(text: string, max = MAX_TTS_CHARS): string[] {
 function finiteOffset(value: unknown): number | undefined {
   const n = Number(value)
   return Number.isFinite(n) ? n : undefined
-}
-
-function thoughtMergeKey(row: PdfThought) {
-  if (finiteOffset(row.startOffset) != null && finiteOffset(row.endOffset) != null) {
-    return `${row.page}:${row.startOffset}:${row.endOffset}:${row.quote}`
-  }
-  return `${row.page}:${row.quote}`
-}
-
-/**
- * Keeps the exact highlight position when a local note is merged with (or
- * replaced by) the row the server sent back. The API has no offset columns, so
- * a cloud row must never wipe offsets that only exist on this device.
- */
-function mergeThought(prev: PdfThought, incoming: PdfThought): PdfThought {
-  return {
-    ...prev,
-    ...incoming,
-    thought: incoming.thought || prev.thought,
-    startOffset: prev.startOffset ?? incoming.startOffset,
-    endOffset: prev.endOffset ?? incoming.endOffset,
-  }
 }
 
 function readStoredThoughts(bookId: string | undefined, url: string): PdfThought[] {
@@ -306,17 +287,35 @@ export function PdfReader({
   const [highlightMode, setHighlightMode] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
   const [editingNote, setEditingNote] = useState(false)
-  const [thoughts, setThoughts] = useState<PdfThought[]>([])
-  const visibleThoughts = loggedIn ? thoughts : []
+  // Notes: local-first store shared with the notes panel (syncs, works offline).
+  const canNote = loggedIn || !!guestToken
+  const { store: notesStore, notes: allNotes, status: noteStatus } = useNotes(canNote ? bookId : undefined, guestToken)
+  const readerNotes = useMemo(() => allNotes.filter((n: NoteRow) => n.kind === 'pdf'), [allNotes])
+  const thoughts: PdfThought[] = useMemo(
+    () =>
+      readerNotes
+        .filter((n: NoteRow) => n.quote.length >= 2)
+        .map((n: NoteRow) => ({
+          id: n.id,
+          page: n.page ?? 1,
+          quote: normalizeNoteText(n.quote),
+          thought: n.body_text,
+          startOffset: n.start_offset ?? undefined,
+          endOffset: n.end_offset ?? undefined,
+        })),
+    [readerNotes],
+  )
+  const visibleThoughts = canNote ? thoughts : []
+  const [lastColor, setLastColor] = useState<NoteColor>('yellow')
+  const [panelEditId, setPanelEditId] = useState<string | null>(null)
   const [draft, setDraft] = useState<{
-    id?: string
     page: number
     quote: string
-    thought: string
+    color: NoteColor
+    body: NoteDoc
     startOffset?: number
     endOffset?: number
   } | null>(null)
-  const [savingNote, setSavingNote] = useState(false)
   const [noteMsg, setNoteMsg] = useState('')
   const highlightPointerDownRef = useRef(false)
 
@@ -457,17 +456,20 @@ export function PdfReader({
     return false
   }
 
-  function thoughtsOnPage(pageNum: number): PdfThought[] {
-    return visibleThoughts.filter((row) => row.page === pageNum)
-  }
-
-  function paintPieces(pieces: TextPiece[], keyPrefix: string) {
+  function paintPieces(pieces: ColoredPiece[], keyPrefix: string) {
     return pieces.map((piece, index) =>
-      piece.marked ? (
+      piece.color && piece.color !== 'plain' ? (
         <mark
           key={`${keyPrefix}-${index}`}
           data-pdf-hl-start={piece.rangeStart != null ? String(piece.rangeStart) : undefined}
-          className="rounded-sm bg-[#f6e27a] px-0.5 text-inherit dark:bg-[#f6e27a]/30"
+          data-note-id={piece.noteId}
+          onClick={(e: MouseEvent) => {
+            if (highlightMode || !piece.noteId) return
+            e.stopPropagation()
+            setPanelEditId(null)
+            setNotesOpen(true)
+          }}
+          className={`cursor-pointer rounded-sm px-0.5 text-inherit ${COLOR_BG[piece.color]}`}
         >
           {piece.text}
         </mark>
@@ -525,7 +527,7 @@ export function PdfReader({
   }
 
    function captureCurrentSelection() {
-    if (!loggedIn || !highlightMode) return
+    if (!canNote || !highlightMode) return
     const selection = window.getSelection()
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
     const quote = normalizeNoteText(selection.toString()).replace(/\s+/g, ' ').trim().slice(0, 500)
@@ -549,63 +551,18 @@ export function PdfReader({
         return prev
       }
       return {
-        id: prev?.page === pageNum ? prev.id : undefined,
         page: pageNum,
         quote,
-        thought: prev?.page === pageNum ? prev.thought : '',
+        color: prev?.color ?? lastColor,
+        body: prev?.page === pageNum ? prev.body : EMPTY_DOC,
         startOffset: offsets.startOffset,
         endOffset: offsets.endOffset,
       }
     })
-    setEditingNote(true)
     setNoteMsg('')
   }
 
-  function renderThoughtsList(hint: string) {
-    return (
-      <>
-        {!loggedIn ? (
-          <p className="mt-3 text-[13px] text-foreground/55">
-            <Link href={loginHref} className="font-semibold text-[var(--brand-pink-text)] underline">Log in</Link>
-            {' · '}
-            <Link href={signupHref} className="font-semibold text-[var(--brand-pink-text)] underline">Sign up</Link>
-          </p>
-        ) : null}
-        {loggedIn && !visibleThoughts.length ? (
-          <p className="mt-2 text-[13px] text-foreground/45">No highlights yet. {hint}</p>
-        ) : null}
-        {loggedIn ? (
-          <ul aria-label="Saved PDF highlights" className="mt-2 space-y-3 pr-1">
-            {visibleThoughts.map((row) => (
-              <li key={row.id} className="flex items-start gap-2 rounded-lg bg-foreground/[0.04] p-2 text-sm">
-                <button type="button" onClick={() => void gotoPage(row.page)} className="shrink-0 font-bold text-[var(--brand-pink-text)]">
-                  p.{row.page}
-                </button>
-                <span className="min-w-0 flex-1">
-                  <button
-                    type="button"
-                    onClick={() => void gotoThoughtQuote(row)}
-                    className="block break-words text-left font-semibold text-foreground"
-                  >
-                    {row.quote}
-                  </button>
-                  {row.thought ? (
-                    <span className="mt-1 block whitespace-pre-wrap break-words text-foreground/60">{row.thought}</span>
-                  ) : null}
-                </span>
-                <span className="flex shrink-0 flex-col items-end gap-1">
-                  <button type="button" onClick={() => startEditThought(row)} className="font-semibold text-[var(--brand-pink-text)]" aria-label="Edit note">Edit</button>
-                  <button type="button" onClick={() => removeThought(row)} className="text-foreground/40" aria-label="Delete note">×</button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </>
-    )
-  }
-
-  function renderReaderNotices() {
+function renderReaderNotices() {
     if (!readerMessage && !visibleUsageNotice) return null
     return (
       <div className="shrink-0 space-y-1 border-b border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900/50 dark:bg-amber-950/40" role="status" aria-live="polite">
@@ -806,51 +763,27 @@ export function PdfReader({
     }
   }
 
+  // One-time import of highlights that only ever lived on this device (the old local store),
+  // so nothing is lost when moving to synced rich notes. Server-side notes were copied by the migration.
   useEffect(() => {
-    if (!loggedIn) return
-    const local = readStoredThoughts(bookId, url)
-    setThoughts(local)
-    if (!bookId) return
-    let cancelled = false
-    getPdfNotes(bookId)
-      .then((rows) => {
-        if (cancelled || !Array.isArray(rows)) return
-        const cloud: PdfThought[] = rows
-          .map((row) => ({
-            id: String(row.id),
-            page: Number(row.page) || 1,
-            quote: normalizeNoteText(row.quote || ''),
-            thought: normalizeNoteText(row.thought || row.note || ''),
-            startOffset: finiteOffset((row as PdfThought).startOffset),
-            endOffset: finiteOffset((row as PdfThought).endOffset),
-          }))
-          .filter((row) => row.quote.length >= 2)
-        const merged = new Map<string, PdfThought>()
-        for (const row of local) merged.set(thoughtMergeKey(row), row)
-        for (const row of cloud) {
-          const exact = thoughtMergeKey(row)
-          const prevExact = merged.get(exact)
-          if (prevExact) {
-            merged.set(exact, mergeThought(prevExact, row))
-            continue
-          }
-          const sameQuote = [...merged.values()].find((item) => item.page === row.page && item.quote === row.quote)
-          if (sameQuote) {
-            merged.set(thoughtMergeKey(sameQuote), mergeThought(sameQuote, row))
-          } else {
-            merged.set(exact, row)
-          }
-        }
-        const next = [...merged.values()]
-        setThoughts(next)
-        writeStoredThoughts(bookId, url, next)
-      })
-      .catch(() => {})
-    return () => { cancelled = true }
-  }, [bookId, url, loggedIn])
+    if (!canNote || !notesStore || !bookId) return
+    const local = readStoredThoughts(bookId, url).filter((row) => row.id.startsWith('local-') && row.quote.length >= 2)
+    if (local.length) {
+      const have = new Set(notesStore.list().map((n) => `${n.page}:${n.quote}`))
+      for (const row of local) {
+        if (have.has(`${row.page}:${row.quote}`)) continue
+        notesStore.create({
+          kind: 'pdf', page: row.page, quote: row.quote.slice(0, 500), color: 'yellow',
+          start_offset: row.startOffset ?? null, end_offset: row.endOffset ?? null,
+          body: { type: 'doc', content: [{ type: 'paragraph', content: row.thought ? [{ type: 'text', text: row.thought }] : undefined }] },
+        })
+      }
+    }
+    if (local.length || readStoredThoughts(bookId, url).length) writeStoredThoughts(bookId, url, [])
+  }, [canNote, notesStore, bookId, url])
 
     useEffect(() => {
-    if (!loggedIn || !highlightMode) return
+    if (!canNote || !highlightMode) return
 
     let mouseDown = false
     let touches = 0
@@ -931,7 +864,7 @@ export function PdfReader({
       document.removeEventListener('mouseup', onMouseUp, true)
       document.removeEventListener('selectionchange', onSelectionChange)
     }
-  }, [loggedIn, highlightMode])
+  }, [canNote, highlightMode])
 
   function toggleHighlightMode() {
     const next = !highlightMode
@@ -944,83 +877,51 @@ export function PdfReader({
     setNoteMsg('')
   }
 
-  async function saveThought() {
-    if (!loggedIn) {
-      setNoteMsg('Log in to create and save PDF notes.')
+  /** Save the draft as a note: a highlight (optionally with a rich note), or a note on a page position. */
+  function saveThought() {
+    if (!canNote || !notesStore) {
+      setNoteMsg('Log in to create and save notes.')
       return
     }
-    if (!draft || savingNote) return
+    if (!draft) return
     const quote = normalizeNoteText(draft.quote).slice(0, 500)
-    if (quote.length < 2) {
-      setNoteMsg('Highlight a passage first.')
+    const hasText = !isDocEmpty(draft.body)
+    if (!quote && !hasText) {
+      setNoteMsg('Select a passage or write a note first.')
       return
     }
-    const thought = draft.thought.trim().slice(0, 280)
-    setSavingNote(true)
-    const existing = thoughts.find(
-      (row) =>
-        row.id === draft.id ||
-        (row.page === draft.page &&
-          row.quote === quote &&
-          (draft.startOffset == null || row.startOffset == null || (row.startOffset === draft.startOffset && row.endOffset === draft.endOffset))),
-    )
-    const row: PdfThought = {
-      id: existing?.id || `local-${Date.now()}`,
+    notesStore.create({
+      kind: 'pdf',
       page: draft.page,
       quote,
-      thought,
-      startOffset: draft.startOffset ?? existing?.startOffset,
-      endOffset: draft.endOffset ?? existing?.endOffset,
-    }
-    const next = existing ? thoughts.map((item) => (item.id === existing.id ? row : item)) : [...thoughts, row]
-    setThoughts(next)
-    writeStoredThoughts(bookId, url, next)
+      start_offset: quote ? draft.startOffset ?? null : null,
+      end_offset: quote ? draft.endOffset ?? null : null,
+      color: quote ? draft.color : '',
+      body: draft.body,
+      chapter: chapterForPage(draft.page),
+    })
+    setLastColor(draft.color)
     setDraft(null)
     setEditingNote(false)
+    setNoteMsg('')
     window.getSelection()?.removeAllRanges()
-    if (!bookId) {
-      setNoteMsg('Could not save this note because the book is unavailable.')
-      setSavingNote(false)
-      return
-    }
-    try {
-      let saved: PdfNoteRow | null = null
-      const call = { idempotencyKey: newIdempotencyKey() }
-      if (existing && /^\d+$/.test(existing.id)) {
-        try {
-          saved = await updatePdfNote(existing.id, row.page, row.quote, row.thought, call)
-        } catch (err) {
-          if ((err as { status?: number }).status !== 404) throw err
-          // Gone server-side: save it again as a new note.
-          saved = await addPdfNote(bookId, row.page, row.quote, row.thought, { idempotencyKey: newIdempotencyKey() })
-        }
-      } else {
-        saved = await addPdfNote(bookId, row.page, row.quote, row.thought, call)
-      }
-      const id = String(saved?.id || row.id)
-      const swapped = next.map((item) => (item.id === row.id ? { ...item, id } : item))
-      setThoughts(swapped)
-      writeStoredThoughts(bookId, url, swapped)
-      setNoteMsg('')
-    } catch {
-      setNoteMsg("Saved on this device only — couldn't reach PlugYard, so it isn't on your account yet. Open the note and save it again to retry.")
-    }
-    setSavingNote(false)
   }
 
-  function startEditThought(row: PdfThought) {
-    if (!loggedIn) return
-    setNotesOpen(false)
-    setHighlightMode(true)
+  function chapterForPage(n: number): string {
+    const ch = manifestRef.current?.chapters
+    if (!ch?.length) return ''
+    let title = ''
+    for (const c of ch) { if (c.page <= n) title = c.title; else break }
+    return title.slice(0, 160)
+  }
+
+  function startPageNote() {
+    if (!canNote) {
+      setNoteMsg('Log in to create and save notes.')
+      return
+    }
+    setDraft({ page, quote: '', color: lastColor, body: EMPTY_DOC })
     setEditingNote(true)
-    setDraft({
-      id: row.id,
-      page: row.page,
-      quote: row.quote,
-      thought: row.thought || '',
-      startOffset: row.startOffset,
-      endOffset: row.endOffset,
-    })
     setNoteMsg('')
   }
 
@@ -1030,22 +931,14 @@ export function PdfReader({
     window.getSelection()?.removeAllRanges()
   }
 
-  function removeThought(row: PdfThought) {
-    if (!loggedIn) return
-    const next = thoughts.filter((item) => item.id !== row.id)
-    setThoughts(next)
-    writeStoredThoughts(bookId, url, next)
-    if (draft?.id === row.id) setDraft(null)
-    if (/^\d+$/.test(row.id)) {
-      deletePdfNote(row.id, { idempotencyKey: newIdempotencyKey() }).catch(() => {
-        // Put it back: it still exists on the server and would reappear.
-        setThoughts((cur) => {
-          const restored = cur.some((item) => item.id === row.id) ? cur : [...cur, row]
-          writeStoredThoughts(bookId, url, restored)
-          return restored
-        })
-        setNoteMsg("Couldn't delete that note. Check your connection and try again.")
-      })
+  /** Jump to a note from the panel (or a tapped highlight). */
+  async function jumpToNote(n: NoteRow) {
+    if (typeof window !== 'undefined' && !window.matchMedia('(min-width: 768px)').matches) setNotesOpen(false)
+    const pageNum = n.page ?? 1
+    if (n.quote) {
+      await gotoThoughtQuote({ id: n.id, page: pageNum, quote: n.quote, thought: n.body_text, startOffset: n.start_offset ?? undefined, endOffset: n.end_offset ?? undefined })
+    } else {
+      await gotoPage(pageNum)
     }
   }
 
@@ -1548,7 +1441,6 @@ export function PdfReader({
   }
 
   async function gotoThoughtQuote(row: PdfThought) {
-    setNotesOpen(false)
     const target = await gotoPage(row.page)
     await waitForPageText(target)
     const pageText = normalizeNoteText(pagesRef.current[target] || '')
@@ -1961,7 +1853,9 @@ export function PdfReader({
     const located = locateSentences(text)
     // Exact saved offsets win over quote text, so a one-word note like "and"
     // paints the occurrence the reader actually picked - not all of them.
-    const ranges = quoteRanges(text, thoughtsOnPage(pageNum))
+    const anchors = canNote
+      ? readerNotes.filter((n: NoteRow) => n.page === pageNum && n.quote.length >= 2).map((n: NoteRow) => ({ id: n.id, quote: n.quote, startOffset: n.start_offset, endOffset: n.end_offset, color: n.color }))
+      : []
     if (!located.length) {
       return (
         <p
@@ -1997,7 +1891,7 @@ export function PdfReader({
             className={highlightMode ? `rounded px-0.5 ${highlightSelectClass(true)}` : 'cursor-pointer rounded px-0.5 hover:bg-[#f591ac]/25'}
             style={highlightMode ? highlightSelectStyle(true) : undefined}
           >
-            {paintPieces(piecesBetween(sentence, start, ranges), `${pageNum}-${i}`)}
+            {paintPieces(colouredPieces(text, sentence, start, anchors), `${pageNum}-${i}`)}
             {' '}
           </span>
         ))}
@@ -2206,7 +2100,10 @@ export function PdfReader({
           aria-pressed={notesOpen}
           className={`rounded-full px-3 py-1 text-sm font-bold ${notesOpen ? 'bg-[#f591ac] text-[var(--on-brand)]' : 'bg-foreground/10 text-foreground'}`}
         >
-          📋 Notes{visibleThoughts.length ? ` (${visibleThoughts.length})` : ''}
+          📋 Notes{canNote && readerNotes.length ? ` (${readerNotes.length})` : ''}
+        </button>
+        <button type="button" onClick={startPageNote} className="rounded-full bg-foreground/10 px-3 py-1 text-sm font-bold text-foreground">
+          📝 Page note
         </button>
         {/* Always in the bar (disabled until there is a mark) so the
             toolbar doesn't re-wrap and push the pages down when saved
@@ -2281,67 +2178,69 @@ export function PdfReader({
         </div>
       )}
 
-      {highlightMode && loggedIn && draft ? (
-        <div className="shrink-0 border-b border-black/10 bg-[#f6e27a] px-3 py-2">
+      {canNote && draft ? (
+        <div className="shrink-0 border-b border-black/10 bg-[#f6e27a] px-3 py-2 text-[#1a1a1a]" role="group" aria-label={draft.quote ? 'New highlight' : 'New page note'}>
           <div className="mx-auto flex max-w-2xl items-center gap-2">
-            <p className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[#1a1a1a]">
+            <p className="min-w-0 flex-1 truncate text-[12px] font-semibold">
               <span className="opacity-60">p.{draft.page} · </span>
-              {draft.quote}
+              {draft.quote || 'Note on this page'}
             </p>
-            {editingNote ? (
-              <button type="button" disabled={savingNote} onClick={() => void saveThought()} className="shrink-0 rounded-full bg-[var(--on-brand)] px-3 py-1.5 text-[13px] font-bold text-white disabled:opacity-50">
-                {savingNote ? (draft.id ? 'Updating…' : 'Saving…') : draft.id ? 'Update' : 'Save'}
-              </button>
-            ) : (
-              <button type="button" onClick={() => setEditingNote(true)} className="shrink-0 rounded-full bg-black/10 px-3 py-1.5 text-[13px] font-bold text-[#1a1a1a]">Edit</button>
-            )}
-            <button type="button" disabled={savingNote} onClick={cancelEditThought} aria-label={draft.id ? 'Cancel edit' : 'Discard highlight'} className="shrink-0 rounded-full bg-black/10 px-2 py-1.5 text-[13px] font-bold text-[#1a1a1a] disabled:opacity-50">×</button>
-          </div>
-          {editingNote ? (
-            <div className="mx-auto mt-1.5 flex max-w-2xl gap-2">
-              <input
-                value={draft.thought}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setDraft({ ...draft, thought: e.target.value })}
-                placeholder="Type a thought"
-                maxLength={280}
-                disabled={savingNote}
-                autoFocus={editingNote && !phonePip}
-                className="min-w-0 flex-1 rounded-full border border-black/10 bg-white px-3 py-1.5 text-sm text-[#1a1a1a] outline-none disabled:opacity-50"
-              />
-            </div>
-          ) : (
-            <button type="button" onClick={() => setEditingNote(true)} className="mx-auto mt-1.5 block max-w-2xl truncate text-left text-[12px] text-[#1a1a1a]/70">
-              {draft.thought ? draft.thought : 'Add a thought…'}
+            <button type="button" onClick={saveThought} className="shrink-0 rounded-full bg-[var(--on-brand)] px-3 py-1.5 text-[13px] font-bold text-white">
+              {draft.quote ? 'Save highlight' : 'Save note'}
             </button>
-          )}
+            <button type="button" onClick={cancelEditThought} aria-label="Discard" className="shrink-0 rounded-full bg-black/10 px-2 py-1.5 text-[13px] font-bold">×</button>
+          </div>
+          {draft.quote ? (
+            <div className="mx-auto mt-1.5 flex max-w-2xl items-center gap-2">
+              <span role="group" aria-label="Highlight colour" className="flex items-center gap-1.5">
+                {NOTE_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-label={`${c} highlight`}
+                    aria-pressed={draft.color === c}
+                    onClick={() => setDraft({ ...draft, color: c })}
+                    className={`h-6 w-6 rounded-full border border-black/20 ${COLOR_BG[c].split(' ')[0]} ${draft.color === c ? 'ring-2 ring-[#1a1a1a] ring-offset-1 ring-offset-[#f6e27a]' : ''}`}
+                  />
+                ))}
+              </span>
+              <button type="button" onClick={() => setEditingNote(!editingNote)} aria-expanded={editingNote} className="rounded-full bg-black/10 px-3 py-1 text-[13px] font-bold">
+                {editingNote ? 'Hide note' : 'Add a note'}
+              </button>
+            </div>
+          ) : null}
+          {editingNote || !draft.quote ? (
+            <div className="mx-auto mt-2 max-w-2xl rounded-xl bg-background text-foreground">
+              <RichNoteEditor value={draft.body} onChange={(body) => setDraft((d) => (d ? { ...d, body } : d))} autoFocus={!phonePip} ariaLabel="New note" minHeight={88} />
+            </div>
+          ) : null}
         </div>
       ) : null}
 
-      {highlightMode && loggedIn && !draft ? (
+      {highlightMode && canNote && !draft ? (
         <div className="shrink-0 border-b border-black/10 bg-[#f6e27a]/60 dark:bg-[#f6e27a]/85 px-3 py-1.5 text-center text-[12px] font-semibold text-[#1a1a1a]/70">
           Tap and hold a passage to highlight it
         </div>
       ) : null}
 
-      {highlightMode && noteMsg ? (
+      {(highlightMode || draft) && noteMsg ? (
         <p className="shrink-0 px-3 py-1.5 text-center text-[12px] font-semibold text-[var(--brand-pink-text)]">{noteMsg}</p>
       ) : null}
 
-      {notesOpen ? (
-        <div className="fixed inset-0 z-[60] flex flex-col overflow-hidden bg-background" style={phonePip ? { paddingBottom: 'env(safe-area-inset-bottom)' } : undefined}>
-          <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-3">
-            <p className="text-[12px] font-bold uppercase tracking-wider text-foreground/45">
-              Saved highlights{visibleThoughts.length ? ` (${visibleThoughts.length})` : ''}
-            </p>
-            <button type="button" onClick={() => { setNotesOpen(false); window.getSelection()?.removeAllRanges() }} className="rounded-full bg-foreground/10 px-3 py-1 text-sm font-bold text-foreground">
-              Close
-            </button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
-            {renderThoughtsList('Tap Highlight, then tap and hold a passage.')}
-          </div>
-        </div>
-      ) : null}
+      <NotesPanel
+        key={panelEditId || 'notes'}
+        open={notesOpen}
+        onClose={() => { setNotesOpen(false); window.getSelection()?.removeAllRanges() }}
+        notes={canNote ? readerNotes : []}
+        status={noteStatus}
+        emptyHint={canNote ? 'Tap Highlight, then tap and hold a passage — or use Page note.' : 'Log in to keep notes and highlights.'}
+        initialEditId={panelEditId}
+        onJump={(n: NoteRow) => void jumpToNote(n)}
+        onChange={(id: string, patch: Partial<NoteRow>) => notesStore?.update(id, patch)}
+        onDelete={(id: string) => notesStore?.remove(id)}
+        onRestore={(id: string) => notesStore?.restore(id)}
+        onExport={(as: 'md' | 'pdf') => downloadNotesExport(bookId, as, guestToken)}
+      />
 
       {renderReaderNotices()}
 
@@ -2428,7 +2327,19 @@ export function PdfReader({
               className={`mb-10 min-h-[8rem] ${highlightSelectClass(highlightMode)}`}
               style={pages[n] ? highlightSelectStyle(highlightMode) : { ...highlightSelectStyle(highlightMode), minHeight: pageEst ?? '8rem' }}
             >
-              <p className="mb-3 select-none text-[11px] font-bold uppercase tracking-wider text-foreground/40">Page {n}</p>
+              <p className="mb-3 select-none text-[11px] font-bold uppercase tracking-wider text-foreground/40">
+                Page {n}
+                {canNote && readerNotes.some((x: NoteRow) => x.page === n && !x.quote) ? (
+                  <button
+                    type="button"
+                    aria-label={`Notes on page ${n}`}
+                    onClick={() => { setPanelEditId(null); setNotesOpen(true) }}
+                    className="ml-2 rounded-full bg-[#f591ac]/25 px-2 py-0.5 text-[11px] normal-case tracking-normal text-[var(--brand-pink-text)]"
+                  >
+                    📝 {readerNotes.filter((x: NoteRow) => x.page === n && !x.quote).length}
+                  </button>
+                ) : null}
+              </p>
               {ttsPageLoaded === n && ttsSentences.length > 0
                 ? renderSentences(n, 'tts-sentence')
                 : blocksByPage[n] && pages[n]
