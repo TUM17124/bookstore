@@ -28,6 +28,7 @@ import { CampaignsTab } from "./campaigns-tab";
 import { AdsTab } from "./ads-tab";
 import { Banners } from "@/components/offers/banners";
 import { useLimits, useText } from "@/lib/site-config";
+import { DescriptionField } from "@/components/description-field";
 
 
 const SECTIONS = [
@@ -1473,16 +1474,12 @@ function BookBoostRow({
             className="border rounded-lg p-2"
           />
 
-          <textarea
-            name="description"
+          <DescriptionField
             rows={3}
-            defaultValue={
-              book.desc ||
-              book.description ||
-              ""
-            }
             placeholder="Description"
-            className="sm:col-span-2 border rounded-lg p-2"
+            defaultValue={book.desc || book.description || ""}
+            original={book.desc || book.description || ""}
+            className="border rounded-lg p-2"
           />
 
           <label className="flex items-center gap-2 text-sm sm:col-span-2">

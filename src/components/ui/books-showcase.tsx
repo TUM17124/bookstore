@@ -42,6 +42,7 @@ function loadThree() {
 }
 import { useCurrency, formatMoney } from '@/lib/money';
 import { edgeMask, useScrollEdges } from '@/components/category-nav/use-scroll-edges';
+import { ExpandableText } from '@/components/expandable-text';
 import { useSignalsOn } from '@/lib/site-config';
 import { Banners } from '@/components/offers/banners';
 import { nativeShare } from '@/lib/share';
@@ -3019,9 +3020,9 @@ export function BooksShowcase({
           <h1 className={`m-0 mb-2 line-clamp-2 text-[var(--brand-pink-text)] text-[clamp(22px,3.2cqw,42px)] font-extrabold leading-[1.12] tracking-[-0.02em] @max-[760px]:text-[clamp(20px,6cqw,32px)] ${dpChild(50)}`}>
             {selectedCfg?.title}
           </h1>
-          <p className={`mt-0 line-clamp-4 max-w-[54ch] text-current/75 text-[clamp(13px,1.1cqw,16px)] leading-[1.45] @max-[760px]:line-clamp-3 @max-[760px]:text-[13px] ${dpChild(130)}`}>
-            {selectedCfg?.desc}
-          </p>
+          <div className={`max-w-[54ch] text-current/75 text-[clamp(13px,1.1cqw,16px)] leading-[1.45] @max-[760px]:text-[13px] ${dpChild(130)}`}>
+            <ExpandableText text={selectedCfg?.desc ?? ''} lines={4} desktopLines={6} />
+          </div>
           <div className={`mt-3 flex flex-col gap-1.5 ${dpChild(210)}`}>
             <div className="flex flex-wrap items-center gap-3">
               <button type="button" onClick={() => setReviewsOpen(true)} className="pointer-events-auto inline-flex items-center gap-2 rounded-full" aria-label="Rate and comment">
