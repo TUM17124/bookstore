@@ -18,6 +18,7 @@ import {
 import { useAsyncAction } from "@/hooks/use-async-action"
 import { ActionButton } from "@/components/ui/action-button"
 import { useMoney } from "@/lib/money"
+import { usePaymentHandoff } from "@/components/payment-handoff"
 import { errorMessage } from "@/lib/auth-fetch"
 import { AdStatsPanel, AdTotalsLine } from "./ad-stats"
 
@@ -107,13 +108,19 @@ export function AdsTab() {
     errorFallback: "Couldn't download the statement. Please try again.",
   })
 
+  const handoff = usePaymentHandoff()
   const topUp = useAsyncAction(
     (ctx) => startAdTopUp(amount, quote?.final_amount, ctx),
     {
       successMs: 60_000,
       errorFallback: "Could not start the payment. Please try again.",
       onSuccess: (r) => {
-        if (r?.checkout_url) window.location.href = r.checkout_url
+        if (r?.checkout_url) {
+          handoff.start(r.checkout_url, {
+            what: "Ad balance top-up",
+            amount: quote?.final_amount ? money(quote.final_amount) : undefined,
+          })
+        }
       },
       onError: (err) => {
         if (err instanceof ProductPriceChangedError) setQuote(err.quote)
@@ -128,6 +135,7 @@ export function AdsTab() {
 
   return (
     <div className="space-y-6">
+      {handoff.node}
       {notice && (
         <p role="status" className={`rounded-xl border p-3 text-sm ${notice.ok ? "border-emerald-500/40 bg-emerald-500/5" : "border-red-500/40 bg-red-500/5"}`}>
           {notice.text}

@@ -11,6 +11,8 @@ import { useAsyncAction } from '@/hooks/use-async-action'
 import { ActionButton } from '@/components/ui/action-button'
 import { UserError } from '@/lib/user-error'
 import { getStoredUser, isLoggedIn } from '@/lib/auth-client'
+import { usePaymentHandoff } from '@/components/payment-handoff'
+import { safePaymentUrl } from '@/lib/payment-handoff'
 import { useFeature, useOffMessage, useText } from '@/lib/site-config'
 
 function rememberBook(bookId: string, title: string, email?: string) {
@@ -104,6 +106,7 @@ function CheckoutInner() {
 
   // Retried automatically on connection problems with ONE idempotency key per
   // attempt, so the server never creates a second order or payment session.
+  const handoff = usePaymentHandoff()
   const pay = useAsyncAction(
     async (ctx, trimmed: string, accepted: boolean) => {
       rememberBook(bookId, title, trimmed)
@@ -118,7 +121,9 @@ function CheckoutInner() {
         },
         ctx,
       )
-      if (!res.checkout_url) throw new UserError('No checkout URL returned. Please try again.')
+      if (!res.checkout_url || !safePaymentUrl(res.checkout_url, window.location.origin)) {
+        throw new UserError('No checkout URL returned. Please try again.')
+      }
       return res
     },
     {
@@ -139,7 +144,7 @@ function CheckoutInner() {
         } catch {
           // hosted payment URL
         }
-        window.location.href = url
+        handoff.start(url, { what: title, amount: quote ? money(quote.price) : undefined })
       },
       onError: (err) => {
         if (err instanceof CheckoutError && err.legalRequired) setLegalRequired(true)
@@ -162,6 +167,7 @@ function CheckoutInner() {
 
   return (
     <main className="mx-auto flex min-h-[70vh] max-w-lg flex-col justify-center px-4 py-12">
+      {handoff.node}
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground/40">
         Checkout
       </p>

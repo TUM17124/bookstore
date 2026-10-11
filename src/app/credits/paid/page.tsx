@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
+import { PaymentResultCard } from '@/components/payment-result'
 import { confirmTtsCredits, getTtsUsage } from '@/lib/api'
 import { isLoggedIn } from '@/lib/auth-client'
 
@@ -72,15 +72,24 @@ function CreditsPaidInner() {
     }
   }, [reference, next, router])
 
+  const back = safeNext(next || '/')
+  if (error) {
+    return (
+      <PaymentResultCard
+        kind="failed"
+        title="We could not confirm your payment yet"
+        action={{ href: back, label: 'Return to what you were reading' }}
+      >
+        <p>{error}</p>
+        <p className="mt-2 text-foreground/55">
+          If money left your account, your credits are added as soon as the payment is confirmed.
+          You do not need to pay again.
+        </p>
+      </PaymentResultCard>
+    )
+  }
   return (
-    <main className="mx-auto flex min-h-[50vh] max-w-md flex-col items-center justify-center px-4 text-center">
-      <p className="text-sm font-semibold">{error || message}</p>
-      {error ? (
-        <Link href={safeNext(next || '/')} className="mt-4 text-sm underline">
-          Return to what you were reading
-        </Link>
-      ) : null}
-    </main>
+    <PaymentResultCard kind={message.startsWith('Credits added') ? 'success' : 'pending'} title={message} />
   )
 }
 
