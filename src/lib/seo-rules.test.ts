@@ -69,6 +69,7 @@ const PRIVATE_MUST_NOINDEX = [
   "bookmarks",
   "checkout",
   "dashboard",
+  "notes",
   "publish",
   "purchases",
   "settings",
