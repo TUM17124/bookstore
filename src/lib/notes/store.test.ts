@@ -189,9 +189,10 @@ describe("NotesStore", () => {
   })
 
   it("notes of another account or a guest are kept apart", () => {
-    const a = new NotesStore("7", null, { ...make(server, storage).store["deps" as never] } as Deps, "1")
-    const b = new NotesStore("7", null, { ...make(server, storage).store["deps" as never] } as Deps, "2")
+    const d = (): Deps => ({ api: server.api as unknown as Deps["api"], storage, now: () => 1, online: () => true, uuid: () => "x", setTimer: () => 0, clearTimer: () => {} })
+    const a = new NotesStore("7", null, d(), "1")
+    const b = new NotesStore("7", null, d(), "2")
     expect(a.key).not.toBe(b.key)
-    expect(new NotesStore("7", "tok", { ...make(server, storage).store["deps" as never] } as Deps).key).toContain(":g")
+    expect(new NotesStore("7", "tok", d()).key).toContain(":g")
   })
 })
