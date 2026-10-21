@@ -5,3 +5,7 @@ Disallow: /api/
 
 Sitemap: https://plugyard.com/sitemap.xml
 Sitemap: https://plugyard.com/sitemap-books.xml
+Sitemap: https://plugyard.com/sitemap-listings.xml
+Sitemap: https://plugyard.com/sitemap-sellers.xml
+Sitemap: https://plugyard.com/sitemap-categories.xml
+Sitemap: https://plugyard.com/sitemap-auctions.xml

@@ -2,11 +2,9 @@
 
 import { useCurrency } from '@/lib/money'
 import { useFeature, useLimits, useOffMessage, useText } from '@/lib/site-config'
-import { Suspense, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
 import { getToken, publishBook } from '@/lib/api'
-import { api as editorApi } from '@/lib/pdf-editor/api'
 import { useAsyncAction } from '@/hooks/use-async-action'
 import { ActionButton } from '@/components/ui/action-button'
 import { AuthFetchError } from '@/lib/auth-fetch'
@@ -17,7 +15,6 @@ import { DescriptionField } from '@/components/description-field'
 
 function PublishPageInner() {
   const currency = useCurrency()
-  const searchParams = useSearchParams()
   // Admin-editable (Django admin → Site: General → Publish page; Site: Limits;
   // Site: Features → publishing).
   const guestIntro = useText('publish.guest_intro')
@@ -26,7 +23,6 @@ function PublishPageInner() {
   const { default_preview_pages: previewDefault } = useLimits()
   const publishingOn = useFeature('publishing')
   const publishingOff = useOffMessage('publishing')
-  const editorDocumentId = searchParams.get('editor_document_id') || ''
 
   const [loggedIn, setLoggedIn] = useState(false)
   // Admin-defined categories (Django admin → Categories), not a fixed list.
@@ -36,24 +32,10 @@ function PublishPageInner() {
   const [isFree, setIsFree] = useState(false)
   const [ebookDownloadable, setEbookDownloadable] = useState(true)
   const [audiobookDownloadable, setAudiobookDownloadable] = useState(true)
-  // Attached from the PDF editor's "Publish" button - the PDF is copied
-  // server-side from the saved document, so the browser never
-  // downloads/re-uploads it. "Remove" reverts to a normal file upload.
-  const [attachedName, setAttachedName] = useState('')
-  const [attachRemoved, setAttachRemoved] = useState(false)
-  const hasAttachment = Boolean(editorDocumentId) && !attachRemoved
 
   useEffect(() => {
     setLoggedIn(!!getToken())
   }, [])
-
-  useEffect(() => {
-    if (!editorDocumentId) return
-    editorApi.getStoredDocument(editorDocumentId).then(
-      (doc) => setAttachedName(doc.name || 'Untitled.pdf'),
-      () => setAttachedName('Untitled.pdf'),
-    )
-  }, [editorDocumentId])
 
   // Upload + create: idempotent server-side, so a dropped connection is
   // retried with ONE key and can never create the book twice.
@@ -93,10 +75,7 @@ function PublishPageInner() {
       setError('Back cover is required (1600×2400).')
       return
     }
-    if (hasAttachment) {
-      fd.delete('pdf')
-      fd.set('editor_document_id', editorDocumentId)
-    } else if (!fd.get('pdf') || !(fd.get('pdf') as File).size) {
+    if (!fd.get('pdf') || !(fd.get('pdf') as File).size) {
       setError('PDF file is required.')
       return
     }
@@ -194,29 +173,11 @@ function PublishPageInner() {
         <label className="text-sm font-medium">Back cover *</label>
         <input name="image_back" type="file" accept="image/*" required />
         <label className="text-sm font-medium">Book file *</label>
-        {hasAttachment ? (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-foreground/15 bg-foreground/[0.03] px-3 py-2 text-sm">
-            <span className="min-w-0 truncate">
-              Already attached: <span className="font-medium">{attachedName || 'Loading…'}</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => setAttachRemoved(true)}
-              className="shrink-0 text-xs font-medium text-foreground/60 underline hover:text-foreground"
-            >
-              Remove
-            </button>
-          </div>
-        ) : (
-          <>
-            <input name="pdf" type="file" accept=".pdf,.epub,.docx,.doc,.odt,.rtf,.txt,.pptx,.ppt,application/pdf,application/epub+zip" required />
-            <p className="text-xs text-foreground/60">
-              PDF, EPUB, Word (.docx, .doc), OpenDocument (.odt), RTF, plain text, or PowerPoint (.pptx, .ppt).
-              Word, text and slide files are converted to PDF for you (usually under a minute);
-              EPUB keeps its reflowable text. Files with macros, DRM or fixed layouts are not accepted. Up to 30 MB.
-            </p>
-          </>
-        )}
+        <input name="pdf" type="file" accept=".pdf,.epub,.docx,.doc,.odt,.rtf,.txt,.pptx,.ppt,application/pdf,application/epub+zip" required />
+        <p className="text-xs text-foreground/60">
+          Upload a finished PDF or EPUB. Word, OpenDocument, RTF, text, and PowerPoint files are converted to PDF.
+          Files with macros, DRM, or unsupported fixed layouts are not accepted. Up to 30 MB.
+        </p>
         <label className="text-sm font-medium">Audiobook (optional MP3)</label>
         <input name="audio" type="file" accept="audio/*" />
 
@@ -284,12 +245,6 @@ function PublishPageInner() {
   )
 }
 
-// useSearchParams() requires a Suspense boundary or the static export's
-// build-time prerender of /_not-found fails.
 export default function PublishPage() {
-  return (
-    <Suspense fallback={null}>
-      <PublishPageInner />
-    </Suspense>
-  )
+  return <PublishPageInner />
 }

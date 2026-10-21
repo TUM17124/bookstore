@@ -4,7 +4,7 @@ import ProPage from "./page-client"
 
 // Title and description: Django admin → Site: SEO (applied at build).
 const baseMetadata: Metadata = {
-  title: "PlugYard Pro",
+  title: "Robot Reader Subscription",
   robots: { index: true, follow: true },
   alternates: {
     canonical: "https://plugyard.com/pro/",

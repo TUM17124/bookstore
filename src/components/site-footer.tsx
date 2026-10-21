@@ -1,18 +1,20 @@
 "use client"
 
-import { Suspense, useId, useState } from "react"
+import { useId, useState } from "react"
 import Link from "next/link"
 import { BookOpen, ChevronDown, Mail } from "lucide-react"
-import { useIsEditorFocusedRoute } from "@/lib/pdf-editor/use-is-editor-focused-route"
 import { categoryHref, useCategories } from "@/lib/categories"
 import { BrandLogo } from "@/components/brand-logo"
 import { fill, usePairs, useSupportEmail, useText, type LinkPair } from "@/lib/site-config"
 
 const policyLinks = [
   { href: "/terms", label: "Terms & Conditions" },
-  { href: "/terms-of-use", label: "Terms of Use" },
   { href: "/privacy", label: "Privacy Policy" },
-  { href: "/refund-policy", label: "Refund Policy" },
+  { href: "/refund-policy", label: "Returns & Refunds" },
+  { href: "/legal/buyer-protection", label: "Buyer Protection" },
+  { href: "/legal/shipping-delivery", label: "Shipping & Delivery" },
+  { href: "/legal/seller-policy", label: "Seller Policies" },
+  { href: "/support", label: "Contact Support" },
 ]
 
 
@@ -162,7 +164,6 @@ function PhoneFooter({ year, f }: { year: number; f: Footer }) {
 
 function SiteFooterInner() {
   const year = new Date().getFullYear()
-  const isEditorFocusedRoute = useIsEditorFocusedRoute()
   // Admin-defined categories (same list as the navbar), not a fixed list.
   const { navbar } = useCategories()
   const browseLinks = navbar.map((c) => ({ href: categoryHref(c.slug), label: c.label }))
@@ -173,7 +174,6 @@ function SiteFooterInner() {
   // footer has nowhere to go there and just adds dead scroll height below
   // it. The landing/upload prompt and My Documents keep the footer
   // (redesign #5).
-  if (isEditorFocusedRoute) return null
 
   return (
     <footer className="site-footer relative border-t border-foreground/5 bg-zinc-50 dark:bg-background">
@@ -309,13 +309,9 @@ function SiteFooterInner() {
   )
 }
 
-// useSearchParams() (inside useIsEditorFocusedRoute) requires a Suspense
+// Components using useSearchParams() require a Suspense
 // boundary or the static export's build-time prerender of /_not-found fails.
 // fallback={null}: same reasoning as NotchNavbar's wrapper.
 export function SiteFooter() {
-  return (
-    <Suspense fallback={null}>
-      <SiteFooterInner />
-    </Suspense>
-  )
+  return <SiteFooterInner />
 }

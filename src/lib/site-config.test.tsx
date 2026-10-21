@@ -52,12 +52,12 @@ describe("site config", () => {
       return (
         <p>
           {useText("pro.headline")}|{useList("marquee.items").length}|{String(useFeature("reviews"))}|
-          {limits.payout_every_days}|{limits.editor_upload_max_mb}
+          {limits.payout_every_days}|{limits.book_description_max_chars}
         </p>
       )
     }
     await render(<Probe />)
-    expect(el!.textContent).toBe("Read and listen without limits|38|true|30|80")
+    expect(el!.textContent).toBe("Listen to books with Robot Reader|38|true|30|2000")
   })
 
   it("shows the admin's texts and switches once loaded", async () => {
@@ -67,7 +67,7 @@ describe("site config", () => {
         config({
           texts: { "pro.headline": "Unlimited reading", "marquee.items": ["One", "Two"], "push.button": "" },
           features: { reviews: false },
-          limits: { default_preview_pages: 6, payout_every_days: 14, editor_trash_days: 30, editor_upload_max_mb: 80 },
+          limits: { default_preview_pages: 6, payout_every_days: 14, book_description_max_chars: 5000 },
         }),
       ),
     )

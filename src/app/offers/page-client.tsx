@@ -1,0 +1,12 @@
+"use client"
+
+import { useCallback, useEffect, useState } from "react"
+import { actOnOffer, offers, type Offer } from "@/lib/marketplace"
+
+export default function OffersPage() {
+  const [rows, setRows] = useState<Offer[]>([]); const [error, setError] = useState(""); const [busy, setBusy] = useState<number | null>(null)
+  const load = useCallback(() => offers().then((page) => setRows(page.results)).catch((reason) => setError(reason instanceof Error ? reason.message : "Could not load offers.")), [])
+  useEffect(() => { void load() }, [load])
+  async function act(row: Offer, action: string) { setBusy(row.id); setError(""); const amount = action === "counter" ? Number(prompt("Counteroffer amount")) : undefined; if (action === "counter" && !amount) { setBusy(null); return } try { await actOnOffer(row.id, action, amount); await load() } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not update offer.") } finally { setBusy(null) } }
+  return <main className="mx-auto max-w-4xl px-4 py-10"><h1 className="text-4xl font-black">Private offers</h1><p className="mt-2 text-foreground/60">Only you and the other participant can see these negotiations.</p>{error && <p role="alert" className="mt-5 rounded-xl bg-red-50 p-3 text-red-800">{error}</p>}<div className="mt-8 space-y-4">{rows.map((row) => <article key={row.id} className="rounded-2xl border bg-white p-5 shadow-sm dark:bg-zinc-950"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm text-foreground/55">Listing #{row.listing}</p><p className="text-2xl font-black">KES {row.amount}</p><p className="mt-1 capitalize">{row.status}</p></div>{["pending", "countered"].includes(row.status) && <div className="flex flex-wrap gap-2">{["accept", "decline", "counter", "withdraw"].map((action) => <button key={action} disabled={busy === row.id} onClick={() => void act(row, action)} className="rounded-full border px-3 py-2 text-sm font-semibold capitalize disabled:opacity-40">{action}</button>)}</div>}</div>{row.message && <p className="mt-3 rounded-xl bg-pink-50 p-3 text-sm text-pink-950">{row.message}</p>}<details className="mt-4 text-sm"><summary>History</summary><ol className="mt-2 space-y-1">{row.history.map((event) => <li key={event.id}>{new Date(event.created_at).toLocaleString()} — {event.action} — KES {event.amount}</li>)}</ol></details></article>)}{!rows.length && !error && <div className="rounded-2xl border border-dashed p-10 text-center text-foreground/60">No offers yet.</div>}</div></main>
+}

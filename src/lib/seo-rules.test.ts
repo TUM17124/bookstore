@@ -49,7 +49,6 @@ const PUBLIC_MUST_INDEX = [
   "terms-of-use",
   "refund-policy",
   "privacy",
-  "tools/pdf-editor",
 ]
 
 describe("public pages must allow indexing", () => {
@@ -108,7 +107,6 @@ describe("sitemap.ts", () => {
     const required = [
       "https://plugyard.com/",
       "https://plugyard.com/pro/",
-      "https://plugyard.com/tools/pdf-editor/",
       "https://plugyard.com/terms/",
       "https://plugyard.com/terms-of-use/",
       "https://plugyard.com/refund-policy/",

@@ -6,7 +6,7 @@ import HomePageClient from "./page-client"
 const baseMetadata: Metadata = {
   title: "PlugYard — Buy or Sell eBooks & Audiobooks | No Account Needed to Buy",
   description:
-    "Kenya's eBook and audiobook marketplace. Buy and instantly read or listen — no account required. Publish your own titles, set your price, and get paid directly. AI-powered narration on every eBook. Free built-in PDF editor with auto-save. Sign up to track purchases and sync reading progress.",
+    "Kenya's marketplace for books, electronics, vehicles, furniture, services, and more. Shop public listings or sell your own products.",
   alternates: {
     canonical: "https://plugyard.com/",
   },

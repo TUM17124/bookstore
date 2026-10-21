@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, Suspense } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useIsEditorFocusedRoute } from "@/lib/pdf-editor/use-is-editor-focused-route"
 import {
   Home,
   BookOpen,
@@ -11,6 +10,7 @@ import {
   Menu,
   X,
   Bookmark,
+  Heart,
   Upload,
   LayoutDashboard,
   Settings,
@@ -18,8 +18,10 @@ import {
   ChevronDown,
   User,
   Crown,
-  FileEdit,
   LayoutGrid,
+  Store,
+  Handshake,
+  Gavel,
 } from "lucide-react"
 import { BookSearchModal } from "@/components/book-search-modal"
 import { cn } from "@/lib/utils"
@@ -125,7 +127,6 @@ function NotchNavbarInner({
   const [evictedNotice, setEvictedNotice] = useState(false)
   const accountRef = useRef<HTMLDivElement>(null)
   const pathname = usePathname()
-  const isEditorFocusedRoute = useIsEditorFocusedRoute()
 
   useEffect(() => {
     listenForUserChanges()
@@ -216,7 +217,6 @@ function NotchNavbarInner({
     }
   }, [])
 
-  // The PDF editor is a fixed-viewport workspace with its own compact
   // toolbar (logo + account link folded in) — the full site nav would
   // compete with it for vertical space, so it's hidden on that route only.
   
@@ -245,7 +245,7 @@ function NotchNavbarInner({
           className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-[#a3811f] hover:bg-[#d4af37]/10"
         >
           <Crown className="w-4 h-4" />
-          Upgrade to Pro
+          Subscribe to Robot Reader
         </Link>
       )}
       <Link
@@ -308,7 +308,7 @@ function NotchNavbarInner({
         {isPro && (
           <span className="flex items-center gap-0.5 rounded-full bg-[#d4af37]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#a3811f]">
             <Crown className="w-2.5 h-2.5" />
-            PRO
+            ROBOT READER
           </span>
         )}
         <ChevronDown className={`w-3.5 h-3.5 transition ${accountOpen ? "rotate-180" : ""}`} />
@@ -345,7 +345,6 @@ function NotchNavbarInner({
   // stays reachable via the editor's own ⋮ menu instead. The landing/upload
   // prompt and My Documents are normal site pages and keep the nav
   // (redesign #5).
-  if (isEditorFocusedRoute) return null
 
   return (
     <>
@@ -384,6 +383,8 @@ function NotchNavbarInner({
                 </Link>
 
                 <NavLink href="/" icon={Home} label="Home" />
+                <NavLink href="/marketplace" icon={Store} label="Marketplace" />
+                <NavLink href="/auctions" icon={Gavel} label="Auctions" />
 
                 {/* "Priority + More": as many categories as fit on one
                     line, the rest in a More menu (no scrollbar, no wrap). */}
@@ -402,26 +403,17 @@ function NotchNavbarInner({
                   </button>
 
                   <Link
-                    href="/bookmarks"
+                    href="/wishlist"
                     className="relative flex items-center justify-center w-9 h-9 rounded-full hover:bg-foreground/5 transition-colors text-foreground/70 hover:text-foreground"
-                    aria-label={`Bookmarks${bookmarkCount ? ` (${bookmarkCount})` : ""}`}
-                    title="Bookmarks"
+                    aria-label={`Wishlist${bookmarkCount ? ` (${bookmarkCount})` : ""}`}
+                    title="Wishlist"
                   >
-                    <Bookmark className="w-4 h-4" />
+                    <Heart className="w-4 h-4" />
                     {bookmarkCount > 0 && (
                       <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-foreground px-1 text-[10px] font-semibold text-background">
                         {bookmarkCount > 99 ? "99+" : bookmarkCount}
                       </span>
                     )}
-                  </Link>
-
-                  <Link
-                    href="/tools/pdf-editor"
-                    className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-foreground/5 transition-colors text-foreground/70 hover:text-foreground"
-                    aria-label="PDF Editor"
-                    title="PDF Editor"
-                  >
-                    <FileEdit className="w-4 h-4" />
                   </Link>
 
                   {authReady && !user && (
@@ -465,11 +457,11 @@ function NotchNavbarInner({
                   <Search className="w-4 h-4" />
                 </button>
                 <Link
-                  href="/bookmarks"
+                  href="/wishlist"
                   className="relative flex items-center justify-center w-9 h-9 rounded-full hover:bg-foreground/5 transition-colors text-foreground/70 hover:text-foreground"
-                  aria-label={`Bookmarks${bookmarkCount ? ` (${bookmarkCount})` : ""}`}
+                  aria-label={`Wishlist${bookmarkCount ? ` (${bookmarkCount})` : ""}`}
                 >
-                  <Bookmark className="w-4 h-4" />
+                  <Heart className="w-4 h-4" />
                   {bookmarkCount > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-foreground px-1 text-[10px] font-semibold text-background">
                       {bookmarkCount > 99 ? "99+" : bookmarkCount}
@@ -527,6 +519,18 @@ function NotchNavbarInner({
                 <Home className="w-5 h-5 opacity-70" />
                 <span className="font-medium text-foreground/90">Home</span>
               </Link>
+              <Link href="/marketplace" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
+                <Store className="w-5 h-5 opacity-70" />
+                <span className="font-medium text-foreground/90">Marketplace</span>
+              </Link>
+              <Link href="/auctions" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
+                <Gavel className="w-5 h-5 opacity-70" />
+                <span className="font-medium text-foreground/90">Auctions</span>
+              </Link>
+              <Link href="/offers" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
+                <Handshake className="w-5 h-5 opacity-70" />
+                <span className="font-medium text-foreground/90">Offers</span>
+              </Link>
 
               {/* One entry instead of a long list: opens the categories sheet. */}
               <button
@@ -551,15 +555,10 @@ function NotchNavbarInner({
                 <Bookmark className="w-5 h-5 opacity-70" />
                 <span className="font-medium text-foreground/90">My notes</span>
               </Link>
-              <Link href="/bookmarks" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
-                <Bookmark className="w-5 h-5 opacity-70" />
-                <span className="font-medium text-foreground/90">Bookmarks</span>
+              <Link href="/wishlist" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
+                <Heart className="w-5 h-5 opacity-70" />
+                <span className="font-medium text-foreground/90">Wishlist</span>
               </Link>
-              <Link href="/tools/pdf-editor" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
-                <FileEdit className="w-5 h-5 opacity-70" />
-                <span className="font-medium text-foreground/90">PDF Editor</span>
-              </Link>
-
               <div className="h-px bg-foreground/10 my-3" />
               <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-foreground/40">Account</p>
 
@@ -570,19 +569,23 @@ function NotchNavbarInner({
                     {isPro && (
                       <span className="flex items-center gap-0.5 rounded-full bg-[#d4af37]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#a3811f]">
                         <Crown className="w-2.5 h-2.5" />
-                        PRO
+                        ROBOT READER
                       </span>
                     )}
                   </div>
                   {!isPro && (
                     <Link href="/pro" className="flex items-center gap-3 p-3 rounded-lg bg-[#d4af37]/15 hover:bg-[#d4af37]/25 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
                       <Crown className="w-5 h-5 text-[#a3811f]" />
-                      <span className="font-medium text-[#a3811f]">Upgrade to Pro</span>
+                      <span className="font-medium text-[#a3811f]">Subscribe to Robot Reader</span>
                     </Link>
                   )}
                   <Link href="/publish" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
                     <Upload className="w-5 h-5 opacity-70" />
                     <span className="font-medium text-foreground/90">Publish</span>
+                  </Link>
+                  <Link href="/sell" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
+                    <Store className="w-5 h-5 opacity-70" />
+                    <span className="font-medium text-foreground/90">Sell a product</span>
                   </Link>
                   <Link href="/dashboard" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
                     <LayoutDashboard className="w-5 h-5 opacity-70" />
@@ -605,7 +608,7 @@ function NotchNavbarInner({
                 <>
                   <Link href="/pro" className="flex items-center gap-3 p-3 rounded-lg bg-[#d4af37]/15 hover:bg-[#d4af37]/25 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
                     <Crown className="w-5 h-5 text-[#a3811f]" />
-                    <span className="font-medium text-[#a3811f]">PlugYard Pro</span>
+                    <span className="font-medium text-[#a3811f]">Robot Reader Subscription</span>
                   </Link>
                   <Link href="/login" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors font-medium text-foreground/90" onClick={() => setIsMobileMenuOpen(false)}>
                     Log in
@@ -622,7 +625,7 @@ function NotchNavbarInner({
   )
 }
 
-// useSearchParams() (inside useIsEditorFocusedRoute) requires a Suspense
+// Components using useSearchParams() require a Suspense
 // boundary or the static export's build-time prerender of /_not-found fails.
 // fallback={null}: this is a synchronous, no-real-async-work hook in a
 // client-only render, so the boundary resolves same-tick in practice - null
