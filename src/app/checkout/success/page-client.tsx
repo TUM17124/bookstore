@@ -56,12 +56,14 @@ function SuccessInner() {
         : ''
     const fromUser = (getStoredUser()?.email || '').trim().toLowerCase()
     const resolved = fromQuery || fromStore || fromUser
-    setEmail(resolved)
-    setEmailInput(resolved)
-
     const stored = readStoredBook()
-    setBookId((prev) => prev || bookFromQuery || stored.id)
-    setBookTitle((prev) => prev || stored.title)
+    const timer = window.setTimeout(() => {
+      setEmail(resolved)
+      setEmailInput(resolved)
+      setBookId((prev) => prev || bookFromQuery || stored.id)
+      setBookTitle((prev) => prev || stored.title)
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [sp, bookFromQuery])
 
   // Confirming the payment with the server: retried on connection problems
@@ -111,12 +113,15 @@ function SuccessInner() {
   const runVerify = verify.run
 
   useEffect(() => {
-    if (!orderId || !email) {
-      if (orderId && !email) setStatus('need_email')
-      return
-    }
-    setStatus('loading')
-    void runVerify(orderId, email, reference)
+    const timer = window.setTimeout(() => {
+      if (!orderId || !email) {
+        if (orderId && !email) setStatus('need_email')
+        return
+      }
+      setStatus('loading')
+      void runVerify(orderId, email, reference)
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [orderId, email, reference, runVerify])
 
   const download = useAsyncAction(

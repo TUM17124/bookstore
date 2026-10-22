@@ -1186,7 +1186,7 @@ function renderReaderNotices() {
     }
     if (!isPro) {
       setProGate('pip')
-      setPipError('Pop out is a Pro feature. Upgrade to use it on a computer.')
+      setPipError('Pop out requires a Robot Reader Subscription. Subscribe to use it on a computer.')
       return
     }
     if (inAppPip) {
@@ -2213,7 +2213,7 @@ function renderReaderNotices() {
           Go to mark{marked > 0 ? ` (${marked})` : ''}
         </button>
         <button type="button" onClick={togglePopOut} className={`rounded-full px-3 py-1 text-sm font-bold ${pipOpen ? 'bg-[#f591ac] text-[var(--on-brand)]' : 'bg-foreground/10 text-foreground'}`}>
-          {!isPro && '🔒 '}Pop out{!isPro && ' · PRO'}
+          {!isPro && '🔒 '}Pop out{!isPro && ' · ROBOT READER'}
         </button>
         <button
           type="button"

@@ -21,7 +21,7 @@ export function ProGateModal({
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center rounded-full bg-[#d4af37]/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-[#a3811f]">
-              Pro
+              Robot Reader
             </span>
             <h2 className="text-lg font-bold">{feature}</h2>
           </div>
@@ -35,7 +35,7 @@ export function ProGateModal({
           </button>
         </div>
         <p className="mt-3 text-sm leading-relaxed text-foreground/70">
-          This is a Pro feature. {benefit}
+          This feature requires a Robot Reader Subscription. {benefit}
         </p>
         <p className="mt-3 text-sm leading-relaxed text-foreground/70">
           You can also buy robot-reader credits without a monthly plan. Pay more, get more characters.
@@ -46,7 +46,7 @@ export function ProGateModal({
             onClick={onClose}
             className="inline-flex flex-1 items-center justify-center rounded-full bg-[#d4af37] px-4 py-2.5 text-sm font-semibold text-[#3a2e08]"
           >
-            See PlugYard Pro
+            See Robot Reader plans
           </Link>
           <Link
             href="/pro#credits"

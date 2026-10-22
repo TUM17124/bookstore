@@ -1448,11 +1448,29 @@ export const deleteAccount = (
 export type NotificationPrefs = {
   push_enabled: boolean
   email_enabled: boolean
+  order_push: boolean
+  order_email: boolean
+  messages_push: boolean
+  messages_email: boolean
+  seller_push: boolean
+  seller_email: boolean
+  wishlist_in_app: boolean
+  wishlist_push: boolean
+  wishlist_email: boolean
+  recommendations_in_app: boolean
+  recommendations_push: boolean
+  recommendations_email: boolean
+  marketing_in_app: boolean
+  marketing_push: boolean
+  marketing_email: boolean
+  marketing_consent_at: string | null
+  quiet_hours_start: string | null
+  quiet_hours_end: string | null
   active_devices: number
 }
 export const getNotificationPrefs = () => api<NotificationPrefs>("/me/notification-prefs/")
 export const updateNotificationPrefs = (
-  body: Partial<Pick<NotificationPrefs, "push_enabled" | "email_enabled">>,
+  body: Partial<Omit<NotificationPrefs, "active_devices" | "marketing_consent_at" | "quiet_hours_start" | "quiet_hours_end">>,
   call?: CallOptions,
 ) =>
   // Setting the same preference twice is harmless: retry on the safe side

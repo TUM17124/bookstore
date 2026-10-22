@@ -189,7 +189,7 @@ function SignupInner() {
       </h1>
       <p className="mt-2 text-sm leading-relaxed text-foreground/65">
         A guest can read. An account is why the library can remember you:
-        your page in a book, bookmarks, purchases, and invite rewards stay
+        your reading place, Wishlist, purchases, and invite rewards stay
         with you on the next phone. We also email you a personal note when
         a title matches how you read — or when someone joins with your code.
         Install the app after this if you want that same shelf one tap from

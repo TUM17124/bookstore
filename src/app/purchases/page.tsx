@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import { pageMetadata } from "@/lib/seo"
-import PurchasesPage from "./page-client"
+import PurchasesPage from "./universal-purchases"
 
 // Title and description: Django admin → Site: SEO (applied at build).
 const baseMetadata: Metadata = {

@@ -1,0 +1,86 @@
+import { authFetch, errorMessage, newIdempotencyKey } from "@/lib/auth-fetch"
+
+const API = process.env.NEXT_PUBLIC_API_URL || ""
+
+export type AttributeSchema = { key: string; label: string; value_type: "text" | "number" | "boolean" | "date" | "select" | "multi_select"; required: boolean; filterable: boolean; options: string[]; minimum: string | null; maximum: string | null; unit: string; help_text: string; sort_order: number }
+export type MediaSlot = { id: number; key: string; label: string; required: boolean; min_count: number; max_count: number; sort_order: number; surface: string; help_text: string }
+export type MarketCategory = { slug: string; label: string; description: string; parent: string | null; icon: string; image: string | null; fulfillment_type: string; viewer_mode: "carousel" | "gallery" | "turntable" | "book_3d"; viewer_config: Record<string, unknown>; pricing_options: string[]; negotiation_enabled: boolean; moderation_required: boolean; single_sale: boolean; auctions_enabled: boolean; attributes: AttributeSchema[]; media_slots: MediaSlot[] }
+export type ListingMedia = { id: number; slot_key: string; slot_label: string; image: string | null; external_url: string; position: number; alt_text: string }
+export type DeliveryOption = { code: string; label?: string; fee?: string | number; countries?: string[]; regions?: string[]; dispatch_days?: number; delivery_days?: number; explanation?: string }
+export type MarketListing = { id: number; seller: { id: number | null; name: string; display_name?: string; slug?: string; verified?: boolean; identity_verified?: boolean; rating?: { average: number | null; count: number }; rating_average?: number | null; review_count?: number }; category: string; title: string; slug: string; description?: Record<string, unknown>; description_text: string; seo_description?: string; condition: string | null; condition_and_defects?: string; price_type: "free" | "fixed" | "range"; price_amount: string | null; price_min: string | null; price_max: string | null; currency: string; country: string; administrative_area: string; locality: string; fulfillment_type: string; sale_mode?: "fixed" | "negotiable" | "auction"; auction_slug?: string | null; seller_return_condition?: string; seller_warranty?: string; delivery_options?: DeliveryOption[]; status?: string; moderation_status?: string; published_at: string | null; attribute_values?: Record<string, unknown>; media: ListingMedia[]; viewer: { mode: MarketCategory["viewer_mode"]; config: Record<string, unknown> }; url: string; legacy_book_id?: number | null }
+export type Page<T> = { count: number; next: string | null; previous: string | null; results: T[] }
+export type Offer = { id: number; listing: number; buyer: number; seller: number; amount: string; message: string; status: string; expires_at: string; updated_at: string; history: { id: number; actor_id: number | null; action: string; from_status: string; to_status: string; amount: string; message: string; created_at: string }[] }
+
+async function json<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as Record<string, unknown>
+    throw new Error(errorMessage(body.error || body.detail || `Request failed (${response.status})`))
+  }
+  return response.json() as Promise<T>
+}
+
+export async function marketCategories() { return json<MarketCategory[]>(await fetch(`${API}/marketplace/categories/`, { cache: "no-store" })) }
+export async function conditionOptions() { return json<{ key: string; label: string; description: string }[]>(await fetch(`${API}/marketplace/conditions/`, { cache: "no-store" })) }
+export async function marketListings(query = "") { return json<Page<MarketListing>>(await fetch(`${API}/marketplace/listings/${query ? `?${query}` : ""}`, { cache: "no-store" })) }
+export async function marketListing(slug: string) { return json<MarketListing>(await fetch(`${API}/marketplace/listings/${encodeURIComponent(slug)}/`, { cache: "no-store" })) }
+export type MarketRecommendation = { listing: MarketListing; reason: string; score: number | null }
+export async function marketRecommendations() { return json<{ algorithm: string; model_version: string | null; personalized: boolean; results: MarketRecommendation[] }>(await authFetch(`${API}/marketplace/recommendations/`)) }
+export async function trackListingClick(listing: number, placement = "marketplace") {
+  await authFetch(`${API}/signals/`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ events: [{ kind: "click", listing_id: listing, placement }] }) }).catch(() => undefined)
+}
+export async function myListings() { return json<Page<MarketListing>>(await authFetch(`${API}/marketplace/me/listings/`)) }
+export async function createListing(payload: Record<string, unknown>) { return json<MarketListing>(await authFetch(`${API}/marketplace/me/listings/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), idempotencyKey: newIdempotencyKey() })) }
+export async function uploadListingMedia(id: number, slot: string, image: File) { const body = new FormData(); body.set("slot", slot); body.set("image", image); return json<ListingMedia>(await authFetch(`${API}/marketplace/me/listings/${id}/media/`, { method: "POST", body, idempotencyKey: newIdempotencyKey() })) }
+export async function submitListing(id: number) { return json<MarketListing>(await authFetch(`${API}/marketplace/me/listings/${id}/submit/`, { method: "POST", idempotencyKey: newIdempotencyKey() })) }
+export type WishlistEntry = { id: number; listing: MarketListing; created_at: string }
+export async function wishlist(page = 1, category = "") { const q = new URLSearchParams({ page: String(page) }); if (category) q.set("category", category); return json<Page<WishlistEntry>>(await authFetch(`${API}/wishlist/?${q}`)) }
+export async function addWishlist(listing: number) { return json<WishlistEntry>(await authFetch(`${API}/wishlist/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listing }), idempotencyKey: newIdempotencyKey() })) }
+export async function removeWishlist(listing: number) { const response = await authFetch(`${API}/wishlist/${listing}/`, { method: "DELETE", idempotencyKey: newIdempotencyKey() }); if (!response.ok) throw new Error(`Request failed (${response.status})`) }
+export async function startConversation(listing: number) { return json<Record<string, unknown>>(await authFetch(`${API}/marketplace/conversations/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listing }), idempotencyKey: newIdempotencyKey() })) }
+export async function offers() { return json<Page<Offer>>(await authFetch(`${API}/marketplace/offers/`)) }
+export async function makeOffer(listing: number, amount: number, message: string) { return json<Offer>(await authFetch(`${API}/marketplace/offers/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listing, amount, message }), idempotencyKey: newIdempotencyKey() })) }
+export async function actOnOffer(id: number, action: string, amount?: number, message = "") { return json<Offer>(await authFetch(`${API}/marketplace/offers/${id}/${action}/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount, message }), idempotencyKey: newIdempotencyKey() })) }
+export type MarketplaceCheckoutResult = { purchase_id: number; reference: string; checkout_url: string; subtotal: string; delivery_fee: string; total: string; currency: string; guest_access_token?: string }
+export async function marketplaceCheckout(payload: { listing?: number; purchase?: number; email?: string; delivery_method?: string; delivery_country?: string; delivery_region?: string; delivery_address?: string; contact?: string; legal_accepted: true }) {
+  return json<MarketplaceCheckoutResult>(await authFetch(`${API}/marketplace/checkout/`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), idempotencyKey: newIdempotencyKey(),
+  }))
+}
+
+export type AuctionBid = { id: number; public_amount: string; bidder_alias: string; is_leading: boolean; created_at: string }
+export type AuctionChat = { id: number; body: string; sender_label: string; seller: boolean; moderator: boolean; is_system: boolean; is_pinned: boolean; created_at: string }
+export type Auction = { id: number; listing: MarketListing; seller: { name: string; slug: string; verified: boolean }; title: string; slug: string; status: "draft" | "pending" | "scheduled" | "live" | "ended" | "cancelled"; outcome: string; currency: string; starting_bid: string; minimum_increment: string; has_reserve: boolean; reserve_met: boolean; buy_now_price: string | null; proxy_bidding_enabled: boolean; public_chat_enabled: boolean; anonymous_bidding_enabled: boolean; anti_snipe_enabled: boolean; extension_trigger_seconds: number; extension_duration_seconds: number; maximum_extensions: number; extensions_used: number; starts_at: string; ends_at: string; payment_deadline_hours: number; payment_due_at: string | null; current_bid: string | null; required_next_bid: string; bid_count: number; watching_count: number; recent_bids: AuctionBid[]; server_now: string; revision: number; is_watching: boolean; my_maximum: string | null; purchase_id: number | null }
+export async function auctions(query = "") { return json<{ count: number; page: number; results: Auction[] }>(await authFetch(`${API}/marketplace/auctions/${query ? `?${query}` : ""}`, { cache: "no-store" })) }
+export async function auction(slug: string) { return json<Auction>(await authFetch(`${API}/marketplace/auctions/${encodeURIComponent(slug)}/`)) }
+export async function auctionState(id: number, revision: number) { return json<{ unchanged: boolean; revision: number; server_now: string; auction: Auction | null }>(await authFetch(`${API}/marketplace/auctions/${id}/state/?since=${revision}`)) }
+export async function createAuction(payload: Record<string, unknown>) { return json<Auction>(await authFetch(`${API}/marketplace/auctions/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), idempotencyKey: newIdempotencyKey() })) }
+export async function submitAuction(id: number) { return json<{ status: string }>(await authFetch(`${API}/marketplace/auctions/${id}/submit/`, { method: "POST", idempotencyKey: newIdempotencyKey() })) }
+export async function placeAuctionBid(id: number, maximum_amount: string, anonymous: boolean, terms_accepted: boolean) { return json<{ created: boolean; auction: Auction }>(await authFetch(`${API}/marketplace/auctions/${id}/bids/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ maximum_amount, anonymous, terms_accepted }), idempotencyKey: newIdempotencyKey() })) }
+export async function auctionBuyNow(id: number, terms_accepted: boolean) { return json<{ status: string; auction: string }>(await authFetch(`${API}/marketplace/auctions/${id}/buy-now/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ terms_accepted }), idempotencyKey: newIdempotencyKey() })) }
+export async function watchAuction(id: number, watching: boolean) { const response = await authFetch(`${API}/marketplace/auctions/${id}/watch/`, { method: watching ? "POST" : "DELETE", headers: { "Content-Type": "application/json" }, body: watching ? JSON.stringify({ remind: true }) : undefined, idempotencyKey: newIdempotencyKey() }); if (response.status === 204) return { watching: false }; return json<{ watching: boolean }>(response) }
+export async function auctionChat(id: number, after = 0) { return json<AuctionChat[]>(await authFetch(`${API}/marketplace/auctions/${id}/chat/?after=${after}`)) }
+export async function sendAuctionChat(id: number, body: string) { return json<AuctionChat>(await authFetch(`${API}/marketplace/auctions/${id}/chat/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }), idempotencyKey: newIdempotencyKey() })) }
+export type DeliveryEvidence = { id: number; name: string; size: number; note: string; created_at: string }
+export type SellerOrder = { id: number; title: string; amount: string; currency: string; payment_status: string; fulfillment_status: string; item_type: "digital" | "physical" | "service"; buyer: string; created_at: string; cancellation: { id: number; reason: string; requested_by_buyer: boolean } | null; delivery_evidence: DeliveryEvidence[]; timeline: { from_status: string; to_status: string; carrier: string; tracking_number: string; estimated_delivery_at: string | null; note: string; created_at: string }[] }
+export async function sellerOrders() { return json<{ results: SellerOrder[] }>(await authFetch(`${API}/sales/universal/`)) }
+export async function updateFulfillment(purchase: number, action: string, details: Record<string, unknown> = {}) { return json<{ id: number; fulfillment_status: string }>(await authFetch(`${API}/marketplace/purchases/${purchase}/fulfillment/${action}/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(details), idempotencyKey: newIdempotencyKey() })) }
+export async function requestDeliveryReview(purchase: number, details = "") { return json<{ id: number; status: string; message?: string }>(await authFetch(`${API}/marketplace/purchases/${purchase}/delivery-review/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ details }), idempotencyKey: newIdempotencyKey() })) }
+export async function uploadDeliveryEvidence(purchase: number, file: File, note = "") { const body = new FormData(); body.set("file", file); body.set("note", note); return json<DeliveryEvidence>(await authFetch(`${API}/marketplace/purchases/${purchase}/delivery-evidence/`, { method: "POST", body, idempotencyKey: newIdempotencyKey() })) }
+export async function decideCancellation(cancellation: number, action: "accept" | "reject", reason = "") { return json<{ id: number; status: string; fulfillment_status: string }>(await authFetch(`${API}/marketplace/cancellations/${cancellation}/${action}/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }), idempotencyKey: newIdempotencyKey() })) }
+export type SellerWallet = { pending: string; available: string; withdrawal_processing: string; withdrawn: string; refunded: string; on_hold: string; liability: string; ledger: { id: number; kind: string; amount: string; reference: string; note: string; created_at: string }[]; withdrawals: { id: number; amount: string; status: string; provider_reference: string; created_at: string; paid_at: string | null }[] }
+export async function sellerWallet() { return json<SellerWallet>(await authFetch(`${API}/marketplace/wallet/`)) }
+export async function withdrawMarketplaceEarnings(amount: string) { return json<{ id: number; amount: string; status: string }>(await authFetch(`${API}/marketplace/wallet/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount }), idempotencyKey: newIdempotencyKey() })) }
+export type SellerProfile = { slug: string; display_name: string; avatar: string | null; banner: string | null; biography: string; public_location: string; business_details: string; social_links: Record<string, string>; show_location: boolean; message_notifications: boolean; verified: boolean; rating: { average: number | null; count: number }; member_since: string; completed_sales: number }
+export async function mySellerProfile() { return json<SellerProfile>(await authFetch(`${API}/seller-profile/me/`)) }
+export async function updateSellerProfile(form: FormData) { return json<SellerProfile>(await authFetch(`${API}/seller-profile/me/`, { method: "PATCH", body: form, idempotencyKey: newIdempotencyKey() })) }
+export type ExternalAdOptions = { enabled: boolean; configured: boolean; min_budget: string; balance: string; locations: { name: string; criterion_id: string }[] }
+export async function externalAdOptions() { return json<ExternalAdOptions>(await authFetch(`${API}/ads/external/options/`)) }
+export async function externalCampaigns() { return json<{ results: Record<string, unknown>[] }>(await authFetch(`${API}/ads/external/campaigns/`)) }
+export async function createExternalCampaign(payload: Record<string, unknown>) { return json<Record<string, unknown>>(await authFetch(`${API}/ads/external/campaigns/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), idempotencyKey: newIdempotencyKey() })) }
+
+export function listingPrice(listing: MarketListing) {
+  if (listing.price_type === "free") return "Free"
+  if (listing.price_type === "range") return `${listing.currency} ${listing.price_min}–${listing.price_max}`
+  return `${listing.currency} ${listing.price_amount}`
+}

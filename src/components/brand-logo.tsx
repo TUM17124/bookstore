@@ -1,3 +1,7 @@
+"use client"
+
+import { useSiteConfig } from "@/lib/site-config"
+
 /**
  * The PlugYard logo at UI sizes. Swaps between a transparent-background
  * version (light mode) and the original dark-background version (dark mode)
@@ -10,12 +14,14 @@
  *   logo-128.webp / logo-128.png            — dark bg, dark mode (2×)
  */
 export function BrandLogo({ size, alt = "", className = "" }: { size: number; alt?: string; className?: string }) {
+  const [config] = useSiteConfig()
+  const light = config?.branding?.light_logo || config?.branding?.primary_logo || "/logo-128-light.png"
+  const dark = config?.branding?.dark_logo || config?.branding?.secondary_logo || "/logo-128.png"
   return (
     <>
       {/* Light mode: transparent-background logo (no background clipping needed) */}
       <img
-        src="/logo-64-light.png"
-        srcSet="/logo-64-light.png 64w, /logo-128-light.png 128w"
+        src={light}
         sizes={`${size}px`}
         width={size}
         height={size}
@@ -25,11 +31,9 @@ export function BrandLogo({ size, alt = "", className = "" }: { size: number; al
       />
       {/* Dark mode: original dark-background logo (WebP where supported) */}
       <picture>
-        <source type="image/webp" srcSet="/logo-64.webp 64w, /logo-128.webp 128w" sizes={`${size}px`} />
         {/* eslint-disable-next-line @next/next/no-img-element -- static export: no image optimiser */}
         <img
-          src="/logo-64.png"
-          srcSet="/logo-64.png 64w, /logo-128.png 128w"
+          src={dark}
           sizes={`${size}px`}
           width={size}
           height={size}

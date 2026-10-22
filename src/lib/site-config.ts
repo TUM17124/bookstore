@@ -29,6 +29,8 @@ export type CurrencyConfig = {
 }
 
 export type FeatureName =
+  | "marketplace"
+  | "auctions"
   | "publishing"
   | "boosts"
   | "affiliate"
@@ -52,9 +54,10 @@ export type SiteConfig = {
     default_preview_pages: number
     book_description_max_chars: number
     payout_every_days: number
-    editor_trash_days: number
-    editor_upload_max_mb: number
   }
+  site?: { name: string; tagline: string; description: string; contact_email: string; support_email: string; public_contact: string; social_links: Record<string, string> }
+  branding?: { primary_logo: string; secondary_logo: string; dark_logo: string; light_logo: string; favicon: string; application_icon: string; email_logo: string; social_image: string; colors: { primary: string; secondary: string; accent: string } }
+  marketplace?: { listing_limit: number; offer_expiry_hours: number; offer_cooldown_minutes: number; listing_expiry_days: number; report_reasons: string[]; auctions?: { min_duration_minutes: number; max_duration_days: number; default_increment: string; reserve_enabled: boolean; buy_now_enabled: boolean; proxy_bidding_enabled: boolean; anti_snipe_enabled: boolean; extension_trigger_seconds: number; extension_duration_seconds: number; max_extensions: number; payment_deadline_hours: number; chat_enabled: boolean } }
   boost?: { price: string; days: number }
   pro_plans?: ProPlan[]
   support_email?: string
@@ -66,8 +69,6 @@ export const DEFAULT_LIMITS = {
   default_preview_pages: 4,
   book_description_max_chars: 2000,
   payout_every_days: 30,
-  editor_trash_days: 30,
-  editor_upload_max_mb: 80,
 }
 
 async function loadSiteConfig(): Promise<SiteConfig | null> {

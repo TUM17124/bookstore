@@ -671,7 +671,7 @@ export function AudioPlayer({
             aria-label={pipWindow ? 'Close floating player' : 'Pop out as a floating player'}
             title={
               !isPro
-                ? 'Pro feature — pop out as a floating player'
+                ? 'Robot Reader subscription feature — pop out as a floating player'
                 : pipWindow
                   ? 'Close floating player'
                   : 'Keep playback controls floating above other windows'

@@ -15,14 +15,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return [
     { url: `${SITE}/`,                 lastModified: now, changeFrequency: "daily",   priority: 1.0 },
-    { url: `${SITE}/tools/pdf-editor/`, lastModified: now, changeFrequency: "monthly", priority: 0.9 },
     { url: `${SITE}/pro/`,             lastModified: now, changeFrequency: "monthly", priority: 0.85 },
     { url: `${SITE}/login/`,           lastModified: now, changeFrequency: "yearly",  priority: 0.5 },
     { url: `${SITE}/signup/`,          lastModified: now, changeFrequency: "yearly",  priority: 0.5 },
+    { url: `${SITE}/auctions/`,        lastModified: now, changeFrequency: "hourly",  priority: 0.8 },
     { url: `${SITE}/terms/`,           lastModified: now, changeFrequency: "yearly",  priority: 0.4 },
     { url: `${SITE}/terms-of-use/`,    lastModified: now, changeFrequency: "yearly",  priority: 0.4 },
     { url: `${SITE}/refund-policy/`,   lastModified: now, changeFrequency: "yearly",  priority: 0.4 },
     { url: `${SITE}/privacy/`,         lastModified: now, changeFrequency: "yearly",  priority: 0.4 },
+    { url: `${SITE}/legal/buyer-protection/`, lastModified: now, changeFrequency: "yearly", priority: 0.4 },
+    { url: `${SITE}/legal/shipping-delivery/`, lastModified: now, changeFrequency: "yearly", priority: 0.4 },
+    { url: `${SITE}/legal/seller-policy/`, lastModified: now, changeFrequency: "yearly", priority: 0.4 },
     ...books,
   ]
 }

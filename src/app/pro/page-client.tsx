@@ -158,7 +158,7 @@ function ProInner() {
     onSuccess: (res) => {
       if (res?.checkout_url) {
         handoff.start(res.checkout_url, {
-          what: 'PlugYard Pro',
+          what: 'Robot Reader Subscription',
           amount: quote?.final_amount ? money(quote.final_amount) : price ? money(price) : undefined,
         })
       }
@@ -201,7 +201,7 @@ function ProInner() {
       {handoff.node}
       <div className="text-center">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[#d4af37]/15 px-3 py-1 text-xs font-bold uppercase tracking-wider text-[#a3811f]">
-          ★ PlugYard Pro
+          Robot Reader Subscription
         </span>
         <h1 className="mt-4 text-3xl font-bold sm:text-4xl">{headline}</h1>
         <div className="mt-3 flex justify-center text-foreground/60">
@@ -242,7 +242,7 @@ function ProInner() {
 
       {justSubscribed && (
         <p className="mt-8 rounded-xl border border-emerald-400 bg-emerald-400/10 p-4 text-center text-sm font-semibold text-emerald-700">
-          You&apos;re on Pro. Enjoy the pop-out reader and AI narration.
+          Your Robot Reader Subscription is active. Enjoy narration and its included reading tools.
         </p>
       )}
       {confirming && (
@@ -290,7 +290,7 @@ function ProInner() {
           </div>
         ) : isPro ? (
           <div className="rounded-xl border border-[#d4af37]/30 bg-[#d4af37]/10 p-5 text-center">
-            <p className="font-bold text-[#a3811f]">★ You&apos;re on Pro</p>
+            <p className="font-bold text-[#a3811f]">Robot Reader Subscription active</p>
             <p className="mt-1 text-sm text-foreground/60">
               {status?.subscription?.expires_at
                 ? `Renews or expires on ${new Date(
@@ -321,7 +321,7 @@ function ProInner() {
           </div>
         ) : !canSubscribe ? (
           <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-5 text-center">
-            <p className="font-semibold">Pro sign-ups are turned off</p>
+            <p className="font-semibold">Robot Reader subscriptions are turned off</p>
             <p className="mt-1 text-sm text-foreground/70">{signupsOffMessage}</p>
           </div>
         ) : (
@@ -337,7 +337,7 @@ function ProInner() {
             errorClassName="mt-3 text-center text-sm text-red-700"
             className="w-full rounded-full bg-[#d4af37] px-4 py-3.5 text-center text-base font-bold text-[#3a2e08] disabled:opacity-60 aria-busy:opacity-80"
           >
-            {`Upgrade to Pro — ${price ? money(quote?.final_amount ?? price) : '…'}/${period}`}
+            {`Subscribe to Robot Reader — ${price ? money(quote?.final_amount ?? price) : '…'}/${period}`}
           </ActionButton>
         )}
       </div>

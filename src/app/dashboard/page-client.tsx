@@ -17,7 +17,6 @@ import {
   savePayoutAccount,
   updateMyBook,
 } from "@/lib/api";
-import { api as editorApi } from "@/lib/pdf-editor/api";
 import { useAsyncAction } from "@/hooks/use-async-action";
 import { ActionButton, ActionStatus } from "@/components/ui/action-button";
 import { errorMessage } from "@/lib/auth-fetch";
@@ -120,11 +119,8 @@ export default function DashboardPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [msg, setMsg] = useState("");
   const [msgOk, setMsgOk] = useState(true);
-  // Deep-link from the editor's Publish/Edit-published-book flow
-  // (?edit_book_id=&editor_document_id=): auto-opens that book's edit form
-  // with its saved PDF already attached.
+  // A dashboard link may open a specific book's edit form.
   const [deepLinkBookId, setDeepLinkBookId] = useState("");
-  const [deepLinkEditorDocId, setDeepLinkEditorDocId] = useState("");
 
   const [form, setForm] = useState({
     method: "mpesa",
@@ -345,7 +341,6 @@ export default function DashboardPage() {
     if (editBookId) {
       setActive("books");
       setDeepLinkBookId(editBookId);
-      setDeepLinkEditorDocId(params.get("editor_document_id") || "");
     }
 
     const ref =
@@ -1172,11 +1167,6 @@ export default function DashboardPage() {
                     deepLinkBookId !== "" &&
                     String(book.id) === String(deepLinkBookId)
                   }
-                  attachEditorDocumentId={
-                    String(book.id) === String(deepLinkBookId)
-                      ? deepLinkEditorDocId
-                      : ""
-                  }
                   onUpdated={(next) =>
                     setBooks((list) =>
                       list.map((b) =>
@@ -1220,7 +1210,6 @@ function BookBoostRow({
   book,
   boost,
   autoOpen,
-  attachEditorDocumentId,
   onUpdated,
   onRemoved,
   onFlash,
@@ -1229,7 +1218,6 @@ function BookBoostRow({
   book: any;
   boost?: any;
   autoOpen?: boolean;
-  attachEditorDocumentId?: string;
   onPromote?: () => void;
   onUpdated: (book: any) => void;
   onRemoved: (
@@ -1256,24 +1244,9 @@ function BookBoostRow({
   const [shareOpen, setShareOpen] = useState(false);
 
 
-  // Attached from the PDF editor's "Edit published book" deep link - the
-  // PDF is copied server-side from the saved document, browser never
-  // downloads/re-uploads it. "Remove" reverts to a normal file upload.
-  const [attachedName, setAttachedName] = useState("");
-  const [attachRemoved, setAttachRemoved] = useState(false);
-  const hasAttachment = Boolean(attachEditorDocumentId) && !attachRemoved;
-
   useEffect(() => {
     if (autoOpen) setEditing(true);
   }, [autoOpen]);
-
-  useEffect(() => {
-    if (!attachEditorDocumentId) return;
-    editorApi.getStoredDocument(attachEditorDocumentId).then(
-      (doc) => setAttachedName(doc.name || "Untitled.pdf"),
-      () => setAttachedName("Untitled.pdf"),
-    );
-  }, [attachEditorDocumentId]);
 
   const [isFree, setIsFree] =
     useState(
@@ -1317,10 +1290,6 @@ function BookBoostRow({
     fd.set("is_free", isFree ? "true" : "false");
     fd.set("ebook_downloadable", ebookDownloadable ? "true" : "false");
     fd.set("audiobook_downloadable", audiobookDownloadable ? "true" : "false");
-    if (hasAttachment) {
-      fd.delete("pdf");
-      fd.set("editor_document_id", attachEditorDocumentId as string);
-    }
     if (isFree) {
       fd.set("ebook_price", "0");
       fd.set("audiobook_price", "0");
@@ -1623,34 +1592,14 @@ function BookBoostRow({
 
           <label className="text-sm">
             PDF{" "}
-            {!hasAttachment && book.hasEbook
-              ? "(current file kept unless you pick a new one)"
-              : ""}
+            {book.hasEbook ? "(current file kept unless you pick a new one)" : ""}
 
-            {hasAttachment ? (
-              <div className="mt-1 flex items-center justify-between gap-3 rounded-lg border p-2 text-sm">
-                <span className="min-w-0 truncate">
-                  Already attached:{" "}
-                  <span className="font-medium">
-                    {attachedName || "Loading…"}
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setAttachRemoved(true)}
-                  className="shrink-0 text-xs font-medium text-foreground/70 underline hover:text-foreground"
-                >
-                  Remove
-                </button>
-              </div>
-            ) : (
-              <input
-                name="pdf"
-                type="file"
-                accept=".pdf,.epub,.docx,.doc,.odt,.rtf,.txt,.pptx,.ppt,application/pdf,application/epub+zip"
-                className="mt-1 block w-full text-sm"
-              />
-            )}
+            <input
+              name="pdf"
+              type="file"
+              accept=".pdf,.epub,.docx,.doc,.odt,.rtf,.txt,.pptx,.ppt,application/pdf,application/epub+zip"
+              className="mt-1 block w-full text-sm"
+            />
 
             {book.status === "published" && (
               <span className="mt-1 block text-xs text-muted-foreground">

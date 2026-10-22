@@ -103,7 +103,7 @@ function LoginInner() {
     <main className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4">
       <h1 className="text-2xl font-bold">Log in</h1>
       <p className="mt-2 text-sm leading-relaxed text-foreground/65">
-        Signing in puts your place, bookmarks, purchases, and invite
+        Signing in puts your reading place, Wishlist, purchases, and invite
         wallet on this phone. After that, install PlugYard so the library
         opens like an app instead of a tab you have to search for.
       </p>

@@ -29,7 +29,7 @@ describe("pageMetadata", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("down")))
     const { pageMetadata } = await import("./seo")
     const m = await pageMetadata("pro", { alternates: { canonical: "https://plugyard.com/pro/" } })
-    expect(m.title).toBe("PlugYard Pro")
+    expect(m.title).toBe("Robot Reader Subscription")
     expect(m.alternates).toEqual({ canonical: "https://plugyard.com/pro/" })
   })
 

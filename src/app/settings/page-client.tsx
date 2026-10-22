@@ -21,6 +21,7 @@ import {
   type NotificationPrefs,
   type ProStatus,
 } from "@/lib/api"
+import NotificationPreferenceMatrix from "./notification-preference-matrix"
 import { broadcastAccountChange, clientLogout, isLoggedIn, setStoredUser, type AuthUser } from "@/lib/auth-client"
 import { splitName } from "@/lib/name"
 import { AffiliateInvite } from "@/components/affiliate-invite"
@@ -172,11 +173,11 @@ function ProSection({
 
   return (
     <section className="min-w-0 space-y-4 rounded-xl border p-5">
-      <h2 className="text-xl font-semibold">Pro</h2>
+      <h2 className="text-xl font-semibold">Robot Reader Subscription</h2>
       {proStatus?.is_pro ? (
         <>
           <p className="inline-flex items-center gap-1.5 rounded-full bg-[#d4af37]/15 px-3 py-1 text-sm font-bold text-[#a3811f]">
-            ★ PlugYard Pro
+            Robot Reader Subscription
           </p>
           <p className="text-sm text-foreground/60">
             {proStatus.subscription?.expires_at
@@ -201,7 +202,7 @@ function ProSection({
           </ActionButton>
           {confirmed && (
             <p className="text-xs text-foreground/50">
-              Your Pro access continues until {proStatus.subscription?.expires_at
+              Your Robot Reader access continues until {proStatus.subscription?.expires_at
                 ? new Date(proStatus.subscription.expires_at).toLocaleDateString()
                 : "the end of the billing period"}.
             </p>
@@ -218,7 +219,7 @@ function ProSection({
             href="/pro"
             className="inline-flex items-center gap-1.5 rounded-full bg-[#d4af37] px-4 py-2 text-sm font-bold text-[#3a2e08]"
           >
-            ★ Upgrade to Pro
+            Subscribe to Robot Reader
           </Link>
         </>
       )}
@@ -232,7 +233,7 @@ const SECTIONS = [
   { id: "notifications", label: "Notifications" },
   { id: "personalisation", label: "Personalisation" },
   { id: "hidden", label: "Hidden books" },
-  { id: "pro", label: "Pro" },
+  { id: "pro", label: "Robot Reader" },
   { id: "affiliate", label: "Affiliate & rewards" },
   { id: "history", label: "History" },
   { id: "delete", label: "Delete account" },
@@ -571,6 +572,8 @@ export default function SettingsPage() {
                     />
                   </label>
                 </div>
+
+                {prefs && <NotificationPreferenceMatrix prefs={prefs} onChange={setPrefs}/>}
 
                 <div className="rounded-lg border p-3">
                   <p className="text-sm font-medium">This device</p>

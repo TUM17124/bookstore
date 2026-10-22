@@ -23,7 +23,7 @@ export default function BookmarksPage() {
   if (loading) {
     return (
       <main className="flex min-h-[calc(100dvh-4rem)] items-center justify-center text-sm text-foreground/50">
-        Loading bookmarks…
+        Loading Wishlist…
       </main>
     )
   }
@@ -37,7 +37,7 @@ export default function BookmarksPage() {
           {!loggedIn && (
             <p className="max-w-sm text-foreground/45">
               Guest saves stay on this device. Create an account so a
-              bookmark is still there when you switch phones.{' '}
+              Wishlist is still there when you switch phones.{' '}
               <Link href="/login" className="font-semibold text-foreground underline underline-offset-2">
                 Log in
               </Link>
@@ -67,7 +67,7 @@ export default function BookmarksPage() {
       <div className="home-shelf-stage">
         <BooksShowcase
           books={bookmarks}
-          heroTitle="Bookmarks"
+          heroTitle="Wishlist"
           navTitle={loggedIn ? 'Saved' : 'Saved on this device'}
           className="h-full min-h-0 w-full"
         />

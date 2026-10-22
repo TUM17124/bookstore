@@ -6,7 +6,7 @@ import SignupPage from "./page-client"
 const baseMetadata: Metadata = {
   title: "Sign Up — Create a Free Account | PlugYard",
   description:
-    "Create a free PlugYard account to publish and sell your eBooks and audiobooks, access the PDF editor, save bookmarks, and track your purchases across devices.",
+    "Create a free PlugYard account to publish products, services, eBooks and audiobooks, save a Wishlist, and track purchases across devices.",
   alternates: {
     canonical: "https://plugyard.com/signup/",
   },

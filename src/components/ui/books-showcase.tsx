@@ -834,7 +834,7 @@ export function BooksShowcase({
   const bookmarked = selectedCfg != null ? isBookmarked(selectedCfg.id) : false;
   const bookmarkAction = useAsyncAction(
     (_ctx, cfg: NonNullable<typeof selectedCfg>) => toggleBookmark(cfg),
-    { successMs: 0, errorFallback: "Couldn't update your bookmarks. Please try again." },
+    { successMs: 0, errorFallback: "Couldn't update your wishlist. Please try again." },
   );
   const handleSave = () => {
     if (!selectedCfg) return;
@@ -3322,17 +3322,17 @@ export function BooksShowcase({
             <ActionButton
               compact
               action={bookmarkAction}
-              aria-label={bookmarked ? 'Remove from bookmarks' : 'Save to bookmarks'}
+              aria-label={bookmarked ? 'Remove from wishlist' : 'Save to wishlist'}
               aria-pressed={bookmarked}
               onClick={handleSave}
               errorPlacement="none"
-              loadingLabel={bookmarked ? 'Removing bookmark…' : 'Saving bookmark…'}
+              loadingLabel={bookmarked ? 'Removing from wishlist…' : 'Saving to wishlist…'}
               className={`inline-flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-full ${
                 bookmarked ? 'bg-[var(--bs-pink)] text-[var(--on-brand)]' : 'bg-current/[0.08]'
               }`}
             >
               <svg viewBox="0 0 24 24" fill={bookmarked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.7} className="h-5 w-5">
-                <path d="M7 3h10v18l-5-4-5 4z" />
+                <path d="M12 21s-7-4.35-9.33-8.43C.56 8.88 2.3 4.5 6.5 4.5A5.18 5.18 0 0 1 12 7.77 5.18 5.18 0 0 1 17.5 4.5c4.2 0 5.94 4.38 3.83 8.07C19 16.65 12 21 12 21Z" />
               </svg>
             </ActionButton>
             {selectedCfg && !hiddenIds.has(String(selectedCfg.id)) && (

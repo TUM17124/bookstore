@@ -1,5 +1,5 @@
 /**
- * The server's real upload limit for the PDF editor (nginx + Django take up
+ * The server's real upload limit for publisher source documents (nginx + Django take up
  * to 80 MB per request). Checked here before anything is sent, so a big
  * file gets a clear message instead of a failed upload.
  */
@@ -11,5 +11,5 @@ export function editorUploadProblem(file: { size: number; name?: string }): stri
   if (file.size <= EDITOR_UPLOAD_MAX_BYTES) return ""
   const mb = Math.ceil(file.size / (1024 * 1024))
   const name = file.name ? `“${file.name}” is` : "This PDF is"
-  return `${name} ${mb} MB. The PDF editor takes files up to ${EDITOR_UPLOAD_MAX_MB} MB — compress or split it, then try again.`
+  return `${name} ${mb} MB. Publishing accepts files up to ${EDITOR_UPLOAD_MAX_MB} MB — compress or split it, then try again.`
 }

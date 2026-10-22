@@ -14,6 +14,7 @@ import { LegalGate } from '@/components/legal-gate'
 import { InstallAndPush } from "@/components/install-and-push"
 import { PushPrompt } from "@/components/push-prompt"
 import { ReferralCapture } from "@/components/referral-capture"
+import { BrandingTokens } from "@/components/branding-tokens"
 import { getSeo, seoList, seoText } from "@/lib/seo"
 
 const SITE = "https://plugyard.com"
@@ -27,23 +28,22 @@ const baseMetadata: Metadata = {
     template: "%s | PlugYard",
   },
   description:
-    "PlugYard — Kenya's eBook and audiobook marketplace. Buy, read, and listen instantly — no account required. Publish your own eBooks and audiobooks, set your price, and get paid. AI-powered narration. Free in-browser PDF editor. Business, career, academic, personal finance, and lifestyle.",
+    "PlugYard is Kenya's marketplace for books, electronics, vehicles, furniture, services, and more. Shop public listings or sell your own products.",
   keywords: [
     "PlugYard",
     "ebook Kenya",
     "audiobook Kenya",
     "buy ebook without account",
     "digital bookstore Kenya",
-    "free PDF editor online",
-    "PDF reader online",
-    "edit PDF online",
+    "products and services Kenya",
+    "online marketplace Kenya",
     "instant ebook download Kenya",
     "business guides Kenya",
     "academic ebooks Kenya",
     "career guides Kenya",
     "personal finance Kenya",
     "lifestyle ebooks Kenya",
-    "PlugYard Pro",
+    "Robot Reader Subscription",
     "text to speech ebooks Kenya",
     "KRA tax guide",
     "KASNEB study notes",
@@ -88,7 +88,7 @@ const baseMetadata: Metadata = {
     siteName: "PlugYard",
     title: "PlugYard — Buy or Sell eBooks & Audiobooks Online",
     description:
-      "Buy eBooks and audiobooks instantly — no account needed. Publish your content, set your price, and get paid. AI narration on every title. Free PDF editor with auto-save.",
+      "Shop books, products, and services from independent sellers on PlugYard.",
     images: [
       {
         url: "/icon-512.png",
@@ -102,7 +102,7 @@ const baseMetadata: Metadata = {
     card: "summary",
     title: "PlugYard — Buy eBooks & Audiobooks Online",
     description:
-      "Buy or sell eBooks & audiobooks online. No account to purchase. Publish content and get paid. AI narration. Free PDF editor.",
+      "Shop books, products, and services or publish your own listing on PlugYard.",
     images: ["/icon-512.png"],
   },
   verification: {
@@ -191,6 +191,7 @@ export default async function RootLayout({
           <ThemeAccountSync />
           <BookmarksProvider>
             <PwaRegister />
+            <BrandingTokens />
             <ReferralCapture />
             <div className="site-nav">
               <NotchNavbar />

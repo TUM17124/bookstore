@@ -70,11 +70,14 @@ function CheckoutInner() {
   const isFree = !!quote && Number(quote.list_price) <= 0 && Number(quote.price) <= 0
 
   useEffect(() => {
-    setMounted(true)
-    setLoggedIn(isLoggedIn())
-    const u = getStoredUser()
-    if (u?.email) setEmail(u.email)
     rememberBook(bookId, title)
+    const timer = window.setTimeout(() => {
+      setMounted(true)
+      setLoggedIn(isLoggedIn())
+      const u = getStoredUser()
+      if (u?.email) setEmail(u.email)
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [bookId, title])
 
   useEffect(() => {
