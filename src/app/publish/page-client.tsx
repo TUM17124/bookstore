@@ -101,7 +101,7 @@ function PublishPageInner() {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
         <h1 className="text-2xl font-bold">Publish a book</h1>
-        <p className="mt-3 text-sm leading-relaxed text-foreground/65">{guestIntro}</p>
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{guestIntro}</p>
         <p className="mt-6 text-sm">
           <Link href="/login?next=/publish" className="underline">Log in</Link>
           {' · '}
@@ -129,7 +129,7 @@ function PublishPageInner() {
   return (
     <main className="mx-auto max-w-lg px-4 py-12">
       <h1 className="text-2xl font-bold">Publish a book</h1>
-      <p className="mt-2 text-sm text-foreground/60">{intro}</p>
+      <p className="mt-2 text-sm text-muted-foreground">{intro}</p>
       <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-foreground/70">
         <li>Front: 1600 × 2400 px</li>
         <li>Back: 1600 × 2400 px</li>
@@ -174,7 +174,7 @@ function PublishPageInner() {
         <input name="image_back" type="file" accept="image/*" required />
         <label className="text-sm font-medium">Book file *</label>
         <input name="pdf" type="file" accept=".pdf,.epub,.docx,.doc,.odt,.rtf,.txt,.pptx,.ppt,application/pdf,application/epub+zip" required />
-        <p className="text-xs text-foreground/60">
+        <p className="text-xs text-muted-foreground">
           Upload a finished PDF or EPUB. Word, OpenDocument, RTF, text, and PowerPoint files are converted to PDF.
           Files with macros, DRM, or unsupported fixed layouts are not accepted. Up to 30 MB.
         </p>
@@ -212,7 +212,7 @@ function PublishPageInner() {
           defaultValue={previewDefault}
           className="rounded-lg border border-foreground/15 bg-transparent px-3 py-2"
         />
-        <p className="text-[13px] text-foreground/55">{sneakHelp}</p>
+        <p className="text-[13px] text-muted-foreground">{sneakHelp}</p>
 
         {error && (
           <p

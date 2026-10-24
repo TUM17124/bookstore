@@ -178,7 +178,7 @@ export function GoogleLoginButton({
         id="google-btn"
         className={`flex min-h-[44px] w-full justify-center bg-transparent ${signingIn ? 'pointer-events-none opacity-60' : ''}`}
       />
-      <p role="status" aria-live="polite" className={signingIn ? 'mt-2 inline-flex items-center gap-1.5 text-sm text-foreground/60' : 'sr-only'}>
+      <p role="status" aria-live="polite" className={signingIn ? 'mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground' : 'sr-only'}>
         {signingIn ? (
           <>
             <Loader2 className="size-4 animate-spin" aria-hidden />

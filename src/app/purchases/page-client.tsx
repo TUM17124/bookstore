@@ -61,7 +61,7 @@ function Row({
           </button>
         )}
         {p.downloadable === false ? (
-          <span className="text-xs font-semibold text-foreground/40">Download off</span>
+          <span className="text-xs font-semibold text-muted-foreground">Download off</span>
         ) : (
           <ActionButton
             action={download}
@@ -145,7 +145,7 @@ export default function PurchasesPage() {
         ) : (
           <>
             {error ? <p className="mt-3 text-sm text-red-500">{error}</p> : null}
-            {busy ? <p className="mt-6 text-sm text-foreground/50">Loading…</p> : null}
+            {busy ? <p className="mt-6 text-sm text-muted-foreground">Loading…</p> : null}
 
             <h2>Ebooks</h2>
             <ul className="mt-2 space-y-2">

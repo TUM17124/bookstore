@@ -187,7 +187,7 @@ function SignupInner() {
       <h1 className="text-2xl font-bold">
         Create your PlugYard account
       </h1>
-      <p className="mt-2 text-sm leading-relaxed text-foreground/65">
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
         A guest can read. An account is why the library can remember you:
         your reading place, Wishlist, purchases, and invite rewards stay
         with you on the next phone. We also email you a personal note when
@@ -245,7 +245,7 @@ function SignupInner() {
         />
       </div>
 
-      <p className="mt-4 text-center text-xs text-foreground/40">
+      <p className="mt-4 text-center text-xs text-muted-foreground">
         or email
       </p>
 
@@ -296,11 +296,11 @@ function SignupInner() {
             className="w-full rounded-lg border border-foreground/15 bg-transparent px-3 py-2 tracking-wide"
           />
           {referralCode ? (
-            <p className="mt-1 text-xs text-foreground/55">
+            <p className="mt-1 text-xs text-muted-foreground">
               You&apos;ll be linked to the person who shared this code.
             </p>
           ) : (
-            <p className="mt-1 text-xs text-foreground/45">
+            <p className="mt-1 text-xs text-muted-foreground">
               Have an invite? Paste the code here, or open their invite link.
             </p>
           )}
@@ -333,7 +333,7 @@ function SignupInner() {
                 (value) => !value,
               )
             }
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-foreground/60 hover:text-foreground"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
           >
             {showPassword
               ? 'Hide'
@@ -379,7 +379,7 @@ function SignupInner() {
         {password &&
           confirm &&
           password === confirm && (
-            <p className="text-xs text-green-600">
+            <p className="text-xs text-success">
               Passwords match.
             </p>
           )}
@@ -402,7 +402,7 @@ function SignupInner() {
         </ActionButton>
       </form>
 
-      <p className="mt-4 text-sm text-foreground/60">
+      <p className="mt-4 text-sm text-muted-foreground">
         Have an account?{' '}
         <Link
           href={`/login?next=${encodeURIComponent(
@@ -414,7 +414,7 @@ function SignupInner() {
         </Link>
       </p>
 
-      <p className="mt-4 text-sm text-foreground/60">
+      <p className="mt-4 text-sm text-muted-foreground">
         <Link
           href={`/forgot-password?email=${encodeURIComponent(
             email,

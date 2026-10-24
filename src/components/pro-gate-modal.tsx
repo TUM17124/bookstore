@@ -59,7 +59,7 @@ export function ProGateModal({
         <button
           type="button"
           onClick={onClose}
-          className="mt-3 w-full text-center text-xs text-foreground/45"
+          className="mt-3 w-full text-center text-xs text-muted-foreground"
         >
           Not now
         </button>

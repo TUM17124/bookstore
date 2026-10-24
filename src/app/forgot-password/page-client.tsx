@@ -58,7 +58,7 @@ function Inner() {
           Send reset code
         </ActionButton>
       </form>
-      <p className="mt-4 text-sm text-foreground/60">
+      <p className="mt-4 text-sm text-muted-foreground">
         Remembered it?{' '}
         <Link
           href={`/login?email=${encodeURIComponent(email)}&next=${encodeURIComponent(nextPath)}`}
@@ -67,7 +67,7 @@ function Inner() {
           Log in
         </Link>
       </p>
-      <p className="mt-2 text-sm text-foreground/60">
+      <p className="mt-2 text-sm text-muted-foreground">
         No account?{' '}
         <Link
           href={`/signup?email=${encodeURIComponent(email)}&next=${encodeURIComponent(nextPath)}`}

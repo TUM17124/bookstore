@@ -22,6 +22,7 @@ export function BrandLogo({ size, alt = "", className = "" }: { size: number; al
       {/* Light mode: transparent-background logo (no background clipping needed) */}
       <img
         src={light}
+        onError={(event) => { if (!event.currentTarget.src.endsWith('/logo-128-light.png')) event.currentTarget.src = '/logo-128-light.png' }}
         sizes={`${size}px`}
         width={size}
         height={size}
@@ -34,6 +35,7 @@ export function BrandLogo({ size, alt = "", className = "" }: { size: number; al
         {/* eslint-disable-next-line @next/next/no-img-element -- static export: no image optimiser */}
         <img
           src={dark}
+          onError={(event) => { if (!event.currentTarget.src.endsWith('/logo-128.png')) event.currentTarget.src = '/logo-128.png' }}
           sizes={`${size}px`}
           width={size}
           height={size}

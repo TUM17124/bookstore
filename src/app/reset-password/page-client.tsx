@@ -100,7 +100,7 @@ function Inner() {
           Save password
         </ActionButton>
       </form>
-      <p className="mt-4 text-sm text-foreground/60">
+      <p className="mt-4 text-sm text-muted-foreground">
         Back to{' '}
         <Link
           href={`/login?email=${encodeURIComponent(email)}&next=${encodeURIComponent(nextPath)}`}

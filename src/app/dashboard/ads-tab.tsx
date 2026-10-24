@@ -128,7 +128,7 @@ export function AdsTab() {
     },
   )
 
-  if (!account) return <p className="text-sm text-foreground/60">Loading your ads…</p>
+  if (!account) return <p className="text-sm text-muted-foreground">Loading your ads…</p>
 
   const belowMin = Number(amount || 0) < Number(account.min_topup)
   const discounted = quote && Number(quote.discount) > 0
@@ -165,7 +165,7 @@ export function AdsTab() {
         ) : (
           account.low_balance &&
           Number(account.balance) > 0 && (
-            <p className="text-sm text-amber-700 dark:text-amber-300">
+            <p className="text-sm text-warning dark:text-amber-300">
               Your balance is below {money(account.low_balance_warning)}. Top up so your ads keep running.
             </p>
           )
@@ -195,7 +195,7 @@ export function AdsTab() {
               disabled={belowMin || !quote}
               loadingLabel="Starting payment…"
               successLabel="Redirecting…"
-              errorClassName="text-sm text-red-600"
+              errorClassName="text-sm text-destructive"
               className="min-h-[44px] rounded-full bg-foreground px-5 text-sm font-semibold text-background disabled:opacity-50"
             >
               {quote ? `Pay ${money(quote.final_amount)}` : "Top up"}
@@ -204,7 +204,7 @@ export function AdsTab() {
         )}
         {account.enabled && discounted && quote && (
           <p className="text-sm">
-            <span className="line-through text-foreground/50">{money(quote.list_amount)}</span>{" "}
+            <span className="line-through text-muted-foreground">{money(quote.list_amount)}</span>{" "}
             <b>{money(quote.final_amount)}</b>
             {quote.promotion ? ` · ${quote.promotion.label}` : ""} · you get {money(quote.list_amount)} of ad balance
           </p>
@@ -218,7 +218,7 @@ export function AdsTab() {
           onClick={() => void statement.run()}
           loadingLabel="Preparing…"
           successLabel="Downloaded"
-          errorClassName="text-sm text-red-600"
+          errorClassName="text-sm text-destructive"
           className="rounded-full border px-4 py-2 text-sm"
         >
           Download statement (CSV)
@@ -230,7 +230,7 @@ export function AdsTab() {
       <section className="space-y-3">
         <h2 className="text-lg font-bold">Your ads</h2>
         {ads.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-foreground/20 p-6 text-center text-sm text-foreground/60">
+          <p className="rounded-2xl border border-dashed border-foreground/20 p-6 text-center text-sm text-muted-foreground">
             No ads yet. Pick a book above to promote it.
           </p>
         ) : (
@@ -285,20 +285,20 @@ function NewAd({
         <label className="text-sm font-medium" htmlFor="ad-bid">
           Price per click (min {money(account.min_cpc)})
           <input id="ad-bid" type="number" min={account.min_cpc} step="1" value={bid} onChange={(e) => setBid(e.target.value)} className={`${input} mt-1`} />
-          {errors.bid && <span className="mt-1 block text-[12px] text-red-600">{errors.bid}</span>}
+          {errors.bid && <span className="mt-1 block text-[12px] text-destructive">{errors.bid}</span>}
         </label>
         <label className="text-sm font-medium" htmlFor="ad-budget">
           Daily budget (min {money(account.min_daily_budget)})
           <input id="ad-budget" type="number" min={account.min_daily_budget} step="1" value={budget} onChange={(e) => setBudget(e.target.value)} className={`${input} mt-1`} />
-          {errors.daily_budget && <span className="mt-1 block text-[12px] text-red-600">{errors.daily_budget}</span>}
+          {errors.daily_budget && <span className="mt-1 block text-[12px] text-destructive">{errors.daily_budget}</span>}
         </label>
         <label className="text-sm font-medium" htmlFor="ad-ends">
           Last day (optional)
           <input id="ad-ends" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} className={`${input} mt-1`} />
-          {errors.ends_on && <span className="mt-1 block text-[12px] text-red-600">{errors.ends_on}</span>}
+          {errors.ends_on && <span className="mt-1 block text-[12px] text-destructive">{errors.ends_on}</span>}
         </label>
       </div>
-      <p className="text-[12px] text-foreground/60">
+      <p className="text-[12px] text-muted-foreground">
         At most {Math.max(1, Math.floor(Number(budget || 0) / Math.max(1, Number(bid || 1))))} paid clicks a day with these numbers.
       </p>
       <ActionButton
@@ -306,7 +306,7 @@ function NewAd({
         onClick={() => void create.run()}
         loadingLabel="Creating…"
         successLabel="Created"
-        errorClassName="text-sm text-red-600"
+        errorClassName="text-sm text-destructive"
         className="min-h-[44px] rounded-full bg-foreground px-5 text-sm font-semibold text-background disabled:opacity-50"
       >
         Start ad
@@ -339,7 +339,7 @@ function AdRow({ ad, account, onChanged }: { ad: AdData; account: AdAccount; onC
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="font-semibold">{ad.book.title}</h3>
         <span className={`rounded-full px-2 py-0.5 text-[12px] font-semibold ${st.cls}`}>{st.label}</span>
-        {ad.paused_by_admin && <span className="text-[12px] text-foreground/60">Paused by PlugYard</span>}
+        {ad.paused_by_admin && <span className="text-[12px] text-muted-foreground">Paused by PlugYard</span>}
       </div>
       <p className="text-sm text-foreground/70 tabular-nums">
         {money(ad.bid)} per click · {money(ad.daily_budget)} a day{ad.ends_on ? ` · until ${ad.ends_on}` : ""}
@@ -359,12 +359,12 @@ function AdRow({ ad, account, onChanged }: { ad: AdData; account: AdAccount; onC
           <label className="text-sm font-medium" htmlFor={`bid-${ad.id}`}>
             Price per click (min {money(account.min_cpc)})
             <input id={`bid-${ad.id}`} type="number" value={bid} onChange={(e) => setBid(e.target.value)} className={`${input} mt-1`} />
-            {errors.bid && <span className="mt-1 block text-[12px] text-red-600">{errors.bid}</span>}
+            {errors.bid && <span className="mt-1 block text-[12px] text-destructive">{errors.bid}</span>}
           </label>
           <label className="text-sm font-medium" htmlFor={`budget-${ad.id}`}>
             Daily budget (min {money(account.min_daily_budget)})
             <input id={`budget-${ad.id}`} type="number" value={budget} onChange={(e) => setBudget(e.target.value)} className={`${input} mt-1`} />
-            {errors.daily_budget && <span className="mt-1 block text-[12px] text-red-600">{errors.daily_budget}</span>}
+            {errors.daily_budget && <span className="mt-1 block text-[12px] text-destructive">{errors.daily_budget}</span>}
           </label>
         </div>
       )}
@@ -372,7 +372,7 @@ function AdRow({ ad, account, onChanged }: { ad: AdData; account: AdAccount; onC
         <div className="flex flex-wrap gap-2">
           {editing ? (
             <ActionButton action={run} onClick={() => void run.run({ bid, daily_budget: budget })} loadingLabel="Saving…"
-              errorClassName="text-sm text-red-600" className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background">
+              errorClassName="text-sm text-destructive" className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background">
               Save
             </ActionButton>
           ) : (
@@ -388,7 +388,7 @@ function AdRow({ ad, account, onChanged }: { ad: AdData; account: AdAccount; onC
           <button
             type="button"
             onClick={() => (confirmStop ? void run.run({ action: "stop" }) : setConfirmStop(true))}
-            className="rounded-full border border-red-400 px-4 py-2 text-sm text-red-600"
+            className="rounded-full border border-red-400 px-4 py-2 text-sm text-destructive"
           >
             {confirmStop ? "Tap again to stop for good" : "Stop"}
           </button>

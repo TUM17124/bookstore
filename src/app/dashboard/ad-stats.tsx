@@ -21,7 +21,7 @@ const METRICS: { key: Metric; label: string }[] = [
 export function AdTotalsLine({ totals }: { totals: AdTotals | null | undefined }) {
   const money = useMoney()
   if (!totals || (totals.impressions === 0 && totals.clicks === 0)) {
-    return <p className="text-sm text-foreground/60">No results yet: your ad hasn&apos;t been seen.</p>
+    return <p className="text-sm text-muted-foreground">No results yet: your ad hasn&apos;t been seen.</p>
   }
   return (
     <p className="text-sm text-foreground/70 tabular-nums">
@@ -86,9 +86,9 @@ export function AdStatsPanel({ adId }: { adId: number }) {
       </div>
 
       {loading ? (
-        <p className="py-8 text-center text-sm text-foreground/60">Loading results…</p>
+        <p className="py-8 text-center text-sm text-muted-foreground">Loading results…</p>
       ) : !data || !t ? (
-        <p className="py-8 text-center text-sm text-foreground/60">Couldn&apos;t load the results. Try again later.</p>
+        <p className="py-8 text-center text-sm text-muted-foreground">Couldn&apos;t load the results. Try again later.</p>
       ) : (
         <>
           <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
@@ -102,7 +102,7 @@ export function AdStatsPanel({ adId }: { adId: number }) {
             ) : null}
           </dl>
           {values.every((v) => v === 0) ? (
-            <p className="py-6 text-center text-sm text-foreground/60">Nothing in this period yet.</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">Nothing in this period yet.</p>
           ) : (
             <BarChart
               values={values}
@@ -111,7 +111,7 @@ export function AdStatsPanel({ adId }: { adId: number }) {
               format={(v) => (isMoney ? money(String(v)) : v.toLocaleString())}
             />
           )}
-          <p className="text-[12px] text-foreground/55">
+          <p className="text-[12px] text-muted-foreground">
             A sale counts when a reader buys the book within a week of a charged click on your ad.
           </p>
         </>
@@ -123,9 +123,9 @@ export function AdStatsPanel({ adId }: { adId: number }) {
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-lg border border-foreground/10 bg-background p-2">
-      <dt className="text-[12px] text-foreground/60">{label}</dt>
+      <dt className="text-[12px] text-muted-foreground">{label}</dt>
       <dd className="text-base font-semibold tabular-nums">{value}</dd>
-      {hint && <dd className="text-[11px] text-foreground/55">{hint}</dd>}
+      {hint && <dd className="text-[11px] text-muted-foreground">{hint}</dd>}
     </div>
   )
 }
@@ -176,7 +176,7 @@ function BarChart({
         </text>
         <text x={pad} y={10} fontSize="11" fill="currentColor" fillOpacity="0.6">{format(max)}</text>
       </svg>
-      <figcaption className="text-[12px] text-foreground/60">{label}</figcaption>
+      <figcaption className="text-[12px] text-muted-foreground">{label}</figcaption>
     </figure>
   )
 }

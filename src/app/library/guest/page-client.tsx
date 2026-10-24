@@ -129,7 +129,7 @@ function GuestLibraryInner() {
     <main className="mx-auto max-w-lg px-4 py-14">
       <h1 className="text-2xl font-bold">Your books</h1>
 
-      {loading ? <p className="mt-6 text-sm text-foreground/50">Opening your books…</p> : null}
+      {loading ? <p className="mt-6 text-sm text-muted-foreground">Opening your books…</p> : null}
 
       {!loading && (expired || invalid || (error && !lib)) ? (
         <section className="mt-6 rounded-2xl border border-foreground/10 p-5" role="alert">
@@ -140,12 +140,12 @@ function GuestLibraryInner() {
                 ? 'This link isn’t valid — enter your email to get a new one.'
                 : error?.message}
           </p>
-          <p className="mt-1 text-sm text-foreground/60">
+          <p className="mt-1 text-sm text-muted-foreground">
             Your purchases never expire — only the link does. We&apos;ll email a fresh link to the
             address you bought with.
           </p>
           <GuestLinkRequestForm autoFocus />
-          <p className="mt-4 text-xs text-foreground/55">
+          <p className="mt-4 text-xs text-muted-foreground">
             Still stuck? <a href="mailto:contact@plugyard.com" className="underline">Contact support</a>.
           </p>
         </section>
@@ -153,7 +153,7 @@ function GuestLibraryInner() {
 
       {!loading && lib ? (
         <>
-          <p className="mt-2 text-sm text-foreground/60">
+          <p className="mt-2 text-sm text-muted-foreground">
             Purchases for <strong>{lib.email}</strong>. This link works until{' '}
             <strong>{new Date(lib.expires_at).toLocaleString()}</strong>; after that, request a new
             one here with the same email — your books stay yours.
@@ -163,7 +163,7 @@ function GuestLibraryInner() {
             {lib.items.map((item) => (
               <li key={item.order_id} className="rounded-2xl border border-foreground/10 p-4">
                 <p className="font-semibold">{item.book.title}</p>
-                <p className="text-xs text-foreground/55">
+                <p className="text-xs text-muted-foreground">
                   {item.book.author ? `${item.book.author} · ` : ''}
                   {item.kind === 'ebook' ? 'Ebook' : 'Audiobook'} · Order #{item.order_id}
                 </p>
@@ -177,7 +177,7 @@ function GuestLibraryInner() {
                       {item.kind === 'ebook' ? 'Read' : 'Listen'}
                     </button>
                   ) : (
-                    <span className="text-xs text-foreground/50">Not available right now</span>
+                    <span className="text-xs text-muted-foreground">Not available right now</span>
                   )}
                   {item.can_download && token ? (
                     <GuestDownloadButton
@@ -189,7 +189,7 @@ function GuestLibraryInner() {
                       }}
                     />
                   ) : (
-                    <span className="text-xs font-semibold text-foreground/45">
+                    <span className="text-xs font-semibold text-muted-foreground">
                       {item.kind === 'ebook' ? 'Read-only' : 'Streaming only'} — downloads are off for this book
                     </span>
                   )}
@@ -197,13 +197,13 @@ function GuestLibraryInner() {
               </li>
             ))}
             {lib.items.length === 0 ? (
-              <li className="text-sm text-foreground/60">{emptyText}</li>
+              <li className="text-sm text-muted-foreground">{emptyText}</li>
             ) : null}
           </ul>
 
           <section className="mt-8 rounded-2xl bg-foreground/[0.04] p-4 text-sm">
             <p className="font-semibold">Keep your books without links</p>
-            <p className="mt-1 text-foreground/65">
+            <p className="mt-1 text-muted-foreground">
               Create an account (or log in) with <strong>{lib.email}</strong> and these purchases
               move into your library automatically.
             </p>
@@ -250,7 +250,7 @@ function GuestLibraryInner() {
 
 export default function GuestLibraryPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-sm text-foreground/50">Loading…</div>}>
+    <Suspense fallback={<div className="p-8 text-center text-sm text-muted-foreground">Loading…</div>}>
       <GuestLibraryInner />
     </Suspense>
   )
