@@ -47,7 +47,7 @@ function Inner() {
   return (
     <main className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4">
       <h1 className="text-2xl font-bold">Verify email</h1>
-      <p className="mt-2 text-sm text-foreground/60">
+      <p className="mt-2 text-sm text-muted-foreground">
         We sent a 6-digit code to <span className="font-medium">{email}</span>
       </p>
       <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-3">

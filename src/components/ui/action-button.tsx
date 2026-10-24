@@ -92,7 +92,7 @@ export const ActionButton = React.forwardRef<HTMLButtonElement, ActionButtonProp
     errorPlacement = "after",
     errorClassName = "mt-2 text-sm text-red-500",
     retryPlacement,
-    retryClassName = "mt-2 text-sm text-foreground/60",
+    retryClassName = "mt-2 text-sm text-muted-foreground",
     compact = false,
     as: Comp = "button",
     disabled,
@@ -213,7 +213,7 @@ export function ActionError({
  * (pair with retryPlacement="none"). */
 export function ActionStatus({
   action,
-  className = "text-sm text-foreground/60",
+  className = "text-sm text-muted-foreground",
 }: {
   action: Pick<AsyncAction<unknown[], unknown>, "state" | "retry">
   className?: string

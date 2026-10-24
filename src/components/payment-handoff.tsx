@@ -58,13 +58,13 @@ export function PaymentHandoff({ active, onCancel }: { active: Active; onCancel:
           {active.what}
           {active.amount ? <span className="font-semibold"> · {active.amount}</span> : null}
         </p>
-        <p className="mt-4 text-xs text-foreground/50">
+        <p className="mt-4 text-xs text-muted-foreground">
           You will pay on {host}, our payment partner. We never see your card details. You come
           back here automatically when you are done.
         </p>
         {slow ? (
           <div className="mt-5 space-y-2" data-testid="handoff-slow">
-            <p className="text-xs text-foreground/60">This is taking longer than usual.</p>
+            <p className="text-xs text-muted-foreground">This is taking longer than usual.</p>
             <a
               href={active.url}
               className="inline-block rounded-full bg-foreground px-5 py-2 text-sm font-semibold text-background"
@@ -76,7 +76,7 @@ export function PaymentHandoff({ active, onCancel }: { active: Active; onCancel:
         <button
           type="button"
           onClick={onCancel}
-          className="mt-5 block w-full text-sm text-foreground/60 underline underline-offset-2"
+          className="mt-5 block w-full text-sm text-muted-foreground underline underline-offset-2"
         >
           Cancel and go back
         </button>

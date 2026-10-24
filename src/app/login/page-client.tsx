@@ -102,7 +102,7 @@ function LoginInner() {
   return (
     <main className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4">
       <h1 className="text-2xl font-bold">Log in</h1>
-      <p className="mt-2 text-sm leading-relaxed text-foreground/65">
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
         Signing in puts your reading place, Wishlist, purchases, and invite
         wallet on this phone. After that, install PlugYard so the library
         opens like an app instead of a tab you have to search for.
@@ -157,7 +157,7 @@ function LoginInner() {
         />
       </div>
 
-      <p className="mt-4 text-center text-xs text-foreground/40">or email</p>
+      <p className="mt-4 text-center text-xs text-muted-foreground">or email</p>
 
       <form onSubmit={onSubmit} className="mt-4 flex flex-col gap-3">
         <input
@@ -193,7 +193,7 @@ function LoginInner() {
         </ActionButton>
       </form>
 
-      <p className="mt-4 text-sm text-foreground/60">
+      <p className="mt-4 text-sm text-muted-foreground">
         <Link
           href={`/forgot-password?email=${encodeURIComponent(
             email,
@@ -204,7 +204,7 @@ function LoginInner() {
         </Link>
       </p>
 
-      <p className="mt-2 text-sm text-foreground/60">
+      <p className="mt-2 text-sm text-muted-foreground">
         No account?{' '}
         <Link
           href={`/signup?email=${encodeURIComponent(
@@ -220,7 +220,7 @@ function LoginInner() {
 
       <details className="mt-6 rounded-xl border border-foreground/10 p-3 text-sm">
         <summary className="cursor-pointer font-medium">Bought without an account?</summary>
-        <p className="mt-2 text-foreground/60">
+        <p className="mt-2 text-muted-foreground">
           We&apos;ll email a fresh secure link to your books. Signing up or logging in with the
           same email also moves those purchases into your account.
         </p>

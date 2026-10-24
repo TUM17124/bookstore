@@ -36,7 +36,7 @@ export function ShareSheet({ book, open, onClose }: { book: Shareable; open: boo
           <h2 className="min-w-0 truncate text-base font-bold">Share “{book.title}”</h2>
           <button ref={closeRef} type="button" onClick={onClose} className="rounded-full bg-foreground/10 px-3 py-1 text-sm font-bold">Close</button>
         </div>
-        <p className="mt-1 text-sm text-foreground/60">{text}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{text}</p>
         <div className="mt-3 flex gap-2">
           <input readOnly value={url} aria-label="Book link" onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 rounded-full border border-foreground/15 bg-background px-3 py-2 text-sm" />
           <button
@@ -74,7 +74,7 @@ export function ShareYourBook({ book }: { book: Shareable & { shareImage?: { og?
   return (
     <div className="rounded-xl border border-foreground/10 bg-foreground/[0.03] p-3 text-sm" aria-label="Share your book">
       <p className="font-semibold">Share your book</p>
-      <p className="text-foreground/65">This link shows your cover, title and description when it is shared on WhatsApp, Facebook, X, Telegram or LinkedIn, and lets Google index your book.</p>
+      <p className="text-muted-foreground">This link shows your cover, title and description when it is shared on WhatsApp, Facebook, X, Telegram or LinkedIn, and lets Google index your book.</p>
       <div className="mt-2 flex gap-2">
         <input readOnly value={url} aria-label="Public book link" onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 rounded-lg border border-foreground/15 bg-background px-3 py-2" />
         <button type="button" onClick={async () => { setCopied(await copyText(url)); setTimeout(() => setCopied(false), 2000) }} className="shrink-0 rounded-lg border px-3 py-2 font-semibold">
@@ -94,7 +94,7 @@ export function ShareYourBook({ book }: { book: Shareable & { shareImage?: { og?
           </div>
         </div>
       ) : (
-        <p className="mt-2 text-foreground/55">Your preview image is being made. Reload in a minute.</p>
+        <p className="mt-2 text-muted-foreground">Your preview image is being made. Reload in a minute.</p>
       )}
       <ShareSheet book={book} open={sheet} onClose={() => setSheet(false)} />
     </div>

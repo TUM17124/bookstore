@@ -62,7 +62,7 @@ function NoteItem({ note, focused, editing, status, showBook, readOnly, onJump, 
           {note.kind === 'audio' ? '▶ ' : ''}{loc}
         </button>
         <div className="min-w-0 flex-1">
-          {showBook && note.book_title ? <p className="truncate text-[11px] font-bold uppercase tracking-wide text-foreground/45">{note.book_title}</p> : null}
+          {showBook && note.book_title ? <p className="truncate text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{note.book_title}</p> : null}
           {hasQuote ? (
             <button
               type="button"
@@ -73,7 +73,7 @@ function NoteItem({ note, focused, editing, status, showBook, readOnly, onJump, 
             </button>
           ) : null}
           {!editing && note.body_text ? <NoteView doc={note.body} className="mt-1.5" /> : null}
-          {!editing && !note.body_text && !hasQuote ? <p className="text-sm italic text-foreground/45">Empty note</p> : null}
+          {!editing && !note.body_text && !hasQuote ? <p className="text-sm italic text-muted-foreground">Empty note</p> : null}
         </div>
         {!readOnly ? (
           <span className="flex shrink-0 flex-col items-end gap-1">
@@ -85,7 +85,7 @@ function NoteItem({ note, focused, editing, status, showBook, readOnly, onJump, 
             >
               {editing ? 'Done' : 'Edit'}
             </button>
-            <button type="button" onClick={() => onDelete(note)} className="text-xs font-semibold text-foreground/50 hover:text-red-600" aria-label="Delete note">
+            <button type="button" onClick={() => onDelete(note)} className="text-xs font-semibold text-muted-foreground hover:text-red-600" aria-label="Delete note">
               Delete
             </button>
           </span>
@@ -210,7 +210,7 @@ export function NotesPanel(p: NotesPanelProps) {
     <>
       <div className="flex shrink-0 items-center justify-between gap-2 px-4 pb-2 pt-3">
         <h2 className="min-w-0 truncate text-sm font-bold text-foreground">
-          {p.title || 'Notes & highlights'} <span className="font-semibold text-foreground/50">({p.notes.length})</span>
+          {p.title || 'Notes & highlights'} <span className="font-semibold text-muted-foreground">({p.notes.length})</span>
         </h2>
         <div className="flex items-center gap-2">
           {p.variant !== 'page' ? <SaveIndicator status={p.status} className="hidden sm:inline-block" /> : null}
@@ -256,7 +256,7 @@ export function NotesPanel(p: NotesPanelProps) {
               />
             ))}
           </div>
-          <label className="flex items-center gap-1 text-xs font-semibold text-foreground/60">
+          <label className="flex items-center gap-1 text-xs font-semibold text-muted-foreground">
             Sort
             <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-lg border border-foreground/15 bg-background px-2 py-1 text-xs text-foreground">
               <option value="position">In book order</option>
@@ -269,13 +269,13 @@ export function NotesPanel(p: NotesPanelProps) {
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
         {!shown.length ? (
-          <p className="py-6 text-center text-sm text-foreground/50">
+          <p className="py-6 text-center text-sm text-muted-foreground">
             {p.notes.length ? 'No notes match these filters.' : p.emptyHint || 'No notes yet.'}
           </p>
         ) : (
           groups.map((g) => (
             <section key={g.label || 'all'} aria-label={g.label || undefined} className="mb-3">
-              {g.label ? <h3 className="sticky top-0 z-[1] bg-background/95 py-1 text-[11px] font-bold uppercase tracking-wider text-foreground/45">{g.label}</h3> : null}
+              {g.label ? <h3 className="sticky top-0 z-[1] bg-background/95 py-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{g.label}</h3> : null}
               <ul className="space-y-2">
                 {g.notes.map((n) => (
                   <NoteItem
@@ -307,10 +307,10 @@ export function NotesPanel(p: NotesPanelProps) {
 
       {p.onExport ? (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-foreground/10 px-4 py-2" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
-          <span className="text-xs font-semibold text-foreground/55">Export</span>
+          <span className="text-xs font-semibold text-muted-foreground">Export</span>
           <button type="button" onClick={() => void doExport('md')} disabled={!p.notes.length} className="rounded-full bg-foreground/10 px-3 py-1 text-xs font-bold text-foreground disabled:opacity-40">Markdown</button>
           <button type="button" onClick={() => void doExport('pdf')} disabled={!p.notes.length} className="rounded-full bg-foreground/10 px-3 py-1 text-xs font-bold text-foreground disabled:opacity-40">PDF</button>
-          {exportMsg ? <span role="status" className="text-xs text-foreground/60">{exportMsg}</span> : null}
+          {exportMsg ? <span role="status" className="text-xs text-muted-foreground">{exportMsg}</span> : null}
           <span className="ml-auto sm:hidden"><SaveIndicator status={p.status} /></span>
         </div>
       ) : null}

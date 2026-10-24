@@ -171,11 +171,11 @@ function CheckoutInner() {
   return (
     <main className="mx-auto flex min-h-[70vh] max-w-lg flex-col justify-center px-4 py-12">
       {handoff.node}
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground/40">
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
         Checkout
       </p>
       <h1 className="mt-2 text-2xl font-bold tracking-tight">{title}</h1>
-      <p className="mt-1 text-sm text-foreground/55 capitalize">{productLabel}</p>
+      <p className="mt-1 text-sm text-muted-foreground capitalize">{productLabel}</p>
 
       {isFree ? (
         <div className="mt-6 rounded-3xl border border-emerald-500/25 bg-emerald-500/[0.06] p-6">
@@ -200,24 +200,24 @@ function CheckoutInner() {
             className="text-lg font-bold"
           />
         ) : quoteError ? (
-          <p className="text-sm text-red-600 dark:text-red-400">
+          <p className="text-sm text-destructive dark:text-red-400">
             {quoteError}{' '}
             <button type="button" className="font-semibold underline" onClick={() => setQuoteNonce((n) => n + 1)}>
               Try again
             </button>
           </p>
         ) : (
-          <p className="text-sm text-foreground/50">Loading price…</p>
+          <p className="text-sm text-muted-foreground">Loading price…</p>
         )}
         {priceNotice && (
-          <p role="status" className="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[13px] text-amber-800 dark:text-amber-200">
+          <p role="status" className="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[13px] text-warning dark:text-amber-200">
             {priceNotice}
           </p>
         )}
       </div>
 
       {canceled && (
-        <p className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+        <p className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-warning dark:text-amber-200">
           Payment was canceled. You can try again when you are ready.
         </p>
       )}
@@ -232,7 +232,7 @@ function CheckoutInner() {
         >
           Email address <span className="text-red-500">*</span>
         </label>
-        <p className="mt-1 text-[13px] leading-relaxed text-foreground/50">
+        <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
           This email{' '}
           <strong className="font-semibold text-foreground/75">
             links your payment to this order
@@ -255,10 +255,10 @@ function CheckoutInner() {
         />
 
         <div className="mt-3 flex gap-2 rounded-xl border border-foreground/10 bg-foreground/[0.03] px-3 py-2.5">
-          <span aria-hidden className="mt-0.5 text-foreground/40">
+          <span aria-hidden className="mt-0.5 text-muted-foreground">
             ✉️
           </span>
-          <p className="text-[13px] leading-relaxed text-foreground/60">
+          <p className="text-[13px] leading-relaxed text-muted-foreground">
             <span className="font-medium text-foreground/80">{emailTitle}</span>{' '}
             {emailBody}
           </p>
@@ -286,7 +286,7 @@ function CheckoutInner() {
           <div className="mt-4 space-y-3 rounded-2xl border border-foreground/10 bg-foreground/[0.03] px-4 py-4">
             <div>
               <p className="text-sm font-medium text-foreground/90">{guestHeading}</p>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-foreground/60">
+              <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
                 <strong className="font-semibold text-foreground/80">Why we need your email:</strong>{' '}
                 {guestWhy}
               </p>
@@ -299,7 +299,7 @@ function CheckoutInner() {
               >
                 Create a free account
               </Link>
-              <p className="mt-3 text-center text-[12px] text-foreground/45">
+              <p className="mt-3 text-center text-[12px] text-muted-foreground">
                 Already have an account?{' '}
                 <Link
                   href={loginHref}
@@ -313,7 +313,7 @@ function CheckoutInner() {
             <label
               className={`flex items-start gap-2.5 rounded-xl border px-3 py-3 text-[13px] leading-relaxed ${
                 legalRequired
-                  ? 'border-red-500/40 bg-red-500/5 text-red-700 dark:text-red-300'
+                  ? 'border-red-500/40 bg-red-500/5 text-destructive dark:text-red-300'
                   : 'border-foreground/10 text-foreground/70'
               }`}
             >
@@ -353,10 +353,10 @@ function CheckoutInner() {
           <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-3">
             <span className="mt-px text-emerald-600 text-base" aria-hidden>✓</span>
             <div>
-              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+              <p className="text-sm font-semibold text-success dark:text-emerald-400">
                 Signed in{email ? ` as ${email}` : ''}
               </p>
-              <p className="mt-0.5 text-[13px] text-foreground/60">{accountLinked}</p>
+              <p className="mt-0.5 text-[13px] text-muted-foreground">{accountLinked}</p>
             </div>
           </div>
         )}
@@ -381,7 +381,7 @@ function CheckoutInner() {
               ? router.push(`/?book=${encodeURIComponent(bookId)}`)
               : router.back()
           }
-          className="mt-3 w-full text-center text-sm text-foreground/50 hover:text-foreground"
+          className="mt-3 w-full text-center text-sm text-muted-foreground hover:text-foreground"
         >
           Cancel
         </button>
@@ -389,7 +389,7 @@ function CheckoutInner() {
       </>
       )}
 
-      <p className="mt-6 text-center text-[12px] text-foreground/40">
+      <p className="mt-6 text-center text-[12px] text-muted-foreground">
         By continuing you agree to our{' '}
         <Link href="/terms" className="underline hover:text-foreground/70">
           Terms
@@ -412,7 +412,7 @@ export default function CheckoutPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-[50vh] items-center justify-center text-sm text-foreground/50">
+        <div className="flex min-h-[50vh] items-center justify-center text-sm text-muted-foreground">
           Loading checkout…
         </div>
       }

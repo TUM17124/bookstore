@@ -37,10 +37,10 @@ export function PromoPrice({
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <span className={`${big} font-extrabold tabular-nums`}>
           {money(final)}
-          {suffix && <span className="text-sm font-semibold text-foreground/60">{suffix}</span>}
+          {suffix && <span className="text-sm font-semibold text-muted-foreground">{suffix}</span>}
         </span>
         {promo && (
-          <span className="text-sm text-foreground/55 line-through tabular-nums" aria-label={`Was ${money(quote!.list_amount)}`}>
+          <span className="text-sm text-muted-foreground line-through tabular-nums" aria-label={`Was ${money(quote!.list_amount)}`}>
             {money(quote!.list_amount)}
           </span>
         )}

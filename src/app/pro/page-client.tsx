@@ -204,7 +204,7 @@ function ProInner() {
           Robot Reader Subscription
         </span>
         <h1 className="mt-4 text-3xl font-bold sm:text-4xl">{headline}</h1>
-        <div className="mt-3 flex justify-center text-foreground/60">
+        <div className="mt-3 flex justify-center text-muted-foreground">
           {price ? (
             <PromoPrice
               quote={quote}
@@ -237,16 +237,16 @@ function ProInner() {
             ))}
           </div>
         )}
-        {plan?.description && <p className="mt-3 text-sm text-foreground/55">{plan.description}</p>}
+        {plan?.description && <p className="mt-3 text-sm text-muted-foreground">{plan.description}</p>}
       </div>
 
       {justSubscribed && (
-        <p className="mt-8 rounded-xl border border-emerald-400 bg-emerald-400/10 p-4 text-center text-sm font-semibold text-emerald-700">
+        <p className="mt-8 rounded-xl border border-emerald-400 bg-emerald-400/10 p-4 text-center text-sm font-semibold text-success">
           Your Robot Reader Subscription is active. Enjoy narration and its included reading tools.
         </p>
       )}
       {confirming && (
-        <p className="mt-8 rounded-xl border border-foreground/10 p-4 text-center text-sm text-foreground/60">
+        <p className="mt-8 rounded-xl border border-foreground/10 p-4 text-center text-sm text-muted-foreground">
           Confirming your payment…
         </p>
       )}
@@ -259,20 +259,20 @@ function ProInner() {
             </span>
             <div>
               <p className="font-semibold">{b.label}</p>
-              {b.value && <p className="mt-0.5 text-sm text-foreground/60">{b.value}</p>}
+              {b.value && <p className="mt-0.5 text-sm text-muted-foreground">{b.value}</p>}
             </div>
           </div>
         ))}
       </div>
 
       {error && (
-        <p className="mt-6 rounded-lg border border-red-400 p-3 text-center text-sm text-red-700">{error}</p>
+        <p className="mt-6 rounded-lg border border-red-400 p-3 text-center text-sm text-destructive">{error}</p>
       )}
 
       <div className="mt-8">
         {!mounted ? null : !loggedIn ? (
           <div className="flex flex-col items-center gap-3">
-            <p className="text-sm text-foreground/60">Log in or create an account to upgrade.</p>
+            <p className="text-sm text-muted-foreground">Log in or create an account to upgrade.</p>
             <div className="flex w-full flex-col gap-2 sm:flex-row">
               <Link
                 href={loginHref}
@@ -291,7 +291,7 @@ function ProInner() {
         ) : isPro ? (
           <div className="rounded-xl border border-[#d4af37]/30 bg-[#d4af37]/10 p-5 text-center">
             <p className="font-bold text-[#a3811f]">Robot Reader Subscription active</p>
-            <p className="mt-1 text-sm text-foreground/60">
+            <p className="mt-1 text-sm text-muted-foreground">
               {status?.subscription?.expires_at
                 ? `Renews or expires on ${new Date(
                     status.subscription.expires_at,
@@ -307,13 +307,13 @@ function ProInner() {
                 onClick={handleCancel}
                 loadingLabel="Cancelling…"
                 successLabel="Cancelled"
-                errorClassName="text-sm text-red-600"
-                className="rounded-lg border border-red-400 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                errorClassName="text-sm text-destructive"
+                className="rounded-lg border border-red-400 px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50"
               >
                 {cancelConfirmed ? 'Tap again to confirm' : 'Cancel subscription'}
               </ActionButton>
               {cancelConfirmed && (
-                <p className="text-xs text-foreground/50">
+                <p className="text-xs text-muted-foreground">
                   Your access continues until the end of the billing period.
                 </p>
               )}
@@ -334,7 +334,7 @@ function ProInner() {
             disabled={!price}
             loadingLabel="Starting checkout…"
             successLabel="Redirecting…"
-            errorClassName="mt-3 text-center text-sm text-red-700"
+            errorClassName="mt-3 text-center text-sm text-destructive"
             className="w-full rounded-full bg-[#d4af37] px-4 py-3.5 text-center text-base font-bold text-[#3a2e08] disabled:opacity-60 aria-busy:opacity-80"
           >
             {`Subscribe to Robot Reader — ${price ? money(quote?.final_amount ?? price) : '…'}/${period}`}
@@ -349,7 +349,7 @@ export default function ProPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-[50vh] items-center justify-center text-sm text-foreground/50">
+        <div className="flex min-h-[50vh] items-center justify-center text-sm text-muted-foreground">
           Loading…
         </div>
       }

@@ -241,9 +241,9 @@ export function BookReviews({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[14px]">
                 <span className="font-semibold">{name}</span>
-                <span className="text-foreground/45">@{handle}</span>
-                <span className="text-foreground/35">·</span>
-                <time className="text-foreground/45">{timeAgo(c.createdAt)}</time>
+                <span className="text-muted-foreground">@{handle}</span>
+                <span className="text-muted-foreground">·</span>
+                <time className="text-muted-foreground">{timeAgo(c.createdAt)}</time>
               </div>
               {c.userRating != null && (
                 <div className="mt-0.5 origin-left scale-90">
@@ -285,7 +285,7 @@ export function BookReviews({
             </p>
             <p className="mt-2 text-center text-4xl font-bold tracking-tight text-[#fdfbf4]">
               {count > 0 ? Number(average).toFixed(1) : '—'}
-              <span className="text-lg font-medium text-foreground/55"> / 5</span>
+              <span className="text-lg font-medium text-muted-foreground"> / 5</span>
             </p>
             <p className="mt-1 text-center text-sm text-foreground/75">
               {count > 0
@@ -356,12 +356,12 @@ export function BookReviews({
             </p>
           )}
 
-          <h3 className="mb-2 px-1 text-[13px] font-semibold uppercase tracking-[0.18em] text-foreground/40">
+          <h3 className="mb-2 px-1 text-[13px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             Discussion
           </h3>
 
           {tree.roots.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-foreground/15 px-4 py-12 text-center text-[15px] text-foreground/45">
+            <p className="rounded-2xl border border-dashed border-foreground/15 px-4 py-12 text-center text-[15px] text-muted-foreground">
               No comments yet. Rate the book, then share your thoughts.
             </p>
           ) : (
@@ -387,7 +387,7 @@ export function BookReviews({
               <button
                 type="button"
                 onClick={() => setReplyTo(null)}
-                className="ml-2 text-foreground/50 hover:text-foreground"
+                className="ml-2 text-muted-foreground hover:text-foreground"
               >
                 Cancel
               </button>
@@ -395,11 +395,11 @@ export function BookReviews({
           )}
 
           {!reviewsOn ? (
-            <p role="status" className="py-2 text-center text-[14px] text-foreground/60">
+            <p role="status" className="py-2 text-center text-[14px] text-muted-foreground">
               {reviewsOff}
             </p>
           ) : !auth ? (
-            <p className="py-2 text-center text-[14px] text-foreground/55">
+            <p className="py-2 text-center text-[14px] text-muted-foreground">
               <Link
                 href={loginHref}
                 className="font-semibold text-[var(--brand-pink-text)] hover:underline"
@@ -430,7 +430,7 @@ export function BookReviews({
                   rows={1}
                   maxLength={2000}
                   placeholder={replyTo ? 'Write a reply…' : 'Share your thoughts…'}
-                  className="max-h-28 w-full resize-none bg-transparent text-[15px] outline-none placeholder:text-foreground/40"
+                  className="max-h-28 w-full resize-none bg-transparent text-[15px] outline-none placeholder:text-muted-foreground"
                   onInput={(e) => {
                     const el = e.currentTarget;
                     el.style.height = 'auto';
@@ -451,7 +451,7 @@ export function BookReviews({
                 {replyTo ? 'Reply' : 'Post'}
               </ActionButton>
             </form>
-            <ActionStatus action={commentAction} className="mt-2 text-center text-[13px] text-foreground/60" />
+            <ActionStatus action={commentAction} className="mt-2 text-center text-[13px] text-muted-foreground" />
             {commentAction.errorText ? (
               <p role="alert" className="mt-2 text-center text-[13px] text-red-500">
                 {commentAction.errorText}

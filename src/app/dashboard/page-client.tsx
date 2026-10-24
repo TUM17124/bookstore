@@ -555,7 +555,7 @@ export default function DashboardPage() {
   if (!authChecked) {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
-        <p className="text-sm text-foreground/60">
+        <p className="text-sm text-muted-foreground">
           Loading…
         </p>
       </main>
@@ -569,7 +569,7 @@ export default function DashboardPage() {
           Dashboard
         </h1>
 
-        <p className="mt-3 text-sm text-foreground/60">
+        <p className="mt-3 text-sm text-muted-foreground">
           Sign in to access your dashboard.
         </p>
 
@@ -788,7 +788,7 @@ export default function DashboardPage() {
                 onClick={onRequestPayout}
                 loadingLabel="Requesting…"
                 successLabel="Requested"
-                errorClassName="text-sm text-red-600"
+                errorClassName="text-sm text-destructive"
                 className="w-full rounded-lg bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:cursor-not-allowed disabled:bg-neutral-400"
               >
                 {`Request payout · ${money(available)}`}
@@ -1043,7 +1043,7 @@ export default function DashboardPage() {
                     action={savePayout}
                     loadingLabel="Saving…"
                     successLabel="Saved"
-                    errorClassName="mt-2 text-sm text-red-600"
+                    errorClassName="mt-2 text-sm text-destructive"
                     className="w-full bg-foreground text-background rounded-lg py-2 aria-busy:opacity-80"
                   >
                     {hasAccount
@@ -1059,8 +1059,8 @@ export default function DashboardPage() {
                   onClick={onDeletePayout}
                   loadingLabel="Deleting…"
                   successLabel="Deleted"
-                  errorClassName="text-sm text-red-600"
-                  className="w-full rounded-lg border border-red-600 px-4 py-2 text-sm font-semibold text-red-700"
+                  errorClassName="text-sm text-destructive"
+                  className="w-full rounded-lg border border-red-600 px-4 py-2 text-sm font-semibold text-destructive"
                 >
                   Delete payout account
                 </ActionButton>
@@ -1149,7 +1149,7 @@ export default function DashboardPage() {
               </h2>
 
               {!booksLoaded && (
-                <p className="text-sm text-foreground/60" role="status">
+                <p className="text-sm text-muted-foreground" role="status">
                   Loading your books…
                 </p>
               )}
@@ -1345,7 +1345,7 @@ function BookBoostRow({
           </p>
 
           {active ? (
-            <p className="text-sm text-emerald-700">
+            <p className="text-sm text-success">
               Boosted · featured until
               countdown ends:{" "}
               <b>{label}</b>
@@ -1408,7 +1408,7 @@ function BookBoostRow({
       </div>
       <ActionStatus action={remove} className="text-sm text-foreground/70" />
       {remove.errorText ? (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-destructive">
           {remove.errorText}
         </p>
       ) : null}
@@ -1631,7 +1631,7 @@ function BookBoostRow({
               disabled={remove.busy}
               loadingLabel="Saving…"
               successLabel="Saved"
-              errorClassName="mt-2 text-sm text-red-600"
+              errorClassName="mt-2 text-sm text-destructive"
               className="w-full bg-foreground text-background rounded-lg py-2 disabled:opacity-50 aria-busy:opacity-80"
             >
               Save changes
@@ -1652,7 +1652,7 @@ function NoBooksYet() {
   const browse = useText("empty.dashboard_browse");
   return (
     <section className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-foreground/20 px-6 py-10 text-center">
-      <BookOpen className="h-10 w-10 text-foreground/40" aria-hidden />
+      <BookOpen className="h-10 w-10 text-muted-foreground" aria-hidden />
       <h2 className="text-lg font-bold">{title}</h2>
       <p className="max-w-sm text-sm text-foreground/70">{body}</p>
       <Link

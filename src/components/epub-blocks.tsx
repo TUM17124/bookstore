@@ -40,7 +40,7 @@ export function EpubImage({ url, alt, guestToken }: { url: string; alt: string; 
     }
   }, [url, guestToken])
   if (failed) {
-    return <span className="my-3 block text-[13px] text-foreground/50" role="img" aria-label={alt || 'Image'}>{alt || 'Image unavailable'}</span>
+    return <span className="my-3 block text-[13px] text-muted-foreground" role="img" aria-label={alt || 'Image'}>{alt || 'Image unavailable'}</span>
   }
   if (!src) return <span className="my-3 block h-24 animate-pulse rounded-lg bg-foreground/[0.06]" aria-hidden />
   return (
@@ -126,7 +126,7 @@ export function ChapterList({
               className={`flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${i === current ? 'bg-[#f591ac]/25 font-bold text-foreground' : 'text-foreground/80 hover:bg-foreground/[0.06]'}`}
             >
               <span className="min-w-0 flex-1 break-words">{c.title || `Chapter ${i + 1}`}</span>
-              <span className="shrink-0 text-xs text-foreground/50">p.{c.page}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">p.{c.page}</span>
             </button>
           </li>
         ))}

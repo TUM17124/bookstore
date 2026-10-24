@@ -55,7 +55,7 @@ export function DescriptionField({
         id={`${id}-count`}
         role="status"
         aria-live="polite"
-        className={`text-right text-xs tabular-nums ${blocked ? 'font-semibold text-red-600 dark:text-red-400' : 'text-foreground/55'}`}
+        className={`text-right text-xs tabular-nums ${blocked ? 'font-semibold text-destructive dark:text-red-400' : 'text-muted-foreground'}`}
       >
         {fmt(value.length)} / {fmt(limit)}
         {blocked ? ' · too long' : over ? ' · over the limit, kept as it is until you edit it' : ''}

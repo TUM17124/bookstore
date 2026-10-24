@@ -108,7 +108,7 @@ export function RichNoteEditor({
         role: 'textbox',
         'aria-multiline': 'true',
         'aria-label': ariaLabel,
-        class: 'note-editor max-w-none px-3 py-2 text-[15px] leading-relaxed text-foreground outline-none [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-bold [&_h3]:text-base [&_h3]:font-bold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-foreground/25 [&_blockquote]:pl-3 [&_blockquote]:italic [&_a]:text-[var(--brand-pink-text)] [&_a]:underline [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:items-start [&_li[data-type=taskItem]]:gap-2 [&_li[data-type=taskItem]>label]:mt-1 [&_p.is-editor-empty:first-child::before]:pointer-events-none [&_p.is-editor-empty:first-child::before]:float-left [&_p.is-editor-empty:first-child::before]:h-0 [&_p.is-editor-empty:first-child::before]:text-foreground/40 [&_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]',
+        class: 'note-editor max-w-none px-3 py-2 text-[15px] leading-relaxed text-foreground outline-none [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-bold [&_h3]:text-base [&_h3]:font-bold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-foreground/25 [&_blockquote]:pl-3 [&_blockquote]:italic [&_a]:text-[var(--brand-pink-text)] [&_a]:underline [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:items-start [&_li[data-type=taskItem]]:gap-2 [&_li[data-type=taskItem]>label]:mt-1 [&_p.is-editor-empty:first-child::before]:pointer-events-none [&_p.is-editor-empty:first-child::before]:float-left [&_p.is-editor-empty:first-child::before]:h-0 [&_p.is-editor-empty:first-child::before]:text-muted-foreground [&_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]',
         style: `min-height:${minHeight}px`,
       },
     },
@@ -240,7 +240,7 @@ export function RichNoteEditor({
         </form>
       ) : null}
       <EditorContent editor={editor} />
-      <p className={`px-3 pb-1 text-right text-[11px] ${s.len > NOTE_MAX_CHARS * 0.9 ? 'text-red-600 dark:text-red-400' : 'text-foreground/40'}`} aria-live="off">
+      <p className={`px-3 pb-1 text-right text-[11px] ${s.len > NOTE_MAX_CHARS * 0.9 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`} aria-live="off">
         {s.len}/{NOTE_MAX_CHARS}
       </p>
     </div>

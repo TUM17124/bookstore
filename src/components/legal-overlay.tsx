@@ -50,7 +50,7 @@ function OverlayInner({
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-[17px] font-bold">{title}</h1>
           {updated && (
-            <p className="truncate text-[12px] text-foreground/45">
+            <p className="truncate text-[12px] text-muted-foreground">
               Last updated: {updated}
             </p>
           )}
