@@ -33,6 +33,7 @@ const path = require('node:path');
       await panel.getByLabel('Trial maximum').fill('200');
       await panel.getByRole('button',{name:'Submit simulated bid'}).click();
       await expect(panel.getByText('Extensions demonstrated: 1',{exact:true})).toBeVisible();
+      await expect(panel.getByText(/^Simulated current bid: KES 200(?:\.00)?$/)).toBeVisible();
       await expect(panel.getByText('Leading synthetic alias: Demo bidder ••01',{exact:true})).toBeVisible();
       await panel.getByLabel('Local demonstration message').fill('<script>not executable</script>');
       await panel.getByRole('button',{name:'Add local message'}).click();

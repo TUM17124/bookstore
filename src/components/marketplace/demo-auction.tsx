@@ -39,8 +39,8 @@ export function DemoAuction({ slug, config }: { slug: string; config: DemoAuctio
       <button disabled={busy || elapsed < 0} className="min-h-11 rounded-full border px-4 disabled:opacity-50" onClick={() => void evaluate(bids,Math.max(elapsed,end))}>Finish and show outcome</button>
     </div>
     <form className="grid gap-3 sm:grid-cols-3" onSubmit={e => { e.preventDefault(); void evaluate([...bids,{alias,maximum,at:elapsed}],elapsed) }}>
-      <label>Synthetic participant<select className="mt-1 w-full rounded-xl border bg-background p-3" value={alias} onChange={e => setAlias(e.target.value as 'A'|'B')}><option value="A">Participant A — Demo bidder ••01</option><option value="B">Participant B — Demo bidder ••02</option></select></label>
-      <label>Trial maximum<input className="mt-1 w-full rounded-xl border bg-background p-3" inputMode="decimal" required value={maximum} onChange={e => setMaximum(e.target.value)} /></label>
+      <label>Synthetic participant<select disabled={busy} className="mt-1 w-full rounded-xl border bg-background p-3" value={alias} onChange={e => setAlias(e.target.value as 'A'|'B')}><option value="A">Participant A — Demo bidder ••01</option><option value="B">Participant B — Demo bidder ••02</option></select></label>
+      <label>Trial maximum<input disabled={busy} className="mt-1 w-full rounded-xl border bg-background p-3" inputMode="decimal" required value={maximum} onChange={e => setMaximum(e.target.value)} /></label>
       <button disabled={busy || elapsed < 0 || elapsed >= end || bids.length >= 50} className="min-h-11 self-end rounded-full bg-primary p-3 font-bold text-primary-foreground disabled:opacity-50">Submit simulated bid</button>
     </form>
     {error && <p role="alert" className="mt-3 text-destructive">{error}</p>}
