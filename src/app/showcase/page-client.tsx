@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { demoShowcase, type MarketListing } from '@/lib/marketplace'
 import { ListingCard } from '@/components/marketplace/listing-card'
 import { ListingViewer } from '@/components/marketplace/listing-viewer'
+import { DemoAuction } from '@/components/marketplace/demo-auction'
 
 export default function DemoShowcase() {
   const query = useSearchParams()
@@ -31,6 +32,7 @@ export default function DemoShowcase() {
     {selected && <section aria-label="Demonstration details" className="mt-8 rounded-3xl border bg-card p-5 text-card-foreground">
       <div className="mb-4 flex items-center justify-between gap-4"><h2 className="text-2xl font-bold">{selected.title}</h2><button className="min-h-11 rounded-full border px-4" onClick={() => setSelected(null)}>Close details</button></div>
       <div className="grid gap-6 md:grid-cols-2"><ListingViewer key={selected.id} listing={selected} /><div><p className="font-bold text-[var(--brand-pink-text)]">DEMO / NOT FOR SALE</p><p className="mt-4 whitespace-pre-wrap">{selected.description_text}</p><p className="mt-4">{selected.condition_and_defects}</p><p className="mt-4">This demonstration cannot be purchased or bid on.</p></div></div>
+      {selected.demo_auction && <DemoAuction key={selected.id} slug={selected.slug} config={selected.demo_auction} />}
     </section>}
   </main>
 }

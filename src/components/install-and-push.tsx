@@ -29,6 +29,7 @@ function isAuthPath() {
   return (
     path.startsWith("/login") ||
     path.startsWith("/signup") ||
+    path.startsWith("/showcase") ||
     path.startsWith("/verify")
   )
 }

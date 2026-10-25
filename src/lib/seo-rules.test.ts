@@ -96,7 +96,7 @@ describe("sitemap.ts", () => {
   })
 
   it("does not list private pages", () => {
-    const privatePaths = ["/bookmarks", "/checkout", "/dashboard", "/publish", "/purchases", "/settings"]
+    const privatePaths = ["/bookmarks", "/checkout", "/dashboard", "/publish", "/purchases", "/settings", "/login", "/signup", "/showcase"]
     for (const p of privatePaths) {
       const match = sitemapUrls.find((u) => u.includes(p))
       expect(match, `sitemap must not include private page ${p}`).toBeUndefined()
@@ -111,8 +111,8 @@ describe("sitemap.ts", () => {
       "https://plugyard.com/terms-of-use/",
       "https://plugyard.com/refund-policy/",
       "https://plugyard.com/privacy/",
-      "https://plugyard.com/login/",
-      "https://plugyard.com/signup/",
+      "https://plugyard.com/marketplace/",
+      "https://plugyard.com/books/",
     ]
     for (const url of required) {
       expect(sitemapUrls, `sitemap must include ${url}`).toContain(url)
@@ -121,6 +121,11 @@ describe("sitemap.ts", () => {
 
   it("does not list the defunct /login-merchant/ redirect target", () => {
     expect(sitemapUrls.some((u) => u.includes("login-merchant"))).toBe(false)
+  })
+
+  it("does not invent modification dates or advertise disabled auctions", () => {
+    expect(sitemapEntries.every(entry => entry.lastModified === undefined)).toBe(true)
+    expect(sitemapUrls).not.toContain("https://plugyard.com/auctions/")
   })
 
   it("uses only https:// URLs", () => {

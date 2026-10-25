@@ -19,6 +19,7 @@ function shouldShow(): boolean {
     path.startsWith('/signup') ||
     path.startsWith('/publish') ||
     path.startsWith('/checkout') ||
+    path.startsWith('/showcase') ||
     path.startsWith('/verify')
   ) {
     return false
