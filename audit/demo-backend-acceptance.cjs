@@ -13,6 +13,10 @@ const path = require('node:path');
       const context = await browser.newContext({viewport:{width,height:900}});
       const page = await context.newPage();
       await page.addInitScript(value => localStorage.setItem('theme',value), theme);
+      await page.route('**/theme-tokens.css', async route => {
+        const response = await route.fetch({url:'http://127.0.0.1:3100/theme-tokens.css'});
+        await route.fulfill({response});
+      });
       // Route public API requests to real Django; do not fabricate API responses.
       await page.route('**/api/**', async route => {
         const original = new URL(route.request().url());
@@ -43,6 +47,14 @@ const path = require('node:path');
       await expect(page.getByRole('button',{name:/Buy Now|Pay now|Place bid/i})).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
       await page.screenshot({path:path.join(output,`${theme}-${width}.png`),fullPage:true});
+      const share = await page.goto(`${backend.origin}/api/marketplace/demo-showcase/test-stock-item/share/`);
+      expect(share.headers()['x-robots-tag']).toBe('noindex, nofollow');
+      await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', /DEMO/);
+      await expect(page.getByText(/demonstration chat is local to your browser tab/)).toBeVisible();
+      const preview = page.locator('img');
+      await expect(preview).toBeVisible();
+      await expect.poll(() => preview.evaluate(image => image.naturalWidth)).toBe(1200);
+      await page.screenshot({path:path.join(output,`social-${theme}-${width}.png`),fullPage:true});
       await context.close();
     }
     console.log('PASS: four real-API browser scenarios; proxy tie, extension, outcome, local text safety, no purchase controls.');
