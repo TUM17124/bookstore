@@ -166,7 +166,7 @@ function SiteFooterInner() {
   const year = new Date().getFullYear()
   // Admin-defined categories (same list as the navbar), not a fixed list.
   const { navbar } = useCategories()
-  const browseLinks = navbar.map((c) => ({ href: categoryHref(c.slug), label: c.label }))
+  const browseLinks = navbar.map((c) => ({ href: categoryHref(c), label: c.label }))
   const f = useFooter()
 
   // The focused editor view is a full-screen app-like tool (own fixed

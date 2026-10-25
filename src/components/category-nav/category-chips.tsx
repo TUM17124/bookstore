@@ -57,7 +57,7 @@ export function CategoryChips({ activeSlug }: { activeSlug: string }) {
           return (
             <li key={c.slug} className="snap-start" data-slug={c.slug.toLowerCase()}>
               <Link
-                href={categoryHref(c.slug)}
+                href={categoryHref(c)}
                 aria-current={on ? "page" : undefined}
                 className={`inline-flex min-h-[44px] max-w-[70vw] items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-[14px] font-semibold motion-safe:transition-colors ${
                   on ? "border-current bg-current/10" : "border-current/20 opacity-80"

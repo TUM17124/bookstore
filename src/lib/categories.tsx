@@ -56,8 +56,9 @@ export function CategoryIcon({ name, className }: { name?: string; className?: s
   return createElement(categoryIcon(name), { className, "aria-hidden": true })
 }
 
-export function categoryHref(slug: string): string {
-  return `/?category=${encodeURIComponent(slug)}`
+export function categoryHref(category: string | CategoryInfo): string {
+  if (typeof category !== "string") return category.browse_url || `/categories/${encodeURIComponent(category.slug)}/`
+  return `/categories/${encodeURIComponent(category)}/`
 }
 
 type Cached = { navbar: CategoryInfo[]; all: CategoryInfo[] }

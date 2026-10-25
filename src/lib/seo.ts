@@ -24,7 +24,7 @@ async function load(): Promise<SeoTexts> {
     if (!res.ok) return FALLBACK
     const live = ((await res.json()) as { texts?: SeoTexts })?.texts || {}
     const out: SeoTexts = { ...FALLBACK }
-    for (const key of Object.keys(FALLBACK)) {
+    for (const key of [...Object.keys(FALLBACK), "seo.search_console_verification", "seo.canonical_domain"]) {
       const v = live[key]
       if (Array.isArray(v) ? v.length : typeof v === "string" && v.trim()) out[key] = v
     }

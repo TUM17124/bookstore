@@ -5,7 +5,7 @@ import { bookShareText, bookShareUrl, copyText, nativeShare, shareTargets, type 
 
 /** Fallback share panel (copy link + WhatsApp, Facebook, X, Telegram, LinkedIn, email).
  * Opened when the browser has no Web Share API, or from the author's "Share your book". */
-export function ShareSheet({ book, open, onClose }: { book: Shareable; open: boolean; onClose: () => void }) {
+export function ShareSheet({ book, open, onClose, kind = "book" }: { book: Shareable; open: boolean; onClose: () => void; kind?: "book" | "listing" }) {
   const [copied, setCopied] = useState(false)
   const closeRef = useRef<HTMLButtonElement>(null)
   const url = bookShareUrl(book)
@@ -27,7 +27,7 @@ export function ShareSheet({ book, open, onClose }: { book: Shareable; open: boo
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Share this book"
+        aria-label={kind === "book" ? "Share this book" : "Share this listing"}
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-sm rounded-t-2xl bg-background p-4 text-foreground shadow-2xl sm:rounded-2xl"
         style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
@@ -38,7 +38,7 @@ export function ShareSheet({ book, open, onClose }: { book: Shareable; open: boo
         </div>
         <p className="mt-1 text-sm text-muted-foreground">{text}</p>
         <div className="mt-3 flex gap-2">
-          <input readOnly value={url} aria-label="Book link" onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 rounded-full border border-foreground/15 bg-background px-3 py-2 text-sm" />
+          <input readOnly value={url} aria-label={kind === "book" ? "Book link" : "Listing link"} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 rounded-full border border-foreground/15 bg-background px-3 py-2 text-sm" />
           <button
             type="button"
             onClick={async () => { setCopied(await copyText(url)); setTimeout(() => setCopied(false), 2000) }}

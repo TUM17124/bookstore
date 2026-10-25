@@ -1,10 +1,15 @@
 "use client"
 
 import Link from "next/link"
+import { useSiteConfig } from "@/lib/site-config"
+import { useCurrency } from "@/lib/money"
 import { FormEvent, useEffect, useMemo, useState } from "react"
 import { conditionOptions, createListing, marketCategories, submitListing, uploadListingMedia, type MarketCategory } from "@/lib/marketplace"
 
 export default function SellPage() {
+  const [config, configReady] = useSiteConfig()
+  const currency = useCurrency()
+  const canPublish = !!(config?.features?.marketplace || config?.features?.marketplace_publishing)
   const [categories, setCategories] = useState<MarketCategory[]>([])
   const [conditions, setConditions] = useState<{ key: string; label: string }[]>([])
   const [categorySlug, setCategorySlug] = useState("")
@@ -13,10 +18,10 @@ export default function SellPage() {
   const [notice, setNotice] = useState("")
   const [variants, setVariants] = useState([{ name: "", sku: "", quantity: "", price_override: "" }])
   const category = useMemo(() => categories.find((item) => item.slug === categorySlug), [categories, categorySlug])
-  useEffect(() => { Promise.all([marketCategories(), conditionOptions()]).then(([cats, conds]) => { setCategories(cats); setConditions(conds); if (cats[0]) setCategorySlug(cats[0].slug) }).catch(() => setNotice("Could not load the publishing form.")) }, [])
+  useEffect(() => { Promise.all([marketCategories(), conditionOptions()]).then(([cats, conds]) => { const eligible = cats.filter(c => c.viewer_mode !== "book_3d"); setCategories(eligible); setConditions(conds); const requested = new URLSearchParams(window.location.search).get("category"); const initial = eligible.find(c => c.slug === requested) || eligible[0]; if (initial) { setCategorySlug(initial.slug); setPriceType(initial.pricing_options[0] || "fixed") } }).catch(() => setNotice("Could not load the publishing form.")) }, [])
 
   async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!category) return
+    event.preventDefault(); if (!category || !canPublish) return
     setBusy(true); setNotice("")
     const form = event.currentTarget
     const fd = new FormData(form)
@@ -42,7 +47,7 @@ export default function SellPage() {
         price_amount: priceType === "fixed" ? Number(fd.get("price_amount")) : null,
         price_min: priceType === "range" ? Number(fd.get("price_min")) : null,
         price_max: priceType === "range" ? Number(fd.get("price_max")) : null,
-        currency: fd.get("currency") || "KES", country: fd.get("country") || "KE",
+        currency: fd.get("currency") || currency.code, country: fd.get("country") || "KE",
         administrative_area: fd.get("administrative_area"), locality: fd.get("locality"), attributes,
         inventory: category.variants_enabled ? undefined : inventoryPayload, variants: variantPayload,
       })
@@ -57,6 +62,8 @@ export default function SellPage() {
     finally { setBusy(false) }
   }
 
+  if (!configReady) return <main className="p-8" aria-busy="true">Loading publishing settings…</main>
+  if (!canPublish) return <main className="mx-auto max-w-3xl p-8"><h1 className="text-3xl font-bold">Marketplace submissions are paused</h1><p className="mt-4">Browse departments or return to the available publishing options.</p><Link href="/publish/" className="mt-4 inline-flex rounded-full border px-5 py-3">Publishing options</Link></main>
   return <main className="mx-auto max-w-4xl px-4 py-10"><div className="mb-8"><p className="font-semibold text-[var(--brand-pink-text)]">Seller tools</p><h1 className="text-4xl font-black">Create a listing</h1><p className="mt-2 text-muted-foreground">The fields and product views below come from the category configuration.</p></div>
     <form onSubmit={save} className="space-y-7 rounded-[2rem] border border-border bg-card text-card-foreground p-5 shadow-sm sm:p-9">
       <Section title="What are you listing?"><Field label="Category"><select value={categorySlug} onChange={(event) => { setCategorySlug(event.target.value); setPriceType(categories.find((item) => item.slug === event.target.value)?.pricing_options[0] || "fixed") }} className="input"><option value="">Choose a category</option>{categories.map((item) => <option key={item.slug} value={item.slug}>{item.label}</option>)}</select></Field><Field label="Title"><input name="title" required maxLength={255} className="input" /></Field><Field label="Description"><textarea name="description" required rows={7} className="input" placeholder="Describe what makes this item or service useful, including relevant details." /></Field><Field label="Short search description (optional)"><input name="seo_description" maxLength={320} className="input" /></Field></Section>
@@ -66,10 +73,10 @@ export default function SellPage() {
       <Section title={category.inventory_policy === "booking" ? "Availability and capacity" : "Inventory and stock"}>
         {category.inventory_policy === "unlimited" && <p className="rounded-xl bg-muted p-3 text-sm text-foreground">This category uses unlimited digital availability. Physical stock is not deducted.</p>}
         {category.inventory_policy === "none" && <p className="rounded-xl bg-muted p-3 text-sm text-foreground">This category does not track quantity. Unique items still cannot be sold twice.</p>}
-        {(category.inventory_policy === "finite" || category.inventory_policy === "booking") && !category.variants_enabled && <div className="grid gap-4 sm:grid-cols-2"><Field label={category.inventory_policy === "booking" ? "Available booking capacity" : "Quantity available"}><input name="stock_quantity" type="number" min="0" step="1" required={category.inventory_required} className="input" /></Field><Field label="Low-stock alert threshold"><input name="low_stock_threshold" type="number" min="0" step="1" defaultValue="2" className="input" /></Field></div>}
+        {(category.inventory_policy === "finite" || category.inventory_policy === "booking") && !category.variants_enabled && <div className="grid gap-4 sm:grid-cols-2"><Field label={category.inventory_policy === "booking" ? "Available booking capacity" : "Quantity available"}><input name="stock_quantity" type="number" min="0" step="1" required={category.inventory_required} className="input" /></Field><Field label="Low-stock alert threshold"><input name="low_stock_threshold" type="number" min="0" step="1" defaultValue="0" className="input" /></Field></div>}
         {category.variants_enabled && <div className="space-y-3"><p className="text-sm text-muted-foreground">Each independently purchasable option has its own stock.</p>{variants.map((variant, index) => <div key={index} className="grid gap-3 rounded-2xl border p-4 sm:grid-cols-4"><Field label="Variant name"><input value={variant.name} onChange={(event) => setVariants((rows) => rows.map((row, i) => i === index ? { ...row, name: event.target.value } : row))} required={category.inventory_required} className="input" /></Field><Field label="SKU"><input value={variant.sku} onChange={(event) => setVariants((rows) => rows.map((row, i) => i === index ? { ...row, sku: event.target.value } : row))} className="input" /></Field><Field label="Quantity"><input type="number" min="0" step="1" value={variant.quantity} onChange={(event) => setVariants((rows) => rows.map((row, i) => i === index ? { ...row, quantity: event.target.value } : row))} required className="input" /></Field><Field label="Price override"><input type="number" min="0" step="0.01" value={variant.price_override} onChange={(event) => setVariants((rows) => rows.map((row, i) => i === index ? { ...row, price_override: event.target.value } : row))} className="input" /></Field>{variants.length > 1 && <button type="button" onClick={() => setVariants((rows) => rows.filter((_, i) => i !== index))} className="rounded-full border px-4 py-2 text-sm font-bold text-destructive sm:col-span-4">Remove variant</button>}</div>)}<button type="button" onClick={() => setVariants((rows) => [...rows, { name: "", sku: "", quantity: "", price_override: "" }])} className="rounded-full border border-border px-4 py-2 font-bold text-[var(--brand-pink-text)]">Add variant</button></div>}
       </Section>
-      <Section title="Price and location"><Field label="Pricing"><select value={priceType} onChange={(event) => setPriceType(event.target.value)} className="input">{category.pricing_options.map((option) => <option key={option} value={option}>{option === "range" ? "Price range" : option[0].toUpperCase() + option.slice(1)}</option>)}</select></Field>{priceType === "fixed" && <Field label="Price"><input name="price_amount" type="number" min="0" step="0.01" required className="input" /></Field>}{priceType === "range" && <div className="grid grid-cols-2 gap-3"><Field label="Minimum"><input name="price_min" type="number" min="0" step="0.01" required className="input" /></Field><Field label="Maximum"><input name="price_max" type="number" min="0" step="0.01" required className="input" /></Field></div>}<Field label="Currency"><input name="currency" defaultValue="KES" maxLength={3} className="input" /></Field>{category.fulfillment_type !== "digital_download" && <div className="grid gap-3 sm:grid-cols-2"><Field label="Town or city"><input name="locality" className="input" /></Field><Field label="County / region"><input name="administrative_area" className="input" /></Field><input type="hidden" name="country" value="KE" /></div>}<p className="rounded-xl bg-muted p-3 text-sm text-foreground">Fulfillment: {category.fulfillment_type.replaceAll("_", " ")}</p></Section></>}
+      <Section title="Price and location"><Field label="Pricing"><select value={priceType} onChange={(event) => setPriceType(event.target.value)} className="input">{category.pricing_options.map((option) => <option key={option} value={option}>{option === "range" ? "Price range" : option[0].toUpperCase() + option.slice(1)}</option>)}</select></Field>{priceType === "fixed" && <Field label="Price"><input name="price_amount" type="number" min="0" step="0.01" required className="input" /></Field>}{priceType === "range" && <div className="grid grid-cols-2 gap-3"><Field label="Minimum"><input name="price_min" type="number" min="0" step="0.01" required className="input" /></Field><Field label="Maximum"><input name="price_max" type="number" min="0" step="0.01" required className="input" /></Field></div>}<Field label="Currency"><input name="currency" defaultValue={currency.code} maxLength={3} className="input" /></Field>{category.fulfillment_type !== "digital_download" && <div className="grid gap-3 sm:grid-cols-2"><Field label="Town or city"><input name="locality" className="input" /></Field><Field label="County / region"><input name="administrative_area" className="input" /></Field><input type="hidden" name="country" value="KE" /></div>}<p className="rounded-xl bg-muted p-3 text-sm text-foreground">Fulfillment: {category.fulfillment_type.replaceAll("_", " ")}</p></Section></>}
       {notice && <p role="status" className="rounded-xl bg-muted p-3 text-sm text-foreground">{notice}</p>}<div className="flex flex-wrap gap-3"><button disabled={busy || !category} className="rounded-full bg-pink-600 px-6 py-3 font-bold text-white disabled:opacity-50">{busy ? "Saving…" : "Submit listing"}</button><Link href="/marketplace" className="rounded-full border px-6 py-3 font-bold">Cancel</Link></div>
     </form><style jsx global>{`.input{margin-top:.3rem;width:100%;border:1px solid color-mix(in srgb,currentColor 16%,transparent);border-radius:.75rem;background:transparent;padding:.65rem .8rem}`}</style></main>
 }

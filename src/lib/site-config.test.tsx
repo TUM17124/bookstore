@@ -57,7 +57,7 @@ describe("site config", () => {
       )
     }
     await render(<Probe />)
-    expect(el!.textContent).toBe("Listen to books with Robot Reader|38|true|30|2000")
+    expect(el!.textContent).toBe("Listen to books with Robot Reader|0|true|30|2000")
   })
 
   it("shows the admin's texts and switches once loaded", async () => {

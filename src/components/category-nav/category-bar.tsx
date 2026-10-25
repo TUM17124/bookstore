@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { DepartmentMenu } from "./department-menu"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { ChevronDown } from "lucide-react"
 import type { CategoryInfo } from "@/lib/api"
@@ -25,8 +26,8 @@ const GAP = 4 // px between items (gap-1); pills add px-1.5 each side, so labels
 
 function Item({ c, active, tabIndex }: { c: CategoryInfo; active: boolean; tabIndex?: number }) {
   return (
-    <Link
-      href={categoryHref(c.slug)}
+    <div className="relative inline-flex items-center"><Link
+      href={categoryHref(c)}
       tabIndex={tabIndex}
       aria-current={active ? "page" : undefined}
       className={cn(
@@ -37,7 +38,7 @@ function Item({ c, active, tabIndex }: { c: CategoryInfo; active: boolean; tabIn
     >
       <CategoryIcon name={c.icon} className="h-4 w-4 shrink-0 opacity-70 group-hover:opacity-100" />
       <span className="max-w-[16ch] truncate">{c.label}</span>
-    </Link>
+    </Link>{tabIndex !== -1 && <DepartmentMenu category={c} />}</div>
   )
 }
 
@@ -210,7 +211,7 @@ export function CategoryBar({ categories, activeSlug }: { categories: CategoryIn
                   return (
                     <Link
                       key={c.slug}
-                      href={categoryHref(c.slug)}
+                      href={categoryHref(c)}
                       role="menuitem"
                       aria-current={on ? "page" : undefined}
                       onClick={() => setOpen(false)}

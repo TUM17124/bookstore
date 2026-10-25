@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useBookmarks } from '@/components/bookmarks-context'
 import { BooksShowcase } from '@/components/ui/books-showcase'
-import { OfferMarquee } from '@/components/offer-marquee'
 import { getToken } from '@/lib/api'
 import { useText } from '@/lib/site-config'
 
@@ -31,7 +30,6 @@ export default function BookmarksPage() {
   if (bookmarks.length === 0) {
     return (
       <main className="flex min-h-[calc(100dvh-4rem)] flex-col">
-        <OfferMarquee />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
           <p>{emptyText}</p>
           {!loggedIn && (
@@ -54,7 +52,6 @@ export default function BookmarksPage() {
 
   return (
     <main className="home-shelf">
-      <OfferMarquee />
       {!loggedIn && (
         <p className="shrink-0 px-4 py-2 text-center text-xs text-muted-foreground">
           Saved on this device only.{' '}

@@ -113,10 +113,10 @@ for (const theme of ['light', 'dark']) for (const width of [320, 375, 390, 768, 
 for (const theme of ['light', 'dark']) test(`${theme} account, book publishing, messaging and support`, async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await fixture(page, theme)
-  for (const route of ['/publish/', '/messages/', '/support/', '/seller/profile/']) {
+  for (const route of ['/publish/?kind=book', '/messages/', '/support/', '/seller/profile/']) {
     await page.goto(route)
     await readable(page.locator('main h1'))
-    if (route === '/publish/') await readable(page.getByPlaceholder('Title', { exact: true }))
+    if (route.startsWith('/publish/')) await readable(page.getByPlaceholder('Title', { exact: true }))
     if (route === '/messages/') {
       await readable(page.getByText('Laptop question', { exact: true }).last())
       await readable(page.getByText('Is the charger included?', { exact: true }).last())
@@ -127,7 +127,7 @@ for (const theme of ['light', 'dark']) test(`${theme} account, book publishing, 
       await readable(page.getByPlaceholder('How can we help?'))
     }
     for (const heading of await page.locator('footer h3:visible').all()) await readable(heading)
-    await page.screenshot({ path: info.outputPath(route.replaceAll('/', '-') + '.png'), fullPage: true })
+    await page.screenshot({ path: info.outputPath(route.split('?')[0].replaceAll('/', '-') + '.png'), fullPage: true })
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
   }
 })
@@ -158,6 +158,120 @@ for (const width of [390, 1440]) test(`${width}px theme toggle, search and notif
 })
 
 // Generate these from the real Django templates with tools/render_theme_previews.py.
+for (const theme of ['light', 'dark']) test(`${theme} marketplace homepage, publishing and wishlist interactions`, async ({ page }, info) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await fixture(page, theme)
+  const bookCategory = { ...category, slug: 'books', label: 'Books', viewer_mode: 'book_3d', browse_url: '/books/' }
+  await page.route('**/api/categories/**', route => route.fulfill({ json: { all: [category, bookCategory], navbar: [category, bookCategory] } }))
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Browse departments' })).toBeVisible()
+  expect((await page.getByRole('textbox', { name: 'Search products, books and services' }).boundingBox())?.width).toBeGreaterThan(200)
+  await expect(page.getByRole('heading', { name: listing.title })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Books', exact: true }).last()).toHaveAttribute('href', '/books/')
+  await page.screenshot({ path: info.outputPath('homepage.png'), fullPage: true })
+  await page.goto('/publish/')
+  await expect(page.getByRole('heading', { name: 'What would you like to sell or publish?' })).toBeVisible()
+  await page.locator('article').filter({ has: page.getByRole('heading', { name: 'Electronics' }) }).getByRole('link', { name: 'Continue' }).click()
+  await expect(page.getByRole('combobox', { name: 'Category', exact: true })).toHaveValue('electronics')
+  let submitted: Record<string, unknown> | null = null
+  await page.route('**/api/marketplace/me/listings/**', async route => {
+    if(route.request().url().endsWith('/listings/')) submitted = route.request().postDataJSON()
+    await route.fulfill({ json: { ...listing, status: 'pending' } })
+  })
+  await page.getByLabel('Title', { exact: true }).fill('Synthetic laptop submission')
+  await page.getByLabel('Description', { exact: true }).fill('Synthetic demonstration of the publishing workflow.')
+  await page.getByLabel('Quantity available', { exact: true }).fill('2')
+  await page.getByLabel('Price', { exact: true }).fill('100')
+  await page.getByRole('button', { name: 'Submit listing', exact: true }).click()
+  await expect(page.locator('main').getByRole('status')).toContainText('submitted for review')
+  expect(submitted).toMatchObject({ category: 'electronics', inventory: { quantity: 2 }, title: 'Synthetic laptop submission' })
+  await page.screenshot({ path: info.outputPath('publishing-submitted.png'), fullPage: true })
+  await page.goto('/wishlist/')
+  await page.getByRole('button', { name: `Share ${listing.title}`, exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Listing link' })).toHaveValue(/\/listings\/contrast-test-laptop\/$/)
+  await page.getByRole('dialog', { name: 'Share this listing' }).getByRole('button', { name: 'Close', exact: true }).click()
+  await page.route('**/api/wishlist/7/', route => route.fulfill({ status: 500, json: { detail: 'Synthetic failure' } }))
+  await page.getByRole('button', { name: `Remove ${listing.title} from Wishlist`, exact: true }).click()
+  await expect(page.locator('main').getByRole('alert')).toContainText('Synthetic failure')
+  await expect(page.getByRole('button', { name: `Remove ${listing.title} from Wishlist`, exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.route('**/api/wishlist/7/', route => route.fulfill({ status: 204 }))
+  await page.getByRole('button', { name: `Remove ${listing.title} from Wishlist`, exact: true }).click()
+  await expect(page.getByText('No saved items match this selection.')).toBeVisible()
+})
+
+for (const theme of ['light', 'dark']) test(`${theme} six-sided viewer, gallery fallback and keyboard rotation`, async ({ page }, info) => {
+  await fixture(page, theme)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const image = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"><rect width="180" height="180" fill="#be185d"/><text x="20" y="90" fill="white">TEST PHOTO</text></svg>')
+  const surfaces = ['front', 'back', 'left', 'right', 'top', 'bottom'].map((side, index) => ({ id: index + 1, surface: side, slot_key: side, slot_label: side, alt_text: side, image, external_url: '', position: index }))
+  const complete = { ...listing, media: surfaces, viewer: { mode: 'turntable', config: {} } }
+  const incomplete = { ...complete, id: 8, title: 'Incomplete viewer', media: surfaces.slice(0, 3) }
+  await page.route('**/api/marketplace/listings/**', route => route.fulfill({ json: { results: [complete, incomplete], count: 2, next: null } }))
+  await page.goto('/marketplace/')
+  await expect(page.getByRole('heading', { name: 'Incomplete viewer' })).toBeVisible()
+  await page.getByRole('heading', { name: listing.title }).last().click()
+  const viewer = page.getByRole('group', { name: /3D product viewer/ })
+  await expect(viewer).toBeVisible()
+  const object = viewer.locator('div').first()
+  const before = await object.getAttribute('style')
+  await viewer.focus()
+  await page.keyboard.press('ArrowRight')
+  expect(await object.getAttribute('style')).not.toBe(before)
+  await page.getByRole('button', { name: 'back', exact: true }).click()
+  await expect(object).toHaveAttribute('style', /rotateY\(180deg\)/)
+  await page.getByRole('button', { name: 'Reset view' }).click()
+  await expect(object).toHaveAttribute('style', /rotateY\(-25deg\)/)
+  await page.screenshot({ path: info.outputPath('six-sided.png'), fullPage: true })
+  await page.getByRole('button', { name: 'Switch to image gallery' }).click()
+  await page.getByRole('button', { name: 'Show back', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Show back', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('heading', { name: 'Incomplete viewer' }).click()
+  await expect(viewer).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Show front', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Open 3D viewer' })).toHaveCount(0)
+})
+
+for (const theme of ['light', 'dark']) test(`${theme} Books department genres and independent format filters`, async ({ page }, info) => {
+  await fixture(page, theme)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const root = { ...category, slug: 'books', label: 'Books', viewer_mode: 'book_3d', browse_url: '/books/' }
+  const genre = { ...root, slug: 'fiction', label: 'Fiction', parent: 'books', browse_url: '/books/?category=fiction' }
+  const child = { ...genre, slug: 'mystery', label: 'Mystery', parent: 'fiction', browse_url: '/books/?category=mystery' }
+  await page.route('**/api/categories/**', route => route.fulfill({ json: { all: [root, genre, child], navbar: [{ ...root, children: [{ ...genre, children: [child] }] }] } }))
+  const book = { id: '8', slug: 'theme-test-book', title: 'Theme test book', author: 'Test author', year: '2026', stars: 0, desc: 'Synthetic book description', images: { front: '/icon-512.png' }, hasEbook: true, hasAudiobook: true, price: 0, isFree: true }
+  let params = new URLSearchParams()
+  await page.route('**/api/books-department/**', async route => { params = new URL(route.request().url()).searchParams; await route.fulfill({ json: { count: 1, next: null, results: [book] } }) })
+  await page.route('**/api/home/sections/**', route => route.fulfill({ json: { sections: [] } }))
+  await page.goto('/books/')
+  await expect(page.getByText('Theme test book').first()).toBeVisible()
+  await page.getByRole('navigation', { name: 'Browse by genre' }).getByRole('link', { name: 'Fiction' }).click()
+  await expect(page.getByRole('heading', { name: 'Fiction', exact: true }).first()).toBeVisible()
+  await page.getByRole('navigation', { name: 'Browse by genre' }).getByRole('link', { name: 'Mystery' }).click()
+  await expect(page.getByRole('heading', { name: 'Mystery', exact: true }).first()).toBeVisible()
+  await page.getByLabel('Browse by format').selectOption('audiobook')
+  await expect.poll(() => params.get('book_format')).toBe('audiobook')
+  expect(params.get('category')).toBe('mystery')
+  await page.getByLabel('Browse by format').selectOption('ebook')
+  await expect.poll(() => params.get('book_format')).toBe('ebook')
+  await page.screenshot({ path: info.outputPath('books-department.png'), fullPage: true })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
+})
+
+for (const theme of ['light', 'dark']) test(`${theme} public demonstration is separate from real commerce`, async ({ page }, info) => {
+  await fixture(page, theme)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const demo = { ...listing, is_demo: true, checkout_disabled: true, title: 'Hard-drive DEMO / NOT FOR SALE', url: '/showcase/?listing=contrast-test-laptop' }
+  await page.route('**/api/marketplace/demo-showcase/**', route => route.fulfill({ json: { count: 1, next: null, results: [demo] } }))
+  await page.goto('/showcase/')
+  await expect(page.getByRole('heading', { name: demo.title })).toBeVisible()
+  await page.getByRole('heading', { name: demo.title }).click()
+  await expect(page.getByText('This demonstration cannot be purchased or bid on.')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Buy Now|Send offer|Wishlist|Place bid/ })).toHaveCount(0)
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/)
+  await page.screenshot({ path: info.outputPath('demo-showcase.png'), fullPage: true })
+})
+
 // Missing previews fail rather than silently skipping server-rendered pages.
 for (const theme of ['light', 'dark']) for (const width of [320, 1440]) {
   test(`${theme} ${width}px server-rendered product, category, seller and auction`, async ({ page }, info) => {
