@@ -62,7 +62,6 @@ import { useCurrency, formatMoney } from '@/lib/money';
 import { edgeMask, useScrollEdges } from '@/components/category-nav/use-scroll-edges';
 import { ExpandableText } from '@/components/expandable-text';
 import { useSignalsOn } from '@/lib/site-config';
-import { Banners } from '@/components/offers/banners';
 import { nativeShare } from '@/lib/share';
 import { ShareSheet } from '@/components/share-sheet';
 
@@ -523,7 +522,7 @@ function SectionRow({
       <ul
         ref={rowRef}
         style={{ ...edgeMask(edges.start, edges.end), ['--bs-card-meta' as string]: 'var(--bs-section-meta)' }}
-        className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain px-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain scroll-px-6 px-6 py-5 sm:scroll-px-10 sm:px-10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {section.books.filter((book) => !hiddenIds?.has(book.id)).map((book, i) => (
           <li key={book.id} className="w-[44%] shrink-0 snap-start @min-[520px]:w-[30%] @min-[768px]:w-[200px]">
@@ -3074,7 +3073,7 @@ export function BooksShowcase({
           onClick={() => {
             const root = rootRef.current;
             if (!root) return;
-            root.scrollTo({ top: root.scrollHeight, behavior: 'smooth' });
+            document.getElementById('recommended-books')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }}
           className={`pointer-events-auto absolute bottom-2 left-1/2 z-[20] flex -translate-x-1/2 flex-col items-center gap-0.5 text-current/65 transition-opacity duration-300 @max-[760px]:bottom-1 ${
             uiMode === 'detail' ? 'opacity-100 delay-500' : 'pointer-events-none opacity-0'
@@ -3100,6 +3099,7 @@ export function BooksShowcase({
           <h1 className={`m-0 mb-2 line-clamp-2 text-[var(--brand-pink-text)] text-[clamp(22px,3.2cqw,42px)] font-extrabold leading-[1.12] tracking-[-0.02em] @max-[760px]:text-[clamp(20px,6cqw,32px)] ${dpChild(50)}`}>
             {selectedCfg?.title}
           </h1>
+          <p className={`mb-2 text-sm font-semibold text-current/65 ${dpChild(90)}`}>by {selectedCfg?.author || 'Unknown author'}{selectedCfg?.year ? ` · ${selectedCfg.year}` : ''}</p>
           <div className={`max-w-[54ch] text-current/75 text-[clamp(13px,1.1cqw,16px)] leading-[1.45] @max-[760px]:text-[13px] ${dpChild(130)}`}>
             <ExpandableText text={selectedCfg?.desc ?? ''} lines={4} desktopLines={6} />
           </div>
@@ -3115,8 +3115,6 @@ export function BooksShowcase({
                   <span className="text-[12px] text-current/55">Catalog rating</span>
                 )}
               </button>
-              <div className="h-4 w-px bg-current/20" />
-              <div className="text-[13px] italic text-current/60">{selectedCfg?.year}</div>
             </div>
             {ratingCount === 0 ? (
               <p className="text-[12px] text-current/65">
@@ -3416,12 +3414,7 @@ export function BooksShowcase({
         document.body,
       )}
 
-      {shelfActive && selectedCfg && (
-        <div className="w-full bg-[var(--bs-bg-light)] px-4 pt-6 dark:bg-[var(--bs-bg-dark)] sm:px-8">
-          <Banners placement="book" className="" />
-        </div>
-      )}
-      {shelfActive && selectedCfg && <RecommendedBooks book={selectedCfg} />}
+      {shelfActive && selectedCfg && <div id="recommended-books" className="scroll-mt-20"><RecommendedBooks book={selectedCfg} /></div>}
 
       {/* Not interested toast: reason picker → confirmed → error */}
       {hideToast && typeof document !== 'undefined' && createPortal(

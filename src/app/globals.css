@@ -197,6 +197,21 @@ body.book-detail-open .book-showcase {
   flex-shrink: 0;
 }
 
+/* The Books department stays in normal document flow. Its open-book shelf
+   can occupy one viewport, but never creates a second vertical scrollport. */
+.books-department-showcase {
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+.books-department-showcase[data-state="opening"],
+.books-department-showcase[data-state="detail"],
+.books-department-showcase[data-state="closing"] {
+  height: calc(100dvh - 4rem) !important;
+  min-height: calc(100dvh - 4rem) !important;
+  overflow: visible !important;
+}
+
 /* Pin the close button to the actual top-left corner, clear of any
    notch/status-bar safe area, instead of the plain fixed offset the
    @container breakpoint gives it. */

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, Suspense } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
 import {
   Home,
   BookOpen,
@@ -37,26 +36,11 @@ import {
   type AuthUser,
 } from "@/lib/auth-client"
 import { getReferralCode } from "@/lib/referral"
-import { useCategories } from "@/lib/categories"
 import { BrandLogo } from "@/components/brand-logo"
-import { CategoryBar } from "@/components/category-nav/category-bar"
 import { CategorySheet, openCategorySheet } from "@/components/category-nav/category-sheet"
-import { useSearchParams } from "next/navigation"
 import { getProStatus, getToken, refreshAccessToken, SessionEvictedError, tokenExpiresInMs } from "@/lib/api"
 
-/** The category being viewed (?category=…), for highlighting it. */
-function useActiveCategory() {
-  const sp = useSearchParams()
-  return (sp.get("category") || "").trim()
-}
-
-function NavCategoryBar({ categories }: { categories: Parameters<typeof CategoryBar>[0]["categories"] }) {
-  return <CategoryBar categories={categories} activeSlug={useActiveCategory()} />
-}
-
-function NavCategorySheet() {
-  return <CategorySheet activeSlug={useActiveCategory()} />
-}
+function NavCategorySheet() { return <CategorySheet activeSlug="" /> }
 
 const NavLink = ({
   href,
@@ -126,7 +110,6 @@ function NotchNavbarInner({
   const [referralCode, setReferralCode] = useState("")
   const [evictedNotice, setEvictedNotice] = useState(false)
   const accountRef = useRef<HTMLDivElement>(null)
-  const pathname = usePathname()
 
   useEffect(() => {
     listenForUserChanges()
@@ -231,8 +214,6 @@ function NotchNavbarInner({
 
   // Admin-defined (Django admin → Categories): which, order, labels,
   // icons, pinned. Desktop: "Priority + More" bar; phones: chips + sheet.
-  const { navbar: navCategories } = useCategories()
-
   const accountMenu = (
     <div className="py-1">
       <div className="px-3 py-2 text-xs text-muted-foreground truncate max-w-[220px]">
@@ -248,14 +229,18 @@ function NotchNavbarInner({
           Subscribe to Robot Reader
         </Link>
       )}
+      <Link href="/seller/profile/" onClick={() => setAccountOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5"><User className="w-4 h-4" />My Profile</Link>
+      <Link href="/seller/listings/" onClick={() => setAccountOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5"><Store className="w-4 h-4" />My Listings</Link>
       <Link
         href="/purchases"
         onClick={() => setAccountOpen(false)}
         className="flex items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5"
       >
         <BookOpen className="w-4 h-4" />
-        Purchases
+        My Purchases
       </Link>
+      <Link href="/wishlist/" onClick={() => setAccountOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5"><Heart className="w-4 h-4" />Wishlist</Link>
+      <Link href="/settings/?section=affiliate" onClick={() => setAccountOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5"><Handshake className="w-4 h-4" />Affiliate &amp; Rewards</Link>
       <Link
         href="/notes"
         onClick={() => setAccountOpen(false)}
@@ -265,12 +250,12 @@ function NotchNavbarInner({
         My notes
       </Link>
       <Link
-        href="/publish"
+        href="/publish/"
         onClick={() => setAccountOpen(false)}
         className="flex items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5"
       >
         <Upload className="w-4 h-4" />
-        Publish
+        Sell &amp; Publish
       </Link>
       <Link
         href="/dashboard"
@@ -305,18 +290,12 @@ function NotchNavbarInner({
         <span className="hidden xl:inline max-w-[90px] truncate">
           {user.name || user.email}
         </span>
-        {isPro && (
-          <span className="flex items-center gap-0.5 rounded-full bg-[#d4af37]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#a3811f]">
-            <Crown className="w-2.5 h-2.5" />
-            ROBOT READER
-          </span>
-        )}
         <ChevronDown className={`w-3.5 h-3.5 transition ${accountOpen ? "rotate-180" : ""}`} />
       </button>
       {accountOpen && (
         <div
           role="menu"
-          className="absolute right-0 top-[calc(100%+6px)] z-50 w-52 rounded-xl border border-foreground/10 bg-zinc-50 dark:bg-background shadow-lg"
+          className="absolute right-0 top-[calc(100%+6px)] z-50 max-h-[calc(100dvh-5rem)] w-64 overflow-y-auto rounded-xl border border-foreground/10 bg-zinc-50 shadow-lg dark:bg-background"
         >
           {accountMenu}
         </div>
@@ -384,20 +363,18 @@ function NotchNavbarInner({
 
                 <NavLink href="/" icon={Home} label="Home" />
                 <NavLink href="/marketplace" icon={Store} label="Marketplace" />
+                <NavLink href="/books/" icon={BookOpen} label="Books" />
                 <NavLink href="/auctions" icon={Gavel} label="Auctions" />
-
-                {/* "Priority + More": as many categories as fit on one
-                    line, the rest in a More menu (no scrollbar, no wrap). */}
-                <Suspense fallback={<div className="min-w-0 flex-1" />}>
-                  <NavCategoryBar categories={navCategories} />
-                </Suspense>
+                <button type="button" onClick={openCategorySheet} className="group flex shrink-0 items-center gap-1.5 whitespace-nowrap text-sm font-medium text-foreground/70 transition-colors hover:text-foreground" aria-label="Browse categories">
+                  <LayoutGrid className="h-4 w-4 opacity-70" />Categories
+                </button>
 
                 <div className="flex gap-1 pl-3 border-l border-foreground/10 shrink-0 items-center">
                   <button
                     type="button"
                     onClick={() => setSearchOpen(true)}
                     className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-foreground/5 transition-colors text-foreground/70 hover:text-foreground"
-                    aria-label="Search books"
+                    aria-label="Search products, services, and books"
                   >
                     <Search className="w-4 h-4" />
                   </button>
@@ -452,7 +429,7 @@ function NotchNavbarInner({
                   type="button"
                   onClick={() => setSearchOpen(true)}
                   className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-foreground/5 transition-colors text-foreground/70 hover:text-foreground"
-                  aria-label="Search books"
+                  aria-label="Search products, services, and books"
                 >
                   <Search className="w-4 h-4" />
                 </button>
@@ -506,9 +483,7 @@ function NotchNavbarInner({
 
       <BookSearchModal open={searchOpen} onOpenChange={setSearchOpen} />
 
-      <Suspense fallback={null}>
-        <NavCategorySheet />
-      </Suspense>
+      <NavCategorySheet />
       {menuMounted && (
           <div
             data-state={menuShown ? "open" : "closed"}
@@ -522,6 +497,10 @@ function NotchNavbarInner({
               <Link href="/marketplace" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
                 <Store className="w-5 h-5 opacity-70" />
                 <span className="font-medium text-foreground/90">Marketplace</span>
+              </Link>
+              <Link href="/books/" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
+                <BookOpen className="w-5 h-5 opacity-70" />
+                <span className="font-medium text-foreground/90">Books</span>
               </Link>
               <Link href="/auctions" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
                 <Gavel className="w-5 h-5 opacity-70" />
@@ -566,12 +545,6 @@ function NotchNavbarInner({
                 <>
                   <div className="px-3 py-2 flex items-center gap-2 text-sm text-foreground/70 truncate">
                     {user.name || user.email}
-                    {isPro && (
-                      <span className="flex items-center gap-0.5 rounded-full bg-[#d4af37]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#a3811f]">
-                        <Crown className="w-2.5 h-2.5" />
-                        ROBOT READER
-                      </span>
-                    )}
                   </div>
                   {!isPro && (
                     <Link href="/pro" className="flex items-center gap-3 p-3 rounded-lg bg-[#d4af37]/15 hover:bg-[#d4af37]/25 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
@@ -579,14 +552,13 @@ function NotchNavbarInner({
                       <span className="font-medium text-[#a3811f]">Subscribe to Robot Reader</span>
                     </Link>
                   )}
-                  <Link href="/publish" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
+                  <Link href="/publish/" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
                     <Upload className="w-5 h-5 opacity-70" />
-                    <span className="font-medium text-foreground/90">Publish</span>
+                    <span className="font-medium text-foreground/90">Sell &amp; Publish</span>
                   </Link>
-                  <Link href="/sell" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
-                    <Store className="w-5 h-5 opacity-70" />
-                    <span className="font-medium text-foreground/90">Sell a product</span>
-                  </Link>
+                  <Link href="/seller/profile/" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}><User className="w-5 h-5 opacity-70"/><span className="font-medium text-foreground/90">My Profile</span></Link>
+                  <Link href="/seller/listings/" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}><Store className="w-5 h-5 opacity-70"/><span className="font-medium text-foreground/90">My Listings</span></Link>
+                  <Link href="/settings/?section=affiliate" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}><Handshake className="w-5 h-5 opacity-70"/><span className="font-medium text-foreground/90">Affiliate &amp; Rewards</span></Link>
                   <Link href="/dashboard" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
                     <LayoutDashboard className="w-5 h-5 opacity-70" />
                     <span className="font-medium text-foreground/90">Dashboard</span>
@@ -625,12 +597,8 @@ function NotchNavbarInner({
   )
 }
 
-// Components using useSearchParams() require a Suspense
-// boundary or the static export's build-time prerender of /_not-found fails.
-// fallback={null}: this is a synchronous, no-real-async-work hook in a
-// client-only render, so the boundary resolves same-tick in practice - null
-// is only ever visible for a page that isn't the focused editor route
-// briefly rendering with the nav not yet shown, which is imperceptible.
+// Keep the shared header independent of route query parameters so it can
+// render consistently during static export and hydration.
 export function NotchNavbar(props: React.HTMLAttributes<HTMLElement>) {
   return (
     <Suspense fallback={null}>
