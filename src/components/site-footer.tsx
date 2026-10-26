@@ -71,7 +71,7 @@ function ExtraLinks({ f, className }: { f: Footer; className: string }) {
         <li key={`${l.label}-${l.href}`}>
           <FooterLinkItem
             link={l}
-            className="inline-flex min-h-[32px] items-center text-xs font-medium text-foreground/60 underline-offset-2 hover:text-foreground hover:underline"
+            className="inline-flex min-h-[32px] items-center text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
           />
         </li>
       ))}
@@ -96,7 +96,7 @@ function FooterAccordion({ title, links }: { title: string; links: FooterLink[] 
           {title}
           <ChevronDown
             aria-hidden
-            className={`h-4 w-4 text-foreground/50 motion-safe:transition-transform motion-safe:duration-200 ${open ? "rotate-180" : ""}`}
+            className={`h-4 w-4 text-muted-foreground motion-safe:transition-transform motion-safe:duration-200 ${open ? "rotate-180" : ""}`}
           />
         </button>
       </h3>
@@ -136,7 +136,7 @@ function PhoneFooter({ year, f }: { year: number; f: Footer }) {
         <Link href="/" className="inline-flex items-center gap-2">
           <BrandLogo size={28} className="h-7 w-7 rounded-md object-contain" />
           <span className="text-sm font-semibold text-foreground">PlugYard</span>
-          <span className="text-xs text-foreground/50">· {f.taglineShort}</span>
+          <span className="text-xs text-muted-foreground">· {f.taglineShort}</span>
         </Link>
         <a
           href={`mailto:${f.supportEmail}`}
@@ -146,7 +146,7 @@ function PhoneFooter({ year, f }: { year: number; f: Footer }) {
           {f.supportEmail}
         </a>
         <ExtraLinks f={f} className="flex flex-wrap gap-x-4" />
-        <p className="text-xs leading-relaxed text-foreground/45">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           © {year} PlugYard ·{" "}
           {policyLinks.map((l, i) => (
             <span key={l.href}>
@@ -166,7 +166,7 @@ function SiteFooterInner() {
   const year = new Date().getFullYear()
   // Admin-defined categories (same list as the navbar), not a fixed list.
   const { navbar } = useCategories()
-  const browseLinks = navbar.map((c) => ({ href: categoryHref(c.slug), label: c.label }))
+  const browseLinks = navbar.map((c) => ({ href: categoryHref(c), label: c.label }))
   const f = useFooter()
 
   // The focused editor view is a full-screen app-like tool (own fixed
@@ -194,7 +194,7 @@ function SiteFooterInner() {
                 PlugYard
               </span>
             </Link>
-            <p className="mt-3 max-w-xs text-sm leading-relaxed text-foreground/55">{f.taglineLong}</p>
+            <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">{f.taglineLong}</p>
 
             {/* Contact — visible */}
             <a
@@ -212,7 +212,7 @@ function SiteFooterInner() {
                 <Mail className="h-4 w-4" />
               </span>
               <span className="min-w-0">
-                <span className="block text-[11px] font-semibold uppercase tracking-wider text-foreground/45">
+                <span className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Contact
                 </span>
                 <span className="block truncate font-semibold text-foreground underline-offset-2 hover:underline">
@@ -225,7 +225,7 @@ function SiteFooterInner() {
 
           {/* Browse */}
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/40">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Browse
             </h3>
             <ul className="mt-4 space-y-2.5">
@@ -244,7 +244,7 @@ function SiteFooterInner() {
 
           {/* Tools & Pro */}
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/40">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               {f.toolsHeading}
             </h3>
             <ul className="mt-4 space-y-2.5">
@@ -258,7 +258,7 @@ function SiteFooterInner() {
 
           {/* Account */}
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/40">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               {f.accountHeading}
             </h3>
             <ul className="mt-4 space-y-2.5">
@@ -272,7 +272,7 @@ function SiteFooterInner() {
 
           {/* Legal */}
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/40">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               {f.legalHeading}
             </h3>
             <ul className="mt-4 space-y-2.5">
@@ -292,14 +292,14 @@ function SiteFooterInner() {
 
         {/* Bottom bar */}
         <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-foreground/5 pt-6 sm:flex-row sm:items-center">
-          <p className="text-xs text-foreground/45">{fill(f.copyright, { year })}</p>
+          <p className="text-xs text-muted-foreground">{fill(f.copyright, { year })}</p>
           <a
             href={`mailto:${f.supportEmail}`}
             className="text-xs font-medium text-foreground/70 hover:text-foreground hover:underline"
           >
             {f.supportEmail}
           </a>
-          <p className="inline-flex items-center gap-1.5 text-xs text-foreground/40">
+          <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
             <BookOpen className="h-3.5 w-3.5 opacity-70" />
             {f.motto}
           </p>

@@ -1,33 +1,16 @@
 {
   "seo": {
-    "seo.default_title": "PlugYard — Buy or Sell eBooks & Audiobooks Online",
-    "seo.description": "PlugYard — Kenya's eBook and audiobook marketplace. Buy, read, and listen instantly — no account required. Publish your own eBooks and audiobooks, set your price, and get paid. AI-powered narration. Books, electronics, furniture, vehicles, and services. Business, career, academic, personal finance, and lifestyle.",
+    "seo.default_title": "PlugYard — Products, Books and Services",
+    "seo.description": "Discover products, books and services on PlugYard. Browse departments, explore independent sellers and enjoy the built-in ebook reader.",
     "seo.keywords": [
       "PlugYard",
-      "ebook Kenya",
-      "audiobook Kenya",
-      "buy ebook without account",
-      "digital bookstore Kenya",
-      "online marketplace Kenya",
-      "PDF reader online",
-      "products and services Kenya",
-      "instant ebook download Kenya",
-      "business guides Kenya",
-      "academic ebooks Kenya",
-      "career guides Kenya",
-      "personal finance Kenya",
-      "lifestyle ebooks Kenya",
-      "PlugYard Robot Reader",
-      "text to speech ebooks Kenya",
-      "KRA tax guide",
-      "KASNEB study notes",
-      "CBC study materials",
-      "employment contract Kenya",
-      "sign up PlugYard",
-      "login PlugYard"
+      "marketplace",
+      "products",
+      "books",
+      "services"
     ],
-    "seo.og_description": "Buy eBooks and audiobooks instantly — no account needed. Publish books, products, and services, set your price, and get paid.",
-    "seo.og_title": "PlugYard — Buy or Sell eBooks & Audiobooks Online",
+    "seo.og_description": "Explore products, books and services on PlugYard.",
+    "seo.og_title": "PlugYard — Products, Books and Services",
     "seo.page.bookmarks.description": "",
     "seo.page.bookmarks.title": "Your Bookmarks",
     "seo.page.checkout.description": "",
@@ -35,11 +18,11 @@
     "seo.page.checkout_success.description": "",
     "seo.page.checkout_success.title": "Order Confirmed",
     "seo.page.dashboard.description": "",
-    "seo.page.dashboard.title": "Publisher Dashboard",
+    "seo.page.dashboard.title": "Your Dashboard",
     "seo.page.forgot_password.description": "",
     "seo.page.forgot_password.title": "Forgot Password",
     "seo.page.home.description": "Kenya's marketplace for books, products, and services. Buy and instantly read or listen to digital books, or discover local sellers and services. Sign up to publish listings and track purchases.",
-    "seo.page.home.title": "PlugYard — Buy or Sell eBooks & Audiobooks | No Account Needed to Buy",
+    "seo.page.home.title": "PlugYard — Products, Books and Services",
     "seo.page.library_guest.description": "",
     "seo.page.library_guest.title": "Your books",
     "seo.page.login.description": "Log in to manage listings, published books, offers, sales, and purchases.",
@@ -49,7 +32,7 @@
     "seo.page.pro.description": "",
     "seo.page.pro.title": "Robot Reader Subscription",
     "seo.page.publish.description": "",
-    "seo.page.publish.title": "Publish a Book",
+    "seo.page.publish.title": "Sell or Publish",
     "seo.page.purchases.description": "",
     "seo.page.purchases.title": "Your Purchases",
     "seo.page.refund_policy.description": "PlugYard's refund policy for digital ebook and audiobook purchases, including ad balance top-ups and how to request a refund.",
@@ -58,7 +41,7 @@
     "seo.page.reset_password.title": "Reset Password",
     "seo.page.settings.description": "",
     "seo.page.settings.title": "Account Settings",
-    "seo.page.signup.description": "Create a free PlugYard account to publish books and marketplace listings, save bookmarks, make offers, and track purchases.",
+    "seo.page.signup.description": "Create a free PlugYard account to publish books and marketplace listings, save a Wishlist, make offers, and track purchases.",
     "seo.page.signup.title": "Sign Up — Create a Free Account | PlugYard",
     "seo.page.terms.description": "Read PlugYard's Terms & Conditions: account use, free and paid titles, payments, delivery, and publishing on the platform.",
     "seo.page.terms.title": "Terms & Conditions",
@@ -67,9 +50,9 @@
     "seo.page.verify_email.description": "",
     "seo.page.verify_email.title": "Verify Your Email",
     "seo.title_template": "%s | PlugYard",
-    "seo.twitter_description": "Buy or sell eBooks & audiobooks online. No account to purchase. Publish books, products, and services and get paid.",
-    "seo.twitter_title": "PlugYard — Buy eBooks & Audiobooks Online",
-    "seo.website_description": "Kenya's eBook and audiobook marketplace — buy, publish, and sell digital titles online."
+    "seo.twitter_description": "Explore products, books and services on PlugYard.",
+    "seo.twitter_title": "PlugYard Marketplace",
+    "seo.website_description": "An online marketplace for products, books and services, with a built-in ebook reader."
   },
   "texts": {
     "checkout.account_linked": "Your payment will be linked to this account automatically. Use this email to access your downloads any time.",
@@ -115,8 +98,8 @@
         "value": "/settings"
       },
       {
-        "label": "Bookmarks",
-        "value": "/bookmarks"
+        "label": "Wishlist",
+        "value": "/wishlist"
       }
     ],
     "footer.app_badges": [],
@@ -126,7 +109,7 @@
     "footer.social_links": [],
     "footer.tagline_long": "Kenya's marketplace for books, products, and services. Buy digital titles instantly.",
     "footer.tagline_short": "Kenya's marketplace",
-    "footer.tools_heading": "Reading tools",
+    "footer.tools_heading": "Marketplace",
     "footer.tools_links": [
       {
         "label": "Robot Reader Subscription",
@@ -141,8 +124,8 @@
         "value": "/purchases"
       },
       {
-        "label": "Bookmarks",
-        "value": "/bookmarks"
+        "label": "Wishlist",
+        "value": "/wishlist"
       }
     ],
     "install.button": "Install the app",
@@ -173,57 +156,26 @@
       }
     ],
     "invite.title": "Why create a PlugYard account",
+    "marketplace.categories_title": "Browse departments",
     "marketplace.hero_description": "Discover approved products, books, and services from independent sellers.",
     "marketplace.hero_eyebrow": "PlugYard Marketplace",
     "marketplace.hero_title": "Find something useful, rare, or made for you.",
+    "marketplace.home_sections": [
+      {
+        "label": "New arrivals",
+        "value": "latest"
+      }
+    ],
     "marketplace.recommendations_description": "Current, public listings selected from your permitted marketplace activity.",
     "marketplace.recommendations_title": "Recommended for You",
     "marketplace.sell_cta": "Sell on PlugYard",
-    "marquee.items": [
-      "Buy eBooks & Audiobooks — No Account Needed",
-      "Discover Products and Services from Local Sellers",
-      "Smart Built-In PDF Reader",
-      "Instant Download After Purchase",
-      "Text-to-Speech Audio Narration",
-      "Agribusiness loan plans",
-      "County tender & RFQ templates",
-      "KRA tax & SME bookkeeping",
-      "NGO / CBO proposal frameworks",
-      "Hospitality SOPs & recipe costing",
-      "Chama constitutions",
-      "Kenyan lease & tenancy forms",
-      "Employment contracts",
-      "ATS CVs & cover letters",
-      "PSC interview prep",
-      "NGO & UN application packs",
-      "Remote work guides",
-      "LinkedIn optimization",
-      "TSC promotion notes",
-      "KASNEB / EBK / Cisco blueprints",
-      "CBC assessment notes",
-      "KCSE revision packs",
-      "Nursing attachment logbooks",
-      "KSL revision outlines",
-      "Set-book guides",
-      "CPA summaries",
-      "Land-buying due diligence",
-      "Ardhisasa manuals",
-      "Budget & debt planners",
-      "Importation blueprints",
-      "Nairobi side-hustle planners",
-      "Kenyan meal plans",
-      "Wedding & ruracio budgets",
-      "Apartment layout plans",
-      "Poultry health charts",
-      "Wellness workbooks",
-      "Phonics worksheets",
-      "Car maintenance logs"
-    ],
+    "marquee.items": [],
     "notfound.body": "The link may be old or mistyped. The shelf is still open.",
     "notfound.cta": "Back to the books",
     "notfound.title": "This page isn't here",
     "off.ads": "Ads are paused for now. Your ad balance is kept, and nothing is charged while ads are off.",
     "off.affiliate": "Invite rewards are paused for now. Rewards already earned stay in your wallet.",
+    "off.auctions": "Auction creation and bidding are paused while existing auction records remain available.",
     "off.boosts": "Boosts are paused for now. Boosts already running finish as paid.",
     "off.guest_checkout": "Buying without an account is paused for now. Sign in or create a free account to buy. Earlier guest purchases still open from their email link.",
     "off.marketplace": "General marketplace listings are being prepared. Existing books remain available.",
@@ -241,6 +193,8 @@
       }
     ],
     "pro.headline": "Listen to books with Robot Reader",
+    "publish.entry_description": "Choose a department to see its publishing requirements. Books retain their PDF, cover and audiobook workflow.",
+    "publish.entry_title": "What would you like to sell or publish?",
     "publish.guest_intro": "Publishing needs an account so the title, the payout, and the invite reward attach to a real person — not a browser tab. Create one to upload a PDF, set a price or mark it free, and earn when readers buy. Install PlugYard afterwards if you want to check sales and reviews from your home screen.",
     "publish.intro": "Required: front, spine, back, and PDF. Audio is optional. An admin reviews before it goes on the shelf.",
     "publish.sneak_help": "Sneak view is the number of pages a visitor can read before buying. Example: 4 means the first four pages only. Use 0 to turn sneak view off.",

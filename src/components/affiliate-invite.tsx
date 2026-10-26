@@ -48,7 +48,7 @@ export function AffiliateInvite({
       </p>
 
       <div>
-        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-foreground/50">
+        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Invite link
         </p>
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -66,7 +66,7 @@ export function AffiliateInvite({
       </div>
 
       <div>
-        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-foreground/50">
+        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Referral code
         </p>
         <div className="flex flex-col gap-2 sm:flex-row">

@@ -81,7 +81,7 @@ function CreditsPaidInner() {
         action={{ href: back, label: 'Return to what you were reading' }}
       >
         <p>{error}</p>
-        <p className="mt-2 text-foreground/55">
+        <p className="mt-2 text-muted-foreground">
           If money left your account, your credits are added as soon as the payment is confirmed.
           You do not need to pay again.
         </p>
@@ -97,7 +97,7 @@ export default function CreditsPaidPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-[50vh] items-center justify-center text-sm text-foreground/50">
+        <div className="flex min-h-[50vh] items-center justify-center text-sm text-muted-foreground">
           Confirming credits…
         </div>
       }

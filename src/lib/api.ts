@@ -1487,6 +1487,10 @@ export async function unsubscribePush(endpoint?: string, call?: CallOptions) {
 // ─── Part B: categories, personalised sections, personalisation ──────────
 
 export type CategoryInfo = {
+  parent?: string | null
+  viewer_mode?: string
+  browse_url?: string
+  children?: CategoryInfo[]
   slug: string
   label: string
   icon: string

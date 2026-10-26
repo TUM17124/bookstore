@@ -24,39 +24,17 @@ const SITE = "https://plugyard.com"
 const baseMetadata: Metadata = {
   metadataBase: new URL(SITE),
   title: {
-    default: "PlugYard — Buy or Sell eBooks & Audiobooks Online",
+    default: "PlugYard Marketplace",
     template: "%s | PlugYard",
   },
   description:
     "PlugYard is Kenya's marketplace for books, electronics, vehicles, furniture, services, and more. Shop public listings or sell your own products.",
-  keywords: [
-    "PlugYard",
-    "ebook Kenya",
-    "audiobook Kenya",
-    "buy ebook without account",
-    "digital bookstore Kenya",
-    "products and services Kenya",
-    "online marketplace Kenya",
-    "instant ebook download Kenya",
-    "business guides Kenya",
-    "academic ebooks Kenya",
-    "career guides Kenya",
-    "personal finance Kenya",
-    "lifestyle ebooks Kenya",
-    "Robot Reader Subscription",
-    "text to speech ebooks Kenya",
-    "KRA tax guide",
-    "KASNEB study notes",
-    "CBC study materials",
-    "employment contract Kenya",
-    "sign up PlugYard",
-    "login PlugYard",
-  ],
+  keywords: ["PlugYard", "marketplace"],
   authors: [{ name: "PlugYard", url: SITE }],
   creator: "PlugYard",
   publisher: "PlugYard",
   applicationName: "PlugYard",
-  category: "education",
+  category: "shopping",
   referrer: "origin-when-cross-origin",
   robots: {
     index: true,
@@ -86,7 +64,7 @@ const baseMetadata: Metadata = {
     locale: "en_KE",
     url: SITE,
     siteName: "PlugYard",
-    title: "PlugYard — Buy or Sell eBooks & Audiobooks Online",
+    title: "PlugYard Marketplace",
     description:
       "Shop books, products, and services from independent sellers on PlugYard.",
     images: [
@@ -100,13 +78,10 @@ const baseMetadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "PlugYard — Buy eBooks & Audiobooks Online",
+    title: "PlugYard Marketplace",
     description:
       "Shop books, products, and services or publish your own listing on PlugYard.",
     images: ["/icon-512.png"],
-  },
-  verification: {
-    google: "G5QylOyQKIG9YdPoVnVJAABBv2hONBE7kGmMH7XpdCQ",
   },
 }
 
@@ -115,6 +90,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const title = seoText(t, "seo.default_title")
   return {
     ...baseMetadata,
+    metadataBase: new URL(seoText(t, "seo.canonical_domain") || SITE),
+    verification: seoText(t, "seo.search_console_verification") ? { google: seoText(t, "seo.search_console_verification") } : undefined,
     title: { default: title, template: seoText(t, "seo.title_template") || "%s | PlugYard" },
     description: seoText(t, "seo.description"),
     keywords: seoList(t, "seo.keywords"),
@@ -142,7 +119,7 @@ const jsonLd = (websiteDescription: string) => ({
       "description": websiteDescription,
       "potentialAction": {
         "@type": "SearchAction",
-        "target": { "@type": "EntryPoint", "urlTemplate": `${SITE}/?q={search_term_string}` },
+        "target": { "@type": "EntryPoint", "urlTemplate": `${SITE}/marketplace/?search={search_term_string}` },
         "query-input": "required name=search_term_string",
       },
     },
@@ -161,7 +138,7 @@ const jsonLd = (websiteDescription: string) => ({
       "url": SITE,
       "potentialAction": {
         "@type": "SearchAction",
-        "target": `${SITE}/?q={search_term_string}`,
+        "target": `${SITE}/marketplace/?search={search_term_string}`,
         "query-input": "required name=search_term_string",
       },
     },
@@ -183,7 +160,7 @@ export default async function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: preloadScript(process.env.NEXT_PUBLIC_API_URL || "") }} />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd(seoText(seo, "seo.website_description"))) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd(seoText(seo, "seo.website_description"))).replace(/</g, "\\u003c") }}
         />
       </head>
       <body className="antialiased">

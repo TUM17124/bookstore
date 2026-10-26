@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../../public/theme-tokens.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
@@ -7,7 +8,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -27,6 +28,8 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -48,67 +51,21 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
+
 
 
 /* Part B bug 2: the site picks its own light/dark theme. "only light"
    forbids phone browsers' automatic dark mode (Chrome Android, Samsung
    Internet) from repainting light pages, which turned the cream reader
    brown. Native controls follow the site's theme, not the OS. */
-:root {
-  color-scheme: only light;
-}
-:root.dark {
-  color-scheme: dark;
-}
+
+
 
 /* Brand accent (pink) and its readable text versions. Pink on white is only
    ~2:1, so pink TEXT in light mode uses a deeper pink; pink BACKGROUNDS keep
    the brand pink with near-black text on them. */
-:root {
-  --brand-pink: #f591ac;
-  --brand-pink-text: #be185d;
-  --on-brand: #1a1a1a;
-  /* Native controls (checkboxes, radios, range) and default focus rings in
-     the site's own colours instead of the browser's blue. */
-  accent-color: var(--foreground);
-}
-:root.dark {
-  --brand-pink-text: #f591ac;
-}
+
+
 /* Reader: text selection in the brand pink, readable on white and on the
    dark body (instead of the browser's blue). */
 .reader-surface ::selection {
@@ -123,39 +80,7 @@
    menus and sheets all use --background; surfaces are separated by
    --border, not by lighter blacks. muted/secondary/accent are only the
    faint hover/chip tint (the dark twin of light mode's 0.97 grey). */
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.205 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.205 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.205 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.145 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.205 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-}
+
 
 @keyframes marquee-left {
   from {
@@ -294,6 +219,21 @@ body.book-detail-open .book-close-btn {
   }
   body {
     @apply bg-background text-foreground;
+  }
+  /* Native controls must inherit the chosen site theme too. Utility classes
+     can still specialize reader controls and deliberately contrasting buttons. */
+  :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="color"]), select, textarea) {
+    color: var(--foreground);
+    background-color: var(--background);
+    border-color: var(--input);
+  }
+  :where(option, optgroup) {
+    color: var(--foreground);
+    background-color: var(--background);
+  }
+  :where(input, textarea)::placeholder {
+    color: var(--muted-foreground);
+    opacity: 1;
   }
   html {
     @apply font-sans;

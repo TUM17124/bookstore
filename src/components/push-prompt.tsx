@@ -231,7 +231,7 @@ export function PushPrompt() {
       {msg ? (
         <p
           role={msgIsSoft ? "status" : "alert"}
-          className={`mt-2 text-sm ${msgIsSoft ? "text-muted-foreground dark:text-neutral-400" : "text-red-600"}`}
+          className={`mt-2 text-sm ${msgIsSoft ? "text-muted-foreground dark:text-neutral-400" : "text-destructive"}`}
         >
           {msg}
         </p>

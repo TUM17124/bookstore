@@ -6,7 +6,7 @@ export type PaymentResultKind = 'pending' | 'success' | 'failed'
 const TONE: Record<PaymentResultKind, { ring: string; icon: string; mark: string }> = {
   pending: { ring: 'border-foreground/10', icon: 'bg-foreground/10 text-foreground', mark: '…' },
   success: { ring: 'border-emerald-500/30', icon: 'bg-emerald-500/15 text-emerald-600', mark: '✓' },
-  failed: { ring: 'border-red-500/30', icon: 'bg-red-500/15 text-red-600', mark: '!' },
+  failed: { ring: 'border-red-500/30', icon: 'bg-red-500/15 text-destructive', mark: '!' },
 }
 
 /** One themed card for the pages Paystack sends people back to. */

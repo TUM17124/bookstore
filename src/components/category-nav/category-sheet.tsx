@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { DepartmentMenu } from "./department-menu"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { X } from "lucide-react"
 import { CategoryIcon, categoryHref, useCategories } from "@/lib/categories"
@@ -112,7 +113,7 @@ export function CategorySheet({ activeSlug }: { activeSlug: string }) {
                 !activeSlug ? "border-foreground bg-foreground/10" : "border-foreground/15"
               }`}
             >
-              All books
+              All departments
             </Link>
           </li>
           {navbar.map((c) => {
@@ -120,7 +121,7 @@ export function CategorySheet({ activeSlug }: { activeSlug: string }) {
             return (
               <li key={c.slug} className="min-w-0">
                 <Link
-                  href={categoryHref(c.slug)}
+                  href={categoryHref(c)}
                   onClick={close}
                   aria-current={on ? "page" : undefined}
                   className={`flex min-h-[48px] items-center gap-2.5 rounded-2xl border px-3 text-[15px] font-semibold ${
@@ -130,6 +131,7 @@ export function CategorySheet({ activeSlug }: { activeSlug: string }) {
                   <CategoryIcon name={c.icon} className="h-5 w-5 shrink-0 opacity-75" />
                   <span className="min-w-0 break-words leading-tight">{c.label}</span>
                 </Link>
+                <DepartmentMenu category={c} onNavigate={close} inline />
               </li>
             )
           })}

@@ -235,7 +235,7 @@ function NotchNavbarInner({
 
   const accountMenu = (
     <div className="py-1">
-      <div className="px-3 py-2 text-xs text-foreground/50 truncate max-w-[220px]">
+      <div className="px-3 py-2 text-xs text-muted-foreground truncate max-w-[220px]">
         {user?.name || user?.email}
       </div>
       {!isPro && (
@@ -379,7 +379,7 @@ function NotchNavbarInner({
             <div className="relative w-full h-full flex items-end justify-between pb-2 px-2 sm:px-4 lg:px-5">
               <div className="hidden lg:flex items-center gap-3 xl:gap-4 mb-1 w-full min-w-0">
                 <Link href="/" className="flex items-center shrink-0" aria-label="Home">
-                  <BrandLogo size={32} alt="Logo" className="h-8 w-8 rounded-lg object-contain" />
+                  <BrandLogo size={32} alt="PlugYard" className="h-8 w-8 rounded-lg object-contain" />
                 </Link>
 
                 <NavLink href="/" icon={Home} label="Home" />
@@ -433,7 +433,7 @@ function NotchNavbarInner({
 
               <div className="lg:hidden flex items-center gap-2 mb-1">
                 <Link href="/" className="flex items-center shrink-0" aria-label="Home">
-                  <BrandLogo size={28} alt="Logo" className="h-7 w-7 rounded-md object-contain" />
+                  <BrandLogo size={28} alt="PlugYard" className="h-7 w-7 rounded-md object-contain" />
                 </Link>
                 <button
                   type="button"
@@ -492,7 +492,7 @@ function NotchNavbarInner({
       </header>
 
       {evictedNotice && (
-        <div className="fixed inset-x-0 top-16 z-40 flex items-center justify-center gap-3 bg-amber-500/15 px-4 py-2.5 text-center text-sm text-amber-800 dark:text-amber-300">
+        <div className="fixed inset-x-0 top-16 z-40 flex items-center justify-center gap-3 bg-amber-500/15 px-4 py-2.5 text-center text-sm text-warning dark:text-amber-300">
           <span>You&apos;ve been signed out because you logged in on another device.</span>
           <button
             type="button"
@@ -546,7 +546,7 @@ function NotchNavbarInner({
               </button>
 
               <div className="h-px bg-foreground/10 my-3" />
-              <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-foreground/40">Library</p>
+              <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Library</p>
               <Link href="/purchases" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
                 <BookOpen className="w-5 h-5 opacity-70" />
                 <span className="font-medium text-foreground/90">Purchases</span>
@@ -560,7 +560,7 @@ function NotchNavbarInner({
                 <span className="font-medium text-foreground/90">Wishlist</span>
               </Link>
               <div className="h-px bg-foreground/10 my-3" />
-              <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-foreground/40">Account</p>
+              <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Account</p>
 
               {!authReady ? null : user ? (
                 <>

@@ -13,7 +13,7 @@ export function PolicyPage({
     <main className="mx-auto max-w-2xl px-4 py-12 sm:px-6 sm:py-16">
       <Link
         href="/"
-        className="text-sm text-foreground/50 transition-colors hover:text-foreground"
+        className="text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         ← Home
       </Link>
@@ -21,7 +21,7 @@ export function PolicyPage({
         {title}
       </h1>
       {updated && (
-        <p className="mt-2 text-sm text-foreground/45">Last updated: {updated}</p>
+        <p className="mt-2 text-sm text-muted-foreground">Last updated: {updated}</p>
       )}
       <div className="prose prose-neutral dark:prose-invert mt-8 max-w-none text-[15px] leading-relaxed text-foreground/80 [&_h2]:mt-8 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-foreground [&_p]:mt-3 [&_ul]:mt-3 [&_ul]:list-disc [&_ul]:pl-5">
         {children}

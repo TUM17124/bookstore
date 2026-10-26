@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useBookmarks } from '@/components/bookmarks-context'
 import { BooksShowcase } from '@/components/ui/books-showcase'
-import { OfferMarquee } from '@/components/offer-marquee'
 import { getToken } from '@/lib/api'
 import { useText } from '@/lib/site-config'
 
@@ -22,7 +21,7 @@ export default function BookmarksPage() {
 
   if (loading) {
     return (
-      <main className="flex min-h-[calc(100dvh-4rem)] items-center justify-center text-sm text-foreground/50">
+      <main className="flex min-h-[calc(100dvh-4rem)] items-center justify-center text-sm text-muted-foreground">
         Loading Wishlist…
       </main>
     )
@@ -31,11 +30,10 @@ export default function BookmarksPage() {
   if (bookmarks.length === 0) {
     return (
       <main className="flex min-h-[calc(100dvh-4rem)] flex-col">
-        <OfferMarquee />
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-foreground/60">
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
           <p>{emptyText}</p>
           {!loggedIn && (
-            <p className="max-w-sm text-foreground/45">
+            <p className="max-w-sm text-muted-foreground">
               Guest saves stay on this device. Create an account so a
               Wishlist is still there when you switch phones.{' '}
               <Link href="/login" className="font-semibold text-foreground underline underline-offset-2">
@@ -54,9 +52,8 @@ export default function BookmarksPage() {
 
   return (
     <main className="home-shelf">
-      <OfferMarquee />
       {!loggedIn && (
-        <p className="shrink-0 px-4 py-2 text-center text-xs text-foreground/50">
+        <p className="shrink-0 px-4 py-2 text-center text-xs text-muted-foreground">
           Saved on this device only.{' '}
           <Link href="/login" className="font-medium text-foreground underline underline-offset-2">
             Log in

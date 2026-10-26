@@ -39,7 +39,7 @@ export function GuestLinkRequestForm({
 
   return (
     <form onSubmit={onSubmit} className={`mt-3 ${className}`}>
-      <label className="block text-left text-xs font-semibold text-foreground/60" htmlFor="guest-link-email">
+      <label className="block text-left text-xs font-semibold text-muted-foreground" htmlFor="guest-link-email">
         Purchase email
       </label>
       <div className="mt-1 flex gap-2">
@@ -66,7 +66,7 @@ export function GuestLinkRequestForm({
           Get a new access link
         </ActionButton>
       </div>
-      <ActionStatus action={send} className="mt-2 text-sm text-foreground/60" />
+      <ActionStatus action={send} className="mt-2 text-sm text-muted-foreground" />
       {send.errorText ? (
         <p className="mt-2 text-sm text-red-500" role="alert">
           {send.errorText}

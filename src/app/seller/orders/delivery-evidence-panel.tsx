@@ -30,7 +30,7 @@ export default function DeliveryEvidencePanel({ orders, onChanged, onNotice }: {
 
   return <section className="mt-8 rounded-3xl border border-dashed p-5">
     <h2 className="font-black">Private delivery evidence</h2>
-    <p className="mt-1 text-sm text-foreground/60">Upload a PDF, JPEG, or PNG up to 10 MB. Only order participants and authorized reviewers can access it.</p>
+    <p className="mt-1 text-sm text-muted-foreground">Upload a PDF, JPEG, or PNG up to 10 MB. Only order participants and authorized reviewers can access it.</p>
     <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto]">
       <select value={orderId} onChange={(event) => setOrderId(event.target.value)} className="min-h-11 rounded-xl border px-3">
         <option value="">Choose order</option>
@@ -40,6 +40,6 @@ export default function DeliveryEvidencePanel({ orders, onChanged, onNotice }: {
       <input value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} placeholder="Evidence note" className="min-h-11 rounded-xl border px-3"/>
       <button onClick={() => void upload()} disabled={busy || !file || !orderId} className="min-h-11 rounded-xl bg-pink-600 px-4 font-bold text-white disabled:opacity-50">{busy ? "Uploading…" : "Upload securely"}</button>
     </div>
-    {orders.some((order) => order.delivery_evidence.length) && <div className="mt-4 grid gap-2 sm:grid-cols-2">{orders.flatMap((order) => order.delivery_evidence.map((item) => <div key={item.id} className="rounded-xl border p-3 text-sm"><strong>Order #{order.id}: {item.name}</strong>{item.note && <p className="text-foreground/60">{item.note}</p>}</div>))}</div>}
+    {orders.some((order) => order.delivery_evidence.length) && <div className="mt-4 grid gap-2 sm:grid-cols-2">{orders.flatMap((order) => order.delivery_evidence.map((item) => <div key={item.id} className="rounded-xl border p-3 text-sm"><strong>Order #{order.id}: {item.name}</strong>{item.note && <p className="text-muted-foreground">{item.note}</p>}</div>))}</div>}
   </section>
 }

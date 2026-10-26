@@ -2060,7 +2060,7 @@ function renderReaderNotices() {
           onPointerCancel={opts?.floating ? onPipDragEnd : undefined}
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-foreground/60">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
               Page {visiblePipPage} / {total || '—'}
             </span>
             {opts?.floating ? (
@@ -2070,7 +2070,7 @@ function renderReaderNotices() {
             ) : null}
           </div>
           {opts?.floating ? (
-            <p className="mt-0.5 text-[10px] font-semibold text-foreground/40">
+            <p className="mt-0.5 text-[10px] font-semibold text-muted-foreground">
               {phonePip ? 'Phone pop-out stays on this page' : 'Drag this bar to move'}
             </p>
           ) : null}
@@ -2083,7 +2083,7 @@ function renderReaderNotices() {
           className="min-h-0 flex-1 overflow-auto px-4 py-3"
         >
           <div className="pb-24">
-            <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-foreground/40">Current: Page {visiblePipPage}</p>
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Current: Page {visiblePipPage}</p>
             {ttsPageLoaded === visiblePipPage && ttsSentences.length > 0
               ? renderSentences(visiblePipPage, 'pip-tts-sentence')
               : renderClickablePage(visiblePipPage, pipPageText)}
@@ -2093,7 +2093,7 @@ function renderReaderNotices() {
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1 rounded-full bg-foreground/10 px-1 py-0.5">
               <button type="button" onClick={() => { fontTouchedRef.current = true; setFontSize((n: number) => Math.max(6, n - 2)) }} className="rounded-full px-2 py-0.5 text-[10px] font-bold text-foreground" aria-label="Decrease text size">A−</button>
-              <span className="min-w-[2.5rem] text-center text-[10px] font-bold text-foreground/60">{fontSize}px</span>
+              <span className="min-w-[2.5rem] text-center text-[10px] font-bold text-muted-foreground">{fontSize}px</span>
               <button type="button" onClick={() => { fontTouchedRef.current = true; setFontSize((n: number) => Math.min(40, n + 2)) }} className="rounded-full px-2 py-0.5 text-[10px] font-bold text-foreground" aria-label="Increase text size">A+</button>
             </div>
             <select value={ttsVoice} onChange={(e: ChangeEvent<HTMLSelectElement>) => changeVoice(e.target.value)} className="h-7 min-w-0 flex-1 rounded-lg border border-foreground/15 bg-background px-2 text-xs text-foreground">
@@ -2149,9 +2149,9 @@ function renderReaderNotices() {
         onCopy={(e: ClipboardEvent) => e.preventDefault()}
       >
         <button type="button" onClick={() => { fontTouchedRef.current = true; setFontSize((n: number) => Math.max(6, n - 2)) }} className="rounded-full bg-foreground/10 px-3 py-1 text-sm font-bold text-foreground">A−</button>
-        <span className="min-w-[3.5rem] text-center text-xs font-semibold text-foreground/60">{fontSize}px</span>
+        <span className="min-w-[3.5rem] text-center text-xs font-semibold text-muted-foreground">{fontSize}px</span>
         <button type="button" onClick={() => { fontTouchedRef.current = true; setFontSize((n: number) => Math.min(40, n + 2)) }} className="rounded-full bg-foreground/10 px-3 py-1 text-sm font-bold text-foreground">A+</button>
-        <span className="text-xs font-semibold text-foreground/60">{page} / {total || '—'}</span>
+        <span className="text-xs font-semibold text-muted-foreground">{page} / {total || '—'}</span>
         {chapters.length > 0 ? (
           <>
             <button
@@ -2296,11 +2296,11 @@ function renderReaderNotices() {
       {renderReaderNotices()}
 
       {canUseTts ? (
-        <p className="px-4 pt-2 text-center text-[12px] text-foreground/55">Tap any sentence to start the robot reader from there.</p>
+        <p className="px-4 pt-2 text-center text-[12px] text-muted-foreground">Tap any sentence to start the robot reader from there.</p>
       ) : null}
 
       {previewPages ? (
-        <p className="px-4 py-2 text-center text-[12px] text-foreground/55">Sneak peek — {previewPages} pages. Buy to unlock the rest.</p>
+        <p className="px-4 py-2 text-center text-[12px] text-muted-foreground">Sneak peek — {previewPages} pages. Buy to unlock the rest.</p>
       ) : null}
 
       {obscured && <div className="pointer-events-none absolute inset-0 z-40 bg-background/95 backdrop-blur-2xl" />}
@@ -2348,7 +2348,7 @@ function renderReaderNotices() {
         ) : status ? (
           // "Opening…" floats over the page area: in the flow it pushed the
           // pages down, then pulled them up again when it went away.
-          <p className="pointer-events-none absolute inset-x-0 top-24 z-10 text-center text-sm font-semibold text-foreground/50" role="status">
+          <p className="pointer-events-none absolute inset-x-0 top-24 z-10 text-center text-sm font-semibold text-muted-foreground" role="status">
             {status}
           </p>
         ) : null}
@@ -2358,14 +2358,14 @@ function renderReaderNotices() {
           </p>
         ) : null}
         {!loggedIn ? (
-          <p className="px-4 pt-3 text-center text-[13px] text-foreground/60">
+          <p className="px-4 pt-3 text-center text-[13px] text-muted-foreground">
             Your place is saved on this phone only.{' '}
             <Link href={loginHref} className="font-semibold text-[var(--brand-pink-text)] underline">Log in</Link>
             {' · '}
             <Link href={signupHref} className="font-semibold text-[var(--brand-pink-text)] underline">Create account</Link>
           </p>
         ) : (
-          <p className="px-4 pt-3 text-center text-[12px] text-foreground/55">Your page syncs to this account.</p>
+          <p className="px-4 pt-3 text-center text-[12px] text-muted-foreground">Your page syncs to this account.</p>
         )}
         <article
           className={`mx-auto max-w-2xl px-4 py-6 ${highlightMode ? highlightSelectClass(true) : 'select-none'} ${pageEst != null || revealAnyway ? '' : 'invisible'}`}
@@ -2378,7 +2378,7 @@ function renderReaderNotices() {
               className={`mb-10 min-h-[8rem] ${highlightSelectClass(highlightMode)}`}
               style={pages[n] ? highlightSelectStyle(highlightMode) : { ...highlightSelectStyle(highlightMode), minHeight: pageEst ?? '8rem' }}
             >
-              <p className="mb-3 select-none text-[11px] font-bold uppercase tracking-wider text-foreground/40">
+              <p className="mb-3 select-none text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                 Page {n}
                 {canNote && readerNotes.some((x: NoteRow) => x.page === n && !x.quote) ? (
                   <button
@@ -2434,7 +2434,7 @@ function renderReaderNotices() {
             </p>
             {creditQuote?.quote?.promotion && Number(creditQuote.quote.discount) > 0 ? (
               <div className="mt-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-foreground/50">You pay</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">You pay</p>
                 <PromoPrice
                   quote={creditQuote.quote}
                   size="sm"
@@ -2442,11 +2442,11 @@ function renderReaderNotices() {
                 />
               </div>
             ) : null}
-            <p className="mt-1 text-[12px] text-foreground/60">
+            <p className="mt-1 text-[12px] text-muted-foreground">
               Pay at least {creditQuote?.min_kes ? money(creditQuote.min_kes) : '—'} to add robot-reader credits.
               {creditQuote?.volume_bonus_percent ? ` · ${creditQuote.volume_bonus_percent}% extra if you pay 2× the minimum` : ''}
             </p>
-            <label className="mt-3 block text-[11px] font-bold uppercase tracking-wider text-foreground/50">Amount ({currency.code})</label>
+            <label className="mt-3 block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Amount ({currency.code})</label>
             <input
               type="number"
               min={creditQuote?.min_kes || 0}

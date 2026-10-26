@@ -698,7 +698,7 @@ export function AudioPlayer({
           <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-foreground" style={{ fontFamily: 'inherit' }}>
             <p className="w-full truncate text-center text-[13px] font-bold">{title}</p>
             <div className="flex w-full items-center gap-3">
-              <span className="w-10 shrink-0 text-right text-[11px] text-foreground/50">{fmt(t)}</span>
+              <span className="w-10 shrink-0 text-right text-[11px] text-muted-foreground">{fmt(t)}</span>
               <div className="relative h-1.5 flex-1">
                 <div className="absolute inset-0 overflow-hidden rounded-full bg-foreground/10">
                   <div
@@ -707,7 +707,7 @@ export function AudioPlayer({
                   />
                 </div>
               </div>
-              <span className="w-10 shrink-0 text-[11px] text-foreground/50">{dur ? fmt(dur) : '—'}</span>
+              <span className="w-10 shrink-0 text-[11px] text-muted-foreground">{dur ? fmt(dur) : '—'}</span>
             </div>
             <div className="flex items-center gap-4">
               <button
@@ -743,7 +743,7 @@ export function AudioPlayer({
         {streamError ? (
           <p className="text-sm font-semibold text-[var(--brand-pink-text)]" role="alert">{streamError}</p>
         ) : status && !ready ? (
-          <p className="text-sm text-foreground/50">{status}</p>
+          <p className="text-sm text-muted-foreground">{status}</p>
         ) : (
           <>
             <div className="flex h-72 w-72 items-center justify-center rounded-[2.5rem] bg-foreground/[0.06] text-[7.5rem] leading-none text-[var(--brand-pink-text)] ring-1 ring-foreground/10">
@@ -758,7 +758,7 @@ export function AudioPlayer({
             ) : null}
 
             {!loggedIn ? (
-              <p className="max-w-md text-center text-[13px] text-foreground/60">
+              <p className="max-w-md text-center text-[13px] text-muted-foreground">
                 Without an account this timestamp dies with the tab. Register
                 so you can pause here and finish on another phone.{' '}
                 <Link href={loginHref} className="font-semibold text-[var(--brand-pink-text)] underline">
@@ -770,7 +770,7 @@ export function AudioPlayer({
                 </Link>
               </p>
             ) : (
-              <p className="max-w-md text-center text-[12px] text-foreground/45">
+              <p className="max-w-md text-center text-[12px] text-muted-foreground">
                 Your place syncs to this account. Pause here, continue on another phone.
               </p>
             )}
@@ -791,7 +791,7 @@ export function AudioPlayer({
                   className="absolute inset-0 z-10 m-0 h-2 w-full cursor-pointer appearance-none bg-transparent accent-[var(--brand-pink)]"
                 />
               </div>
-              <div className="mt-2 flex justify-between text-[12px] text-foreground/45">
+              <div className="mt-2 flex justify-between text-[12px] text-muted-foreground">
                 <span>{fmt(t)}</span>
                 <span>{dur ? fmt(dur) : '—'}</span>
               </div>
@@ -823,10 +823,10 @@ export function AudioPlayer({
                 <IconFwd15 />
               </button>
             </div>
-            <p className="text-[11px] text-foreground/35">−15s · play/pause · +15s</p>
+            <p className="text-[11px] text-muted-foreground">−15s · play/pause · +15s</p>
 
             <div className="w-full max-w-md">
-              <p className="mb-1 text-center text-[12px] uppercase tracking-wider text-foreground/40">
+              <p className="mb-1 text-center text-[12px] uppercase tracking-wider text-muted-foreground">
                 Volume {Math.round(vol * 100)}%
               </p>
               <input
@@ -856,7 +856,7 @@ export function AudioPlayer({
             </div>
 
             <div className="w-full max-w-md">
-              <p className="mb-2 text-center text-[12px] uppercase tracking-wider text-foreground/40">
+              <p className="mb-2 text-center text-[12px] uppercase tracking-wider text-muted-foreground">
                 Sleep timer
                 {sleepLeft > 0 ? ` · ${fmt(sleepLeft)}` : ''}
               </p>
@@ -882,7 +882,7 @@ export function AudioPlayer({
               {shakeMsg ? (
                 <p className="mb-2 text-center text-[12px] text-[var(--brand-pink-text)]">{shakeMsg}</p>
               ) : (
-                <p className="mb-2 text-center text-[11px] text-foreground/35">
+                <p className="mb-2 text-center text-[11px] text-muted-foreground">
                   Shake only works while a timer is on. Off disables shake.
                 </p>
               )}
@@ -904,7 +904,7 @@ export function AudioPlayer({
             </div>
 
             <div className="w-full max-w-md rounded-2xl border border-foreground/10 p-3">
-              <p className="mb-2 text-[12px] uppercase tracking-wider text-foreground/40">Notes at this moment</p>
+              <p className="mb-2 text-[12px] uppercase tracking-wider text-muted-foreground">Notes at this moment</p>
               {canNote ? (
                 <>
                   {composer ? (
@@ -936,7 +936,7 @@ export function AudioPlayer({
                           📋 Notes{audioNotes.length ? ` (${audioNotes.length})` : ''}
                         </button>
                       </div>
-                      <label className="flex cursor-pointer items-center gap-2 text-[12px] text-foreground/60">
+                      <label className="flex cursor-pointer items-center gap-2 text-[12px] text-muted-foreground">
                         <input type="checkbox" checked={pauseToWrite} onChange={(e) => setPause(e.target.checked)} />
                         Pause while I write a note
                       </label>
@@ -945,7 +945,7 @@ export function AudioPlayer({
                   )}
                 </>
               ) : (
-                <p className="text-[13px] text-foreground/50">
+                <p className="text-[13px] text-muted-foreground">
                   <Link href={loginHref} className="underline text-[var(--brand-pink-text)]">
                     Log in
                   </Link>
@@ -987,12 +987,12 @@ export function AudioPlayer({
                 Save offline on this device
               </ActionButton>
             ) : (
-              <p className="text-center text-[12px] text-foreground/40">
+              <p className="text-center text-[12px] text-muted-foreground">
                 Offline saving is off for this audiobook.
               </p>
             )}
             {offlineMsg ? (
-              <p className="text-center text-[12px] text-foreground/50">{offlineMsg}</p>
+              <p className="text-center text-[12px] text-muted-foreground">{offlineMsg}</p>
             ) : null}
           </>
         )}

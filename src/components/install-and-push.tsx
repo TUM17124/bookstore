@@ -29,6 +29,7 @@ function isAuthPath() {
   return (
     path.startsWith("/login") ||
     path.startsWith("/signup") ||
+    path.startsWith("/showcase") ||
     path.startsWith("/verify")
   )
 }
@@ -123,7 +124,7 @@ export function InstallAndPush() {
   return (
     <div className="fixed bottom-4 inset-x-0 z-[70] mx-auto w-[min(92%,440px)] rounded-2xl border bg-background p-4 shadow-xl">
       <p className="text-sm font-semibold">{title}</p>
-      <p className="mt-1 text-sm text-foreground/65">
+      <p className="mt-1 text-sm text-muted-foreground">
         {signedIn ? t.introAccount : t.introGuest}
       </p>
       <ul className="mt-3 space-y-1.5 text-sm text-foreground/70">
@@ -142,7 +143,7 @@ export function InstallAndPush() {
           </li>
         )}
       </ul>
-      {hint ? <p className="mt-2 text-xs text-foreground/55">{hint}</p> : null}
+      {hint ? <p className="mt-2 text-xs text-muted-foreground">{hint}</p> : null}
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           className="rounded-full bg-foreground px-4 py-2 text-sm text-background"

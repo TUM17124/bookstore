@@ -3369,7 +3369,7 @@ export function BooksShowcase({
             </button>
             <div className="min-w-0 flex-1">
               <h2 className="truncate text-[17px] font-bold">{selectedCfg.title}</h2>
-              <p className="text-[13px] text-foreground/50">Ratings & comments</p>
+              <p className="text-[13px] text-muted-foreground">Ratings & comments</p>
             </div>
           </header>
           <div className="min-h-0 flex-1 flex flex-col">
@@ -3396,7 +3396,7 @@ export function BooksShowcase({
             <button type="button" onClick={() => setPreviewOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-foreground hover:bg-foreground/10">×</button>
             <div className="min-w-0 flex-1">
               <h2 className="truncate text-[16px] font-bold">Preview · {selectedCfg.title}</h2>
-              <p className="text-[12px] text-foreground/55">First pages only. Buy to read the full book.</p>
+              <p className="text-[12px] text-muted-foreground">First pages only. Buy to read the full book.</p>
             </div>
           </header>
           <PdfReader bookId={selectedCfg.id} />
@@ -3436,7 +3436,7 @@ export function BooksShowcase({
             <>
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold">Why not interested?</span>
-                <button type="button" onClick={handleSkipReason} className="text-xs text-foreground/60 hover:text-foreground underline shrink-0">Skip</button>
+                <button type="button" onClick={handleSkipReason} className="text-xs text-muted-foreground hover:text-foreground underline shrink-0">Skip</button>
               </div>
               {showOtherInput ? (
                 <div className="flex flex-col gap-2">
@@ -3447,7 +3447,7 @@ export function BooksShowcase({
                     value={otherReasonText}
                     onChange={(e) => setOtherReasonText(e.target.value)}
                     placeholder="Tell us why (optional)"
-                    className="w-full resize-none rounded-lg border border-foreground/20 bg-transparent px-2.5 py-1.5 text-xs placeholder:text-foreground/40 focus:outline-none focus:ring-1 focus:ring-foreground/40"
+                    className="w-full resize-none rounded-lg border border-foreground/20 bg-transparent px-2.5 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-foreground/40"
                   />
                   <div className="flex gap-1.5">
                     <button
@@ -3500,7 +3500,7 @@ export function BooksShowcase({
               >
                 Undo
               </button>
-              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-foreground/60 hover:text-foreground">✕</button>
+              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-muted-foreground hover:text-foreground">✕</button>
             </div>
           )}
           {hideToast.phase === 'error' && (
@@ -3513,7 +3513,7 @@ export function BooksShowcase({
               >
                 Try again
               </button>
-              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-foreground/60 hover:text-foreground">✕</button>
+              <button type="button" onClick={() => setHideToast(null)} aria-label="Dismiss" className="shrink-0 text-muted-foreground hover:text-foreground">✕</button>
             </div>
           )}
         </div>,

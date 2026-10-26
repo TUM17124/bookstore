@@ -88,9 +88,9 @@ function ActionForm({
           {label}
         </ActionButton>
       </form>
-      <ActionStatus action={action} className="mt-2 text-sm text-foreground/60" />
+      <ActionStatus action={action} className="mt-2 text-sm text-muted-foreground" />
       {action.errorText ? (
-        <p role="alert" className="mt-2 text-sm text-red-600">
+        <p role="alert" className="mt-2 text-sm text-destructive">
           {action.errorText}
         </p>
       ) : null}
@@ -129,9 +129,9 @@ function PrefToggle({
           void action.run(e.target.checked)
         }}
       />
-      {action.busy ? <span className="mt-1 text-xs text-foreground/50" role="status">Saving…</span> : null}
+      {action.busy ? <span className="mt-1 text-xs text-muted-foreground" role="status">Saving…</span> : null}
       {action.errorText ? (
-        <span className="mt-1 max-w-[12rem] text-right text-xs text-red-600" role="alert">
+        <span className="mt-1 max-w-[12rem] text-right text-xs text-destructive" role="alert">
           {action.errorText}
         </span>
       ) : null}
@@ -179,7 +179,7 @@ function ProSection({
           <p className="inline-flex items-center gap-1.5 rounded-full bg-[#d4af37]/15 px-3 py-1 text-sm font-bold text-[#a3811f]">
             Robot Reader Subscription
           </p>
-          <p className="text-sm text-foreground/60">
+          <p className="text-sm text-muted-foreground">
             {proStatus.subscription?.expires_at
               ? `Renews or expires on ${new Date(
                   proStatus.subscription.expires_at,
@@ -195,13 +195,13 @@ function ProSection({
             onClick={handleCancel}
             loadingLabel="Cancelling…"
             successLabel="Cancelled"
-            errorClassName="text-sm text-red-600"
-            className="rounded-lg border border-red-400 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+            errorClassName="text-sm text-destructive"
+            className="rounded-lg border border-red-400 px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50"
           >
             {confirmed ? "Tap again to confirm cancel" : "Cancel subscription"}
           </ActionButton>
           {confirmed && (
-            <p className="text-xs text-foreground/50">
+            <p className="text-xs text-muted-foreground">
               Your Robot Reader access continues until {proStatus.subscription?.expires_at
                 ? new Date(proStatus.subscription.expires_at).toLocaleDateString()
                 : "the end of the billing period"}.
@@ -211,7 +211,7 @@ function ProSection({
       ) : (
         <>
           <p className="text-sm font-semibold text-foreground/80">Free plan</p>
-          <p className="text-sm text-foreground/60">
+          <p className="text-sm text-muted-foreground">
             Upgrade for the floating pop-out reader/player, AI narration with
             multiple voices, auto-scroll, and sentence highlighting.
           </p>
@@ -327,7 +327,7 @@ export default function SettingsPage() {
   if (!ready) {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
-        <p className="text-sm text-foreground/60">Loading…</p>
+        <p className="text-sm text-muted-foreground">Loading…</p>
       </main>
     )
   }
@@ -336,7 +336,7 @@ export default function SettingsPage() {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
         <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="mt-3 text-sm text-foreground/60">
+        <p className="mt-3 text-sm text-muted-foreground">
           Sign in to manage your profile, affiliate rewards, and account.
         </p>
         <p className="mt-6 text-sm">
@@ -360,16 +360,16 @@ export default function SettingsPage() {
     <main className="mx-auto max-w-6xl overflow-x-hidden px-4 py-10 sm:py-16">
       <div className="mb-6">
         <h1 className="text-3xl font-bold">Settings</h1>
-        <p className="text-sm text-foreground/60">
+        <p className="text-sm text-muted-foreground">
           Manage your profile, affiliate rewards, and account.
         </p>
       </div>
 
       {error && (
-        <p className="mb-4 rounded border border-red-400 p-3 text-red-700">{error}</p>
+        <p className="mb-4 rounded border border-red-400 p-3 text-destructive">{error}</p>
       )}
       {notice && (
-        <p className="mb-4 rounded border border-emerald-400 p-3 text-emerald-700">
+        <p className="mb-4 rounded border border-emerald-400 p-3 text-success">
           {notice}
         </p>
       )}
@@ -530,7 +530,7 @@ export default function SettingsPage() {
             {active === "notifications" && (
               <section className="min-w-0 space-y-4 rounded-xl border p-5">
                 <h2 className="text-xl font-semibold">Notifications</h2>
-                <p className="text-sm text-foreground/60">
+                <p className="text-sm text-muted-foreground">
                   Control the notes PlugYard sends you — unfinished pages, new titles, and invite
                   rewards. Turning a channel off does not clear your inbox above, just stops new
                   alerts through that channel.
@@ -540,7 +540,7 @@ export default function SettingsPage() {
                   <label className="flex items-center justify-between gap-3 rounded-lg border p-3">
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium">Email notifications</span>
-                      <span className="block break-words text-xs text-foreground/60">
+                      <span className="block break-words text-xs text-muted-foreground">
                         Reminders and alerts sent to {data.user.email}
                       </span>
                     </span>
@@ -557,7 +557,7 @@ export default function SettingsPage() {
                   <label className="flex items-center justify-between gap-3 rounded-lg border p-3">
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium">Push notifications</span>
-                      <span className="block break-words text-xs text-foreground/60">
+                      <span className="block break-words text-xs text-muted-foreground">
                         Alerts sent to devices where you allowed push
                         {prefs ? ` · ${prefs.active_devices} device(s) active` : ""}
                       </span>
@@ -577,7 +577,7 @@ export default function SettingsPage() {
 
                 <div className="rounded-lg border p-3">
                   <p className="text-sm font-medium">This device</p>
-                  <p className="mt-1 text-xs text-foreground/60">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     {deviceSubscribed
                       ? "This browser is subscribed to push notifications."
                       : "This browser is not currently subscribed to push notifications."}
@@ -591,7 +591,7 @@ export default function SettingsPage() {
                       }}
                       loadingLabel="Turning off…"
                       successLabel="Done"
-                      errorClassName="mt-2 text-sm text-red-600"
+                      errorClassName="mt-2 text-sm text-destructive"
                       className="mt-3 rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50"
                     >
                       Turn off push on this device
@@ -620,7 +620,7 @@ export default function SettingsPage() {
                 <label className="flex items-center justify-between gap-3 rounded-lg border p-3">
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium">Personalised sections</span>
-                    <span className="block text-xs text-foreground/60">
+                    <span className="block text-xs text-muted-foreground">
                       Off: everyone&apos;s default sections (Trending, New releases, Free books, Offers).
                     </span>
                   </span>
@@ -663,7 +663,7 @@ export default function SettingsPage() {
               <section className="min-w-0 space-y-4 rounded-xl border p-5">
                 <h2 className="text-xl font-semibold">Affiliate & rewards</h2>
                 <AffiliateInvite code={a.code} referralReward={a.referral_reward} />
-                <p className="text-sm text-foreground/60">
+                <p className="text-sm text-muted-foreground">
                   Payout account:{" "}
                   {payoutReady
                     ? `${data.payout_account.method} · ${data.payout_account.account_name} · ${data.payout_account.account_number}`
@@ -708,14 +708,14 @@ export default function SettingsPage() {
                 <h2 className="text-xl font-semibold">History</h2>
 
                 <div>
-                  <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-foreground/50">
+                  <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                     Withdrawals
                   </h3>
                   {data.withdrawals?.length ? (
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-sm">
                         <thead>
-                          <tr className="border-b text-foreground/50">
+                          <tr className="border-b text-muted-foreground">
                             <th className="py-2 pr-3">Date</th>
                             <th className="py-2 pr-3">Amount</th>
                             <th className="py-2 pr-3">Status</th>
@@ -730,26 +730,26 @@ export default function SettingsPage() {
                               </td>
                               <td className="py-2 pr-3">{money(w.amount)}</td>
                               <td className="py-2 pr-3 capitalize">{w.status}</td>
-                              <td className="py-2 break-all text-foreground/60">{w.note || w.paystack_reference || "—"}</td>
+                              <td className="py-2 break-all text-muted-foreground">{w.note || w.paystack_reference || "—"}</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
                   ) : (
-                    <p className="text-sm text-foreground/60">No withdrawals yet.</p>
+                    <p className="text-sm text-muted-foreground">No withdrawals yet.</p>
                   )}
                 </div>
 
                 <div>
-                  <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-foreground/50">
+                  <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                     Reward ledger
                   </h3>
                   {data.ledger?.length ? (
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-sm">
                         <thead>
-                          <tr className="border-b text-foreground/50">
+                          <tr className="border-b text-muted-foreground">
                             <th className="py-2 pr-3">Date</th>
                             <th className="py-2 pr-3">Type</th>
                             <th className="py-2 pr-3">Amount</th>
@@ -764,14 +764,14 @@ export default function SettingsPage() {
                               </td>
                               <td className="py-2 pr-3">{x.kind}</td>
                               <td className="py-2 pr-3">{money(x.amount)}</td>
-                              <td className="py-2 text-foreground/60">{x.description || "—"}</td>
+                              <td className="py-2 text-muted-foreground">{x.description || "—"}</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
                   ) : (
-                    <p className="text-sm text-foreground/60">No ledger entries yet.</p>
+                    <p className="text-sm text-muted-foreground">No ledger entries yet.</p>
                   )}
                 </div>
               </section>
@@ -779,7 +779,7 @@ export default function SettingsPage() {
 
             {active === "delete" && (
               <section className="min-w-0 space-y-3 rounded-xl border border-red-300 p-5">
-                <h2 className="text-xl font-semibold text-red-700">Delete account</h2>
+                <h2 className="text-xl font-semibold text-destructive">Delete account</h2>
                 <p className="text-sm">
                   This is consequential. Your public books remain in the library without ownership;
                   financial audit records are retained.
@@ -831,7 +831,7 @@ export default function SettingsPage() {
 function Stat({ label, value }: { label: string; value: any }) {
   return (
     <div className="min-w-0 rounded bg-foreground/5 p-3">
-      <div className="text-foreground/60">{label}</div>
+      <div className="text-muted-foreground">{label}</div>
       <strong className="break-all">{value}</strong>
     </div>
   )

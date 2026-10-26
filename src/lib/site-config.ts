@@ -30,6 +30,7 @@ export type CurrencyConfig = {
 
 export type FeatureName =
   | "marketplace"
+  | "marketplace_publishing"
   | "auctions"
   | "publishing"
   | "boosts"

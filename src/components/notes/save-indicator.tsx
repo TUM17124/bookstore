@@ -14,7 +14,7 @@ export function SaveIndicator({ status, className = '' }: { status: SyncStatus; 
       role="status"
       aria-live="polite"
       className={`inline-block min-w-[8.5rem] text-right text-[12px] font-semibold ${
-        status === 'saved' ? 'text-foreground/55' : status === 'error' ? 'text-red-600 dark:text-red-400' : 'text-[var(--brand-pink-text)]'
+        status === 'saved' ? 'text-muted-foreground' : status === 'error' ? 'text-destructive dark:text-red-400' : 'text-[var(--brand-pink-text)]'
       } ${className}`}
     >
       {TEXT[status]}

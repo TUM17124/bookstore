@@ -34,21 +34,21 @@ function HiddenBookRow({
         // eslint-disable-next-line @next/next/no-img-element
         <img src={cover} alt={entry.book.title} className="h-14 w-10 shrink-0 rounded object-cover" />
       ) : (
-        <div className="flex h-14 w-10 shrink-0 items-center justify-center rounded bg-foreground/10 text-[10px] text-foreground/50">
+        <div className="flex h-14 w-10 shrink-0 items-center justify-center rounded bg-foreground/10 text-[10px] text-muted-foreground">
           No cover
         </div>
       )}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">{entry.book.title}</p>
-        <p className="text-xs text-foreground/55">{entry.book.author}</p>
-        <p className="mt-0.5 text-xs text-foreground/40">Hidden {hiddenAt}</p>
+        <p className="text-xs text-muted-foreground">{entry.book.author}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">Hidden {hiddenAt}</p>
       </div>
       <ActionButton
         action={unhide}
         onClick={() => void unhide.run()}
         loadingLabel="Unhiding…"
         successLabel="Unhidden"
-        errorClassName="text-xs text-red-600"
+        errorClassName="text-xs text-destructive"
         className="shrink-0 rounded-full border px-3 py-1 text-xs font-medium hover:bg-foreground/5 disabled:opacity-50"
       >
         Unhide
@@ -88,23 +88,23 @@ export default function HiddenBooksPage() {
   return (
     <main className="mx-auto max-w-lg px-4 py-10 sm:py-16">
       <div className="mb-6 flex items-center gap-3">
-        <Link href="/settings" className="text-sm text-foreground/60 hover:underline">
+        <Link href="/settings" className="text-sm text-muted-foreground hover:underline">
           ← Settings
         </Link>
       </div>
       <h1 className="mb-1 text-2xl font-bold">Hidden books</h1>
-      <p className="mb-6 text-sm text-foreground/60">
+      <p className="mb-6 text-sm text-muted-foreground">
         Books you marked as "not interested". Unhide them to see them again on the home page.
       </p>
 
       {error && (
-        <p className="mb-4 rounded border border-red-400 p-3 text-sm text-red-700">{error}</p>
+        <p className="mb-4 rounded border border-red-400 p-3 text-sm text-destructive">{error}</p>
       )}
 
       {loading && entries.length === 0 ? (
-        <p className="text-sm text-foreground/60">Loading…</p>
+        <p className="text-sm text-muted-foreground">Loading…</p>
       ) : entries.length === 0 ? (
-        <p className="text-sm text-foreground/60">No hidden books.</p>
+        <p className="text-sm text-muted-foreground">No hidden books.</p>
       ) : (
         <div className="space-y-2">
           {entries.map((entry) => (
@@ -118,7 +118,7 @@ export default function HiddenBooksPage() {
           type="button"
           disabled={loading}
           onClick={() => void load(page + 1, true)}
-          className="mt-6 w-full rounded-lg border py-2 text-sm text-foreground/60 hover:bg-foreground/5 disabled:opacity-50"
+          className="mt-6 w-full rounded-lg border py-2 text-sm text-muted-foreground hover:bg-foreground/5 disabled:opacity-50"
         >
           {loading ? "Loading…" : "Load more"}
         </button>

@@ -19,6 +19,7 @@ function shouldShow(): boolean {
     path.startsWith('/signup') ||
     path.startsWith('/publish') ||
     path.startsWith('/checkout') ||
+    path.startsWith('/showcase') ||
     path.startsWith('/verify')
   ) {
     return false
@@ -142,7 +143,7 @@ export function PublishInviteModal() {
         <button
           type="button"
           onClick={dismiss}
-          className="mt-3 w-full text-center text-xs text-foreground/45"
+          className="mt-3 w-full text-center text-xs text-muted-foreground"
         >
           Not now
         </button>

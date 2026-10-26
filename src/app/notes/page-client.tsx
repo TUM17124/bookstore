@@ -124,15 +124,15 @@ export default function NotesPage() {
   return (
     <main className="site-main site-main-offset mx-auto flex w-full max-w-3xl flex-col px-4 py-6">
       <h1 className="text-xl font-bold text-foreground">My notes</h1>
-      <p className="mb-3 text-sm text-foreground/60">All your highlights and notes, from every book you read or listen to.</p>
+      <p className="mb-3 text-sm text-muted-foreground">All your highlights and notes, from every book you read or listen to.</p>
       {!loggedIn ? (
-        <p className="text-sm text-foreground/60">
+        <p className="text-sm text-muted-foreground">
           <Link href="/login?next=%2Fnotes%2F" className="font-semibold text-[var(--brand-pink-text)] underline">Log in</Link> to see your notes.
         </p>
       ) : state === 'loading' ? (
-        <p role="status" className="text-sm text-foreground/50">Loading your notes…</p>
+        <p role="status" className="text-sm text-muted-foreground">Loading your notes…</p>
       ) : state === 'error' ? (
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">Couldn’t load your notes. Check your connection and refresh.</p>
+        <p role="alert" className="text-sm text-destructive dark:text-red-400">Couldn’t load your notes. Check your connection and refresh.</p>
       ) : (
         <>
           <NotesPanel
@@ -149,7 +149,7 @@ export default function NotesPage() {
             onClose={() => {}}
             onJump={(n: NoteRow) => router.push(`/?book=${encodeURIComponent(String(n.book_id))}${n.kind === 'audio' ? '&view=listen' : ''}`)}
           />
-          {total > notes.length ? <p className="mt-2 text-xs text-foreground/50">Showing your first {notes.length} of {total} notes.</p> : null}
+          {total > notes.length ? <p className="mt-2 text-xs text-muted-foreground">Showing your first {notes.length} of {total} notes.</p> : null}
           {books.length ? (
             <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-foreground/10 pt-3">
               <label className="text-sm font-semibold text-foreground/70" htmlFor="export-book">Export notes for</label>
@@ -163,7 +163,7 @@ export default function NotesPage() {
               </select>
               <button type="button" onClick={() => void run('md')} className="rounded-full bg-foreground/10 px-3 py-1 text-sm font-bold text-foreground">Markdown</button>
               <button type="button" onClick={() => void run('pdf')} className="rounded-full bg-foreground/10 px-3 py-1 text-sm font-bold text-foreground">PDF</button>
-              {exportMsg ? <span role="status" className="text-xs text-foreground/60">{exportMsg}</span> : null}
+              {exportMsg ? <span role="status" className="text-xs text-muted-foreground">{exportMsg}</span> : null}
             </div>
           ) : null}
         </>

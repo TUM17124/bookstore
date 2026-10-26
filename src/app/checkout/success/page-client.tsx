@@ -156,7 +156,7 @@ function SuccessInner() {
   return (
     <main className="mx-auto max-w-md px-4 py-16 text-center">
       <h1 className="text-2xl font-bold">Thank you</h1>
-      <p className="mt-2 text-sm text-foreground/60">
+      <p className="mt-2 text-sm text-muted-foreground">
         Order #{orderId || '—'}
         {status !== 'need_email' && status !== 'loading' ? ` — status: ${status}` : null}
       </p>
@@ -165,14 +165,14 @@ function SuccessInner() {
       ) : null}
 
       {status === 'loading' && (
-        <p className="mt-6 text-sm text-foreground/50" role="status" aria-live="polite">
+        <p className="mt-6 text-sm text-muted-foreground" role="status" aria-live="polite">
           {verify.state === 'retrying' ? retryLabel(verify.retry) : 'Confirming your order…'}
         </p>
       )}
 
       {status === 'need_email' && (
         <form onSubmit={applyEmail} className="mt-8 text-left">
-          <p className="text-sm text-foreground/60">
+          <p className="text-sm text-muted-foreground">
             Enter the same email you used at checkout to unlock your files.
           </p>
           <input
@@ -210,7 +210,7 @@ function SuccessInner() {
       {status === 'paid' && !loggedIn && (
         <section className="mt-6 rounded-2xl border border-foreground/10 p-4 text-left text-sm">
           <p className="font-semibold">Check your email</p>
-          <p className="mt-1 text-foreground/65">
+          <p className="mt-1 text-muted-foreground">
             We&apos;ve sent a secure link to <strong>{email}</strong>. Open it to read, listen
             or download (as the author allows). Your purchase never expires — only the link does,
             and you can always get a new one.
@@ -227,9 +227,9 @@ function SuccessInner() {
             Didn&apos;t get it? Send a new access link
           </ActionButton>
           {linkMsg && sendLink.state !== 'error' ? (
-            <p className="mt-2 text-xs text-foreground/60" role="status">{linkMsg}</p>
+            <p className="mt-2 text-xs text-muted-foreground" role="status">{linkMsg}</p>
           ) : null}
-          <p className="mt-3 text-xs text-foreground/55">
+          <p className="mt-3 text-xs text-muted-foreground">
             <Link href="/signup" className="underline">Create an account</Link> or{' '}
             <Link href="/login" className="underline">log in</Link> with this email to keep your books in your library.
           </p>
@@ -259,7 +259,7 @@ function SuccessInner() {
               Download this file
             </ActionButton>
           )}
-          <Link href="/purchases" className="text-xs underline text-foreground/55">Open your purchases</Link>
+          <Link href="/purchases" className="text-xs underline text-muted-foreground">Open your purchases</Link>
         </div>
       )}
 
@@ -297,7 +297,7 @@ export default function SuccessPage() {
   return (
     <Suspense
       fallback={
-        <div className="p-8 text-center text-sm text-foreground/50">Loading…</div>
+        <div className="p-8 text-center text-sm text-muted-foreground">Loading…</div>
       }
     >
       <SuccessInner />

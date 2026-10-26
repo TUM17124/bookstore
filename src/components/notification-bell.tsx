@@ -172,7 +172,7 @@ export function NotificationBell() {
             onClick={() => setOpen(false)}
           />
 
-          <div className="fixed left-3 right-3 top-[4.75rem] z-[80] flex max-h-[min(72dvh,calc(100dvh-5.75rem))] w-auto flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-2xl dark:border-white/10 dark:bg-background sm:left-auto sm:right-4 sm:w-[min(360px,calc(100vw-2rem))]">
+          <div className="fixed left-3 right-3 top-[4.75rem] z-[80] flex max-h-[min(72dvh,calc(100dvh-5.75rem))] w-auto flex-col overflow-hidden rounded-2xl border border-border bg-popover text-popover-foreground shadow-2xl sm:left-auto sm:right-4 sm:w-[min(360px,calc(100vw-2rem))]">
             <div className="flex shrink-0 items-center justify-between border-b border-black/10 px-4 py-3 dark:border-white/10">
               <div>
                 <h3 className="text-sm font-semibold">Your notes</h3>
@@ -221,7 +221,7 @@ export function NotificationBell() {
                 </div>
               ) : items.length === 0 ? (
                 <div className="px-4 py-10 text-center">
-                  <Bell className="mx-auto mb-3 h-8 w-8 text-neutral-400" />
+                  <Bell className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
                   <p className="text-sm font-medium">Your inbox is quiet</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     When a book, invite, or unfinished page is meant for you,
@@ -247,8 +247,8 @@ export function NotificationBell() {
                           <div
                             className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
                               item.read
-                                ? "bg-foreground/5 text-neutral-400 dark:bg-white/5"
-                                : "bg-black text-white dark:bg-white dark:text-black"
+                                ? "bg-foreground/5 text-muted-foreground dark:bg-white/5"
+                                : "bg-primary text-primary-foreground"
                             }`}
                           >
                             <Icon className="h-4 w-4" />
@@ -262,10 +262,10 @@ export function NotificationBell() {
                                 <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-red-500" />
                               )}
                             </div>
-                            <p className="mt-1 break-words text-sm leading-5 text-foreground/70 dark:text-neutral-400">
+                            <p className="mt-1 break-words text-sm leading-5 text-muted-foreground">
                               {item.body}
                             </p>
-                            <p className="mt-2 text-[11px] text-neutral-400">
+                            <p className="mt-2 text-[11px] text-muted-foreground">
                               {formatNotificationDate(item.created_at)}
                             </p>
                           </div>

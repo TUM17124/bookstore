@@ -76,11 +76,11 @@ function PriceField({
         placeholder={`${Number(limits.min_offer)}–${Number(limits.max_offer)}`}
         className="mt-1 block w-full rounded-lg border border-foreground/20 bg-background p-2"
       />
-      <span className="mt-1 block text-[12px] text-foreground/60">
+      <span className="mt-1 block text-[12px] text-muted-foreground">
         Allowed {money(limits.min_offer)}–{money(limits.max_offer)}. Readers see it against {money(ref)}, the
         lowest price this book had recently.
         {value !== "" && (
-          <span className={inRange ? " text-emerald-700 dark:text-emerald-400" : " text-red-600"}>
+          <span className={inRange ? " text-success dark:text-emerald-400" : " text-destructive"}>
             {" "}
             {inRange ? (
               <>
@@ -123,7 +123,7 @@ function EntryRow({ c, e, onChanged }: { c: CampaignData; e: CampaignEntryData; 
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold">{e.book_title}</span>
         <span className={`rounded-full px-2 py-0.5 text-[12px] font-semibold ${STATUS_CLS[e.status]}`}>{e.status_label}</span>
-        {e.added_by_admin && <span className="text-[12px] text-foreground/60">Added by PlugYard</span>}
+        {e.added_by_admin && <span className="text-[12px] text-muted-foreground">Added by PlugYard</span>}
       </div>
       <p className="mt-1 text-sm text-foreground/70">
         {e.ebook_offer_price && <>eBook {money(e.ebook_offer_price)}</>}
@@ -131,7 +131,7 @@ function EntryRow({ c, e, onChanged }: { c: CampaignData; e: CampaignEntryData; 
         {e.audiobook_offer_price && <>Audiobook {money(e.audiobook_offer_price)}</>}
       </p>
       {e.status === "rejected" && e.reject_reason && (
-        <p className="mt-1 text-sm text-red-700 dark:text-red-300">Reason: {e.reject_reason}</p>
+        <p className="mt-1 text-sm text-destructive dark:text-red-300">Reason: {e.reject_reason}</p>
       )}
 
       {editing && book ? (
@@ -149,7 +149,7 @@ function EntryRow({ c, e, onChanged }: { c: CampaignData; e: CampaignEntryData; 
               className="rounded-lg bg-foreground px-4 py-2 text-sm font-semibold text-background">
               Save prices
             </ActionButton>
-            <button type="button" onClick={() => setEditing(false)} className="rounded-lg px-3 py-2 text-sm text-foreground/60">
+            <button type="button" onClick={() => setEditing(false)} className="rounded-lg px-3 py-2 text-sm text-muted-foreground">
               Cancel
             </button>
           </div>
@@ -164,7 +164,7 @@ function EntryRow({ c, e, onChanged }: { c: CampaignData; e: CampaignEntryData; 
           )}
           {c.can_join && active && !e.added_by_admin && (
             <ActionButton onClick={() => void withdraw.run()} action={withdraw} loadingLabel="Withdrawing…"
-              className="min-h-[40px] rounded-lg border border-red-500/40 px-3 text-sm font-medium text-red-700 dark:text-red-300">
+              className="min-h-[40px] rounded-lg border border-red-500/40 px-3 text-sm font-medium text-destructive dark:text-red-300">
               Withdraw
             </ActionButton>
           )}
@@ -175,7 +175,7 @@ function EntryRow({ c, e, onChanged }: { c: CampaignData; e: CampaignEntryData; 
               <input id={`decline-${e.id}`} value={reason} onChange={(ev) => setReason(ev.target.value)}
                 placeholder="Reason (optional)" className="min-h-[40px] rounded-lg border border-foreground/20 bg-background px-2 text-sm" />
               <ActionButton type="submit" action={decline} loadingLabel="Declining…"
-                className="min-h-[40px] rounded-lg border border-red-500/40 px-3 text-sm font-medium text-red-700 dark:text-red-300">
+                className="min-h-[40px] rounded-lg border border-red-500/40 px-3 text-sm font-medium text-destructive dark:text-red-300">
                 Decline
               </ActionButton>
             </form>
@@ -210,8 +210,8 @@ function JoinForm({ c, onJoined }: { c: CampaignData; onJoined: () => void }) {
     },
   )
 
-  if (full) return <p className="text-sm text-foreground/60">You&apos;ve added the most books allowed ({c.max_books_per_author}).</p>
-  if (!books.length) return <p className="text-sm text-foreground/60">None of your published books can join this one.</p>
+  if (full) return <p className="text-sm text-muted-foreground">You&apos;ve added the most books allowed ({c.max_books_per_author}).</p>
+  if (!books.length) return <p className="text-sm text-muted-foreground">None of your published books can join this one.</p>
 
   return (
     <form
@@ -245,7 +245,7 @@ function JoinForm({ c, onJoined }: { c: CampaignData; onJoined: () => void }) {
         <>
           <PriceField id={`j-eb-${c.id}`} label="eBook" limits={book.ebook} value={ebook} onChange={setEbook} />
           <PriceField id={`j-au-${c.id}`} label="Audiobook" limits={book.audiobook} value={audio} onChange={setAudio} />
-          <p className="text-[12px] text-foreground/60 sm:col-span-2">
+          <p className="text-[12px] text-muted-foreground sm:col-span-2">
             Set one or both. You earn your usual share of the offer price.
             {c.approval_required ? " PlugYard reviews each book before the campaign starts." : ""}
           </p>
@@ -268,26 +268,26 @@ function CampaignCard({ c, onChanged }: { c: CampaignData; onChanged: () => void
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-lg font-bold">{c.name}</h3>
         <span className={`rounded-full px-2 py-0.5 text-[12px] font-semibold ${phase.cls}`}>{phase.label}</span>
-        {c.admin_only && <span className="text-[12px] text-foreground/60">Books added by PlugYard</span>}
+        {c.admin_only && <span className="text-[12px] text-muted-foreground">Books added by PlugYard</span>}
       </div>
       {c.description && <p className="text-sm text-foreground/75">{c.description}</p>}
       <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
-        <div><dt className="inline text-foreground/55">Runs: </dt><dd className="inline">{formatLocalTime(c.starts_at)} – {formatLocalTime(c.ends_at)}</dd></div>
-        <div><dt className="inline text-foreground/55">Discount: </dt><dd className="inline">{c.min_discount_percent}–{c.max_discount_percent}% off</dd></div>
-        <div><dt className="inline text-foreground/55">Books per author: </dt><dd className="inline">up to {c.max_books_per_author}</dd></div>
-        <div><dt className="inline text-foreground/55">Categories: </dt><dd className="inline">{c.categories.length ? c.categories.map((x) => x.label).join(", ") : "All"}</dd></div>
+        <div><dt className="inline text-muted-foreground">Runs: </dt><dd className="inline">{formatLocalTime(c.starts_at)} – {formatLocalTime(c.ends_at)}</dd></div>
+        <div><dt className="inline text-muted-foreground">Discount: </dt><dd className="inline">{c.min_discount_percent}–{c.max_discount_percent}% off</dd></div>
+        <div><dt className="inline text-muted-foreground">Books per author: </dt><dd className="inline">up to {c.max_books_per_author}</dd></div>
+        <div><dt className="inline text-muted-foreground">Categories: </dt><dd className="inline">{c.categories.length ? c.categories.map((x) => x.label).join(", ") : "All"}</dd></div>
         <div className="sm:col-span-2">
-          <dt className="inline text-foreground/55">This campaign is shown to: </dt>
+          <dt className="inline text-muted-foreground">This campaign is shown to: </dt>
           <dd className="inline font-semibold">{c.targeted && c.audience ? c.audience : "everyone"}</dd>
           {c.targeted && (
-            <p className="mt-0.5 text-[12px] text-foreground/55">
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
               Only these readers see your offer price. Everyone else sees your normal price.
             </p>
           )}
         </div>
         {!c.admin_only && (
           <div className="sm:col-span-2">
-            <dt className="inline text-foreground/55">Join, edit or withdraw until: </dt>
+            <dt className="inline text-muted-foreground">Join, edit or withdraw until: </dt>
             <dd className="inline">
               {formatLocalTime(c.join_deadline)}{" "}
               {c.can_join && <Countdown target={c.join_deadline} label="Closes in" onExpire={onChanged} className="font-semibold" />}
@@ -343,14 +343,14 @@ export function CampaignsTab() {
         </p>
       </section>
       {error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-destructive">
           {error}{" "}
           <button type="button" onClick={reload} className="font-semibold underline">Try again</button>
         </p>
       )}
-      {!data && !error && <p className="text-sm text-foreground/60">Loading campaigns…</p>}
+      {!data && !error && <p className="text-sm text-muted-foreground">Loading campaigns…</p>}
       {data && sorted.length === 0 && (
-        <p className="rounded-2xl border border-dashed p-6 text-center text-sm text-foreground/60">
+        <p className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
           No campaigns are open right now. We&apos;ll let you know when one opens.
         </p>
       )}
