@@ -29,10 +29,6 @@ export default function MarketplacePage() {
   const requestVersion = useRef(0)
   const schema = useMemo(() => categories.find((item) => item.slug === category), [categories, category])
   const fulfillmentOptions = useMemo(() => Array.from(new Set(categories.map((item) => item.fulfillment_type).filter(Boolean))), [categories])
-  const heroEyebrow = useText("marketplace.hero_eyebrow")
-  const heroTitle = useText("marketplace.hero_title")
-  const heroDescription = useText("marketplace.hero_description")
-  const sellCta = useText("marketplace.sell_cta")
   const recommendationsTitle = useText("marketplace.recommendations_title")
   const recommendationsDescription = useText("marketplace.recommendations_description")
 
@@ -59,18 +55,10 @@ export default function MarketplacePage() {
   useEffect(() => { const initial = new URLSearchParams(window.location.search); setCategory(initial.get("category") || ""); setSearch(initial.get("search") || initial.get("q") || ""); const slug = initial.get("listing"); if (slug) marketListing(slug).then(setSelected).catch(() => undefined) }, [])
 
   return <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-    <section className="mb-8 rounded-[2rem] bg-gradient-to-br from-pink-600 via-rose-600 to-fuchsia-700 p-7 text-white shadow-xl sm:p-12">
-      <p className="text-sm font-semibold uppercase tracking-[.2em] text-pink-100">{heroEyebrow}</p>
-      <h1 className="mt-3 max-w-3xl text-4xl font-black sm:text-6xl">{heroTitle}</h1>
-      <p className="mt-4 max-w-2xl text-pink-50">{heroDescription}</p>
-      <div className="mt-7 flex flex-wrap gap-3"><Link href="/sell" className="rounded-full bg-card text-card-foreground px-5 py-3 font-bold text-[var(--brand-pink-text)]">{sellCta}</Link><Link href="/offers" className="rounded-full border border-white/50 px-5 py-3 font-bold">My offers</Link></div>
-    </section>
-
-    {recommendations.length > 0 && <section aria-labelledby="recommended-heading" className="mb-8">
-      <h2 id="recommended-heading" className="text-2xl font-black">{recommendationsTitle}</h2>
-      <p className="mt-1 text-sm text-muted-foreground">{recommendationsDescription}</p>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{recommendations.map(({ listing, reason }) => <div key={listing.id}><ListingCard listing={listing} onOpen={() => { void trackListingClick(listing.id, "marketplace_recs"); setSelected(listing) }} /><p className="mt-2 text-xs text-muted-foreground">{reason}</p></div>)}</div>
-    </section>}
+    <header className="mb-5">
+      <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Marketplace</h1>
+      <p className="mt-1 text-muted-foreground">Browse products and services available on PlugYard.</p>
+    </header>
     <div className="grid gap-7 lg:grid-cols-[280px_1fr]">
       <aside className="h-fit space-y-5 rounded-3xl border border-border bg-card text-card-foreground p-5 shadow-sm lg:sticky lg:top-24">
         <h2 className="flex items-center gap-2 font-bold"><SlidersHorizontal className="h-4 w-4" /> Filters</h2>
@@ -83,6 +71,11 @@ export default function MarketplacePage() {
 
       <section>
         <div className="mb-5 flex flex-col gap-3 sm:flex-row"><label className="relative flex-1"><Search className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" /><input aria-label="Search products and services" value={search} onChange={(event) => { setPageNumber(1); setSearch(event.target.value) }} placeholder="Search products and services" className="w-full rounded-2xl border py-3 pl-10 pr-4" /></label><select aria-label="Sort listings" value={ordering} onChange={(event) => { setPageNumber(1); setOrdering(event.target.value) }} className="rounded-2xl border px-4"><option value="-created_at">Newest</option><option value="price">Price: low to high</option><option value="-price">Price: high to low</option><option value="relevance">Relevant</option></select></div>
+        {recommendations.length > 0 && <section aria-labelledby="recommended-heading" className="mb-7">
+          <h2 id="recommended-heading" className="text-xl font-black">{recommendationsTitle}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{recommendationsDescription}</p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{recommendations.map(({ listing, reason }) => <div key={listing.id}><ListingCard listing={listing} onOpen={() => { void trackListingClick(listing.id, "marketplace_recs"); setSelected(listing) }} /><p className="mt-2 text-xs text-muted-foreground">{reason}</p></div>)}</div>
+        </section>}
         <p className="mb-4 text-sm text-muted-foreground">{loading ? "Loading listings…" : `${count} listing${count === 1 ? "" : "s"}`}</p>
         {error && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-red-800">{error}</p>}
         {!loading && !listings.length ? <div className="rounded-3xl border border-dashed p-12 text-center"><Filter className="mx-auto mb-3" /><h2 className="font-bold">No listings match these filters</h2><p className="text-muted-foreground">Try a broader category or location.</p></div> : <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">{listings.map(listing => <ListingCard key={listing.id} listing={listing} onOpen={() => setSelected(listing)} />)}</div>}

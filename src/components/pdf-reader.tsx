@@ -2148,6 +2148,7 @@ function renderReaderNotices() {
         onContextMenu={(e: MouseEvent) => e.preventDefault()}
         onCopy={(e: ClipboardEvent) => e.preventDefault()}
       >
+        {isPro && <span role="status" className="rounded-full bg-pink-100 px-3 py-1 text-xs font-bold text-pink-900 dark:bg-pink-950/50 dark:text-pink-100">Robot Reader Pro — Active</span>}
         <button type="button" onClick={() => { fontTouchedRef.current = true; setFontSize((n: number) => Math.max(6, n - 2)) }} className="rounded-full bg-foreground/10 px-3 py-1 text-sm font-bold text-foreground">A−</button>
         <span className="min-w-[3.5rem] text-center text-xs font-semibold text-muted-foreground">{fontSize}px</span>
         <button type="button" onClick={() => { fontTouchedRef.current = true; setFontSize((n: number) => Math.min(40, n + 2)) }} className="rounded-full bg-foreground/10 px-3 py-1 text-sm font-bold text-foreground">A+</button>
@@ -2213,7 +2214,7 @@ function renderReaderNotices() {
           Go to mark{marked > 0 ? ` (${marked})` : ''}
         </button>
         <button type="button" onClick={togglePopOut} className={`rounded-full px-3 py-1 text-sm font-bold ${pipOpen ? 'bg-[#f591ac] text-[var(--on-brand)]' : 'bg-foreground/10 text-foreground'}`}>
-          {!isPro && '🔒 '}Pop out{!isPro && ' · ROBOT READER'}
+          {!isPro && '🔒 '}Pop out
         </button>
         <button
           type="button"

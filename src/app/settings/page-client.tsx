@@ -670,16 +670,21 @@ export default function SettingsPage() {
                     : "Not set. Add one in Dashboard before withdrawing."}
                 </p>
                 <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                  <Stat label="Invited" value={a.referrals} />
-                  <Stat label="Eligible" value={a.eligible_referrals} />
-                  <Stat label="Accepted books" value={a.accepted_books} />
-                  <Stat label="Available" value={money(a.available_balance)} />
-                  <Stat label="Earned" value={money(a.earned)} />
-                  <Stat label="Withdrawn" value={money(a.withdrawn)} />
-                  <Stat label="Invite reward" value={money(a.referral_reward)} />
-                  <Stat label="Book reward" value={money(a.book_reward)} />
+                  <Stat label="Available balance" value={money(a.available_balance)} />
+                  <Stat label="Lifetime rewards earned" value={money(a.earned)} />
+                  <Stat label="Paid withdrawals" value={money(a.withdrawn)} />
+                  <Stat label="Pending withdrawals" value={money(a.pending_withdrawal || 0)} />
+                  <Stat label="Invite rewards earned" value={money(a.invite_rewards_earned || 0)} />
+                  <Stat label="Accepted-book rewards earned" value={money(a.book_rewards_earned || 0)} />
+                  <Stat label="Other ledger adjustments" value={money(a.adjustments || 0)} />
+                  <Stat label="Invited accounts (all time)" value={a.referrals} />
+                  <Stat label="Eligible invitees" value={a.eligible_referrals} />
+                  <Stat label="Published books by invitees" value={a.accepted_books} />
+                  <Stat label="Reward per eligible invite" value={money(a.referral_reward)} />
+                  <Stat label="Reward per accepted book" value={money(a.book_reward)} />
                   <Stat label="Minimum withdrawal" value={money(a.minimum_withdrawal)} />
                 </div>
+                <p className="text-xs text-muted-foreground">Reward totals come from ledger entries. Referral and book activity counts are shown separately; pending withdrawals are not counted as paid.</p>
                 <ActionForm
                   run={(ctx, f) => requestAffiliateWithdrawal(String(f.get("amount")), ctx)}
                   onDone={broadcastAccountChange}
