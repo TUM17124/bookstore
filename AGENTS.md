@@ -8,6 +8,16 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
+## Project map and verification
+
+This repository is PlugYard's Next.js App Router / React / TypeScript frontend. Major route families include marketplace, Books/reader, publish/sell, seller Dashboard/inventory/orders/profile/verification, auctions, account/settings/purchases/wishlist, messages/support and legal pages. Typed API clients live in `src/lib/api.ts`, `src/lib/marketplace.ts`, and `src/lib/auth-fetch.ts`; shared navigation and visual components are in `src/components/`. Consult the sibling backend's `docs/ARCHITECTURE_MAP.md` and `docs/PRODUCTION_INFRASTRUCTURE.md` for cross-stack facts.
+
+- `npm run typecheck` runs TypeScript independently of Next's build worker.
+- `npm test -- --run --configLoader=native --pool=threads --maxWorkers=1` is the known Windows-compatible Vitest invocation.
+- `npm run build` is the production static export. Next worker `spawn EPERM` has occurred on Windows; document any isolated workaround and restore config so test-only switches are never committed.
+- Keep `NEXT_PUBLIC_API_URL` set to the production HTTPS API for production builds; do not bake localhost into release output.
+- Preserve existing unrelated files and do not clean generated or audit artifacts unless explicitly part of the task.
+
 ## PLUGYARD DATABASE — READ BEFORE WORKING
 
 PlugYard's owner has stated that Supabase is no longer the intended production database. Do not automatically assume Supabase is active based on older documentation, commit history, or legacy configuration.
