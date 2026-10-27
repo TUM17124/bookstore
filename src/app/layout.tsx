@@ -133,15 +133,6 @@ const jsonLd = (websiteDescription: string) => ({
       "contactPoint": { "@type": "ContactPoint", "email": "contact@plugyard.com", "contactType": "customer support" },
       "sameAs": [],
     },
-    {
-      "@type": "SiteLinksSearchBox",
-      "url": SITE,
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": `${SITE}/marketplace/?search={search_term_string}`,
-        "query-input": "required name=search_term_string",
-      },
-    },
   ],
 })
 

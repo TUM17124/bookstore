@@ -28,14 +28,21 @@ import { AdsTab } from "./ads-tab";
 import { Banners } from "@/components/offers/banners";
 import { useLimits, useText } from "@/lib/site-config";
 import { DescriptionField } from "@/components/description-field";
+import SellerListings from "@/app/seller/listings/page-client";
+import InventoryClient from "@/app/seller/inventory/page-client";
+import SellerOrdersPage from "@/app/seller/orders/page-client";
 
 
 const SECTIONS = [
-  { id: "sales", label: "Sales and cut" },
-  { id: "payout", label: "Payout account" },
-  { id: "books", label: "Your books" },
-  { id: "campaigns", label: "Campaigns" },
-  { id: "ads", label: "Ads" },
+  { id: "sales", label: "Overview & earnings" },
+  { id: "products", label: "Products & services" },
+  { id: "books", label: "Books" },
+  { id: "orders", label: "Orders" },
+  { id: "auctions", label: "Auctions" },
+  { id: "inventory", label: "Inventory" },
+  { id: "payout", label: "Payout settings" },
+  { id: "campaigns", label: "Promotions" },
+  { id: "ads", label: "Advertising" },
 ] as const;
 
 type SectionId = (typeof SECTIONS)[number]["id"];
@@ -334,6 +341,7 @@ export default function DashboardPage() {
 
     // Part C: notifications link to /dashboard?tab=campaigns
     if (params.get("tab") === "campaigns") setActive("campaigns");
+    if (params.get("tab") && SECTIONS.some((section) => section.id === params.get("tab"))) setActive(params.get("tab") as SectionId);
     // Part E: back from a Paystack ad top-up (and links to the Ads tab).
     if (params.get("tab") === "ads" || params.get("ad_topup_ref")) setActive("ads");
 
@@ -658,6 +666,10 @@ export default function DashboardPage() {
 
         {/* Content */}
         <div className="min-w-0 flex-1 space-y-8">
+          {active === "products" && <SellerListings embedded />}
+          {active === "orders" && <SellerOrdersPage embedded />}
+          {active === "auctions" && <section className="space-y-4 rounded-2xl border p-5"><h2 className="text-2xl font-black">Your auctions</h2><p className="text-sm text-muted-foreground">Manage auction activity and create an auction from an approved listing.</p><Link href="/auctions?mine=1" className="inline-flex min-h-11 items-center rounded-full bg-pink-600 px-5 font-bold text-white">Open My Auctions</Link></section>}
+          {active === "inventory" && <InventoryClient embedded />}
           {active === "sales" && booksLoaded && books.length === 0 && <NoBooksYet />}
 
           {active === "sales" && (

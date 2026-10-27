@@ -3,9 +3,7 @@
 import { useCallback, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { SearchModal, type SearchResult } from "./ui/search-modal"
-import { searchTrack } from "@/lib/api"
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api"
+import { getBooks, searchTrack } from "@/lib/api"
 
 type ApiBook = {
   id: string | number
@@ -59,9 +57,7 @@ const onQueryChange = useCallback((value: string) => {
     setSearchError(false)
     setHasSearched(true)
     try {
-      const res = await fetch(`${API}/books/?search=${encodeURIComponent(q)}`)
-      if (!res.ok) throw new Error("search failed")
-      const books = asList(await res.json())
+      const books = asList(await getBooks({ search: q }))
       setResults(
         books.map((b) => ({
           name: b.title,

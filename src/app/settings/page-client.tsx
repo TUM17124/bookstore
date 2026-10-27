@@ -670,23 +670,20 @@ export default function SettingsPage() {
                     : "Not set. Add one in Dashboard before withdrawing."}
                 </p>
                 <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                  <Stat label="Available balance" value={money(a.available_balance)} />
-                  <Stat label="Lifetime rewards earned" value={money(a.earned)} />
-                  <Stat label="Paid withdrawals" value={money(a.withdrawn)} />
-                  <Stat label="Pending withdrawals" value={money(a.pending_withdrawal || 0)} />
-                  <Stat label="Invite rewards earned" value={money(a.invite_rewards_earned || 0)} />
+                  <Stat label="Available reward balance" value={money(a.available_balance)} />
+                  <Stat label="Invitation rewards earned" value={money(a.invite_rewards_earned || 0)} />
                   <Stat label="Accepted-book rewards earned" value={money(a.book_rewards_earned || 0)} />
-                  <Stat label="Historical author rewards" value={money(a.legacy_author_rewards_earned || 0)} />
-                  <Stat label="Historical referral rewards" value={money(a.legacy_referral_rewards_earned || 0)} />
-                  <Stat label="Other ledger adjustments" value={money(a.adjustments || 0)} />
-                  <Stat label="Invited accounts (all time)" value={a.referrals} />
-                  <Stat label="Eligible invitees" value={a.eligible_referrals} />
-                  <Stat label="Published books by invitees" value={a.accepted_books} />
-                  <Stat label="Reward per eligible invite" value={money(a.referral_reward)} />
-                  <Stat label="Reward per accepted book" value={money(a.book_reward)} />
-                  <Stat label="Minimum withdrawal" value={money(a.minimum_withdrawal)} />
+                  <Stat label="Successful invitations" value={a.referrals} />
+                  <Stat label="Eligible referred publishers" value={a.eligible_referrals} />
+                  <Stat label="Books published by referred users" value={a.accepted_books} />
+                  <Stat label="Pending withdrawals" value={money(a.pending_withdrawal || 0)} />
                 </div>
-                <p className="text-xs text-muted-foreground">Reward totals come from ledger entries. Invitation rewards are issued once when an invitee publishes their first eligible book; referred-book rewards are issued for each eligible book. Historical author and referral entries remain visible in lifetime earnings. Pending withdrawals are not counted as paid.</p>
+                <div className="grid gap-3 rounded-lg bg-foreground/[0.035] p-4 text-sm sm:grid-cols-3">
+                  <p>Invitation reward: <strong>{money(a.referral_reward)}</strong> for the first qualifying accepted book from an invitee.</p>
+                  <p>Accepted-book reward: <strong>{money(a.book_reward)}</strong> per qualifying accepted book from a referred publisher.</p>
+                  <p>Minimum withdrawal: <strong>{money(a.minimum_withdrawal)}</strong></p>
+                </div>
+                <p className="text-xs text-muted-foreground">Your available balance is the sum of all wallet ledger entries, including earlier program transactions and withdrawals. New rewards use the two programs above; earlier records remain in your account history.</p>
                 <ActionForm
                   run={(ctx, f) => requestAffiliateWithdrawal(String(f.get("amount")), ctx)}
                   onDone={broadcastAccountChange}
@@ -769,7 +766,7 @@ export default function SettingsPage() {
                               <td className="py-2 pr-3 whitespace-nowrap">
                                 {x.created_at ? new Date(x.created_at).toLocaleString() : "—"}
                               </td>
-                              <td className="py-2 pr-3">{x.kind === "invitation" ? "Invitation reward" : x.kind === "book" ? "Book publishing reward" : x.kind === "referral" ? "Historical referral reward" : x.kind === "adjustment" ? "Ledger adjustment" : "Withdrawal"}</td>
+                              <td className="py-2 pr-3">{x.program === "invitation" ? "Invitation reward" : x.program === "accepted_book" ? "Accepted-book reward" : x.program === "withdrawal" ? "Withdrawal" : "Previous program transaction"}</td>
                               <td className="py-2 pr-3">{money(x.amount)}</td>
                               <td className="py-2 text-muted-foreground">{x.description || "—"}</td>
                             </tr>

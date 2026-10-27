@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 // Types only: the three.js code (~130 KB gzipped) is loaded when a book is
 // first opened (or the pointer/finger first touches the shelf), not with the page.
 import type * as THREE from 'three';
@@ -238,16 +238,18 @@ function coverSrcSet(book: BookCfg) {
 const CARD_COVER_SIZES = '(min-width: 768px) 170px, 36vw';
 
 function StarsRow({ value, className }: { value: number; className?: string }) {
-  const rounded = Math.round(value);
+  const id = useId().replaceAll(":", "");
+  const rating = Math.max(0, Math.min(5, Number(value) || 0));
   return (
-    <span className={cn('flex gap-[3px]', className)}>
+    <span className={cn('flex items-center gap-1', className)} aria-label={`Rating ${rating.toFixed(1)} out of 5`}>
       {[0, 1, 2, 3, 4].map((i) => (
         <svg
           key={i}
           viewBox="0 0 24 24"
-          className={`h-3.5 w-3.5 fill-[var(--bs-pink)] ${i < rounded ? '' : 'opacity-25'}`}
+          className="h-[19px] w-[19px] shrink-0 text-[var(--brand-pink-text)] sm:h-[21px] sm:w-[21px]"
         >
-          <path d="M12 2.6l2.8 6 6.6.6-5 4.4 1.5 6.5L12 16.7 6.1 20.1l1.5-6.5-5-4.4 6.6-.6z" />
+          <defs><linearGradient id={`${id}-star-${i}`}><stop offset={`${Math.max(0, Math.min(1, rating - i)) * 100}%`} stopColor="currentColor"/><stop offset={`${Math.max(0, Math.min(1, rating - i)) * 100}%`} stopColor="currentColor" stopOpacity=".22"/></linearGradient></defs>
+          <path fill={`url(#${id}-star-${i})`} d="M12 2.6l2.8 6 6.6.6-5 4.4 1.5 6.5L12 16.7 6.1 20.1l1.5-6.5-5-4.4 6.6-.6z" />
         </svg>
       ))}
     </span>
@@ -276,7 +278,7 @@ export function GridBookCard({
   const srcSet = coverSrcSet(book);
   const [broken, setBroken] = useState(false);
   const hasPayloadRating = book.ratingCount != null;
-  const [avg, setAvg] = useState(hasPayloadRating && book.ratingCount ? Number(book.ratingAvg) || 0 : book.stars || 0);
+  const [avg, setAvg] = useState(hasPayloadRating && book.ratingCount ? Number(book.ratingAvg) || 0 : 0);
   const [count, setCount] = useState(book.ratingCount || 0);
   const spineColor = book.spineBg || book.backBg || '#1c1f26';
   const pageColor = book.edge || '#eee4cf';
@@ -292,11 +294,11 @@ export function GridBookCard({
         if (cancelled) return;
         const n = Number(r.count) || 0;
         setCount(n);
-        setAvg(n > 0 ? Number(r.average) || 0 : book.stars || 0);
+        setAvg(n > 0 ? Number(r.average) || 0 : 0);
       })
       .catch(() => {
         if (cancelled) return;
-        setAvg(book.stars || 0);
+        setAvg(0);
         setCount(0);
       });
     return () => {
@@ -387,13 +389,13 @@ export function GridBookCard({
         )}
         <div className="line-clamp-2 text-[13px] font-semibold leading-snug text-current">{book.title}</div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          <StarsRow value={avg} />
+          {count > 0 && <StarsRow value={avg} />}
           {count > 0 ? (
-            <span className="text-[11px] text-current/55">
+            <span className="text-xs font-medium text-current/75">
               {avg.toFixed(1)} · {count}
             </span>
           ) : (
-            <span className="text-[11px] text-current/45">{(book.stars || 0).toFixed(1)}</span>
+            <span className="text-xs text-current/55">No ratings yet</span>
           )}
         </div>
         <div className="mt-1 flex items-baseline gap-2 text-[12px] leading-tight">
@@ -644,7 +646,9 @@ function apiBookToMiniCfg(b: ApiBook): BookCfg {
     title: b.title,
     author: b.author || 'Unknown',
     year: b.year || '',
-    stars: b.stars ?? 5,
+    stars: b.rating_avg ?? 0,
+    ratingAvg: b.rating_avg ?? undefined,
+    ratingCount: b.rating_count,
     desc: b.desc || '',
     images: {
       front: b.images?.front || undefined,

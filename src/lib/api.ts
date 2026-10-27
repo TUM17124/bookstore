@@ -16,6 +16,8 @@ export type ApiBook = {
   author: string
   year: string
   stars: number
+  rating_avg?: number | null
+  rating_count?: number
   desc: string
   images?: {
     front?: string | null

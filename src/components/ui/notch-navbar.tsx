@@ -230,7 +230,6 @@ function NotchNavbarInner({
         </Link>
       )}
       <Link href="/seller/profile/" onClick={() => setAccountOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5"><User className="w-4 h-4" />My Profile</Link>
-      <Link href="/seller/listings/" onClick={() => setAccountOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5"><Store className="w-4 h-4" />My Listings</Link>
       <Link
         href="/purchases"
         onClick={() => setAccountOpen(false)}
@@ -239,7 +238,6 @@ function NotchNavbarInner({
         <BookOpen className="w-4 h-4" />
         My Purchases
       </Link>
-      <Link href="/wishlist/" onClick={() => setAccountOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/5"><Heart className="w-4 h-4" />Wishlist</Link>
       <Link
         href="/notes"
         onClick={() => setAccountOpen(false)}
@@ -556,7 +554,6 @@ function NotchNavbarInner({
                     <span className="font-medium text-foreground/90">Sell &amp; Publish</span>
                   </Link>
                   <Link href="/seller/profile/" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}><User className="w-5 h-5 opacity-70"/><span className="font-medium text-foreground/90">My Profile</span></Link>
-                  <Link href="/seller/listings/" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}><Store className="w-5 h-5 opacity-70"/><span className="font-medium text-foreground/90">My Listings</span></Link>
                   <Link href="/dashboard" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
                     <LayoutDashboard className="w-5 h-5 opacity-70" />
                     <span className="font-medium text-foreground/90">Dashboard</span>

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { bookShareText, bookShareUrl, nativeShare, shareTargets } from "./share"
-import { getBookPageUrls, parseBookSitemap } from "./book-pages"
+import { getBookPageUrls, getPublicPageUrls, parseBookSitemap } from "./book-pages"
 import sitemapFn from "@/app/sitemap"
 
 describe("share helpers", () => {
@@ -63,5 +63,30 @@ describe("book pages in the sitemap", () => {
     const urls = (await sitemapFn()).map((e) => e.url)
     expect(urls).toContain("https://plugyard.com/")
     for (const u of urls) expect(u).toMatch(/^https:\/\/plugyard\.com\/.*\/$|^https:\/\/plugyard\.com\/$/)
+  })
+})
+
+describe("marketplace URLs in the sitemap", () => {
+  it("loads only canonical public PlugYard URLs from known backend sitemap paths", async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => `<urlset>
+        <url><loc>https://plugyard.com/listings/real-item/</loc></url>
+        <url><loc>https://plugyard.com/categories/books/</loc></url>
+        <url><loc>https://evil.example/listings/fake/</loc></url>
+        <url><loc>https://plugyard.com/settings/private/</loc></url>
+        <url><loc>https://plugyard.com/marketplace/?page=2</loc></url>
+      </urlset>`,
+    })
+    expect(await getPublicPageUrls("sitemap-listings.xml", fetcher as unknown as typeof fetch, "https://plugyard.com/api"))
+      .toEqual(["https://plugyard.com/listings/real-item/"])
+    expect(fetcher.mock.calls[0][0]).toBe("https://plugyard.com/sitemap-listings.xml")
+  })
+
+  it("rejects unapproved sitemap names and tolerates a missing API", async () => {
+    const fetcher = vi.fn()
+    expect(await getPublicPageUrls("sitemap.xml", fetcher as unknown as typeof fetch, "https://plugyard.com/api")).toEqual([])
+    expect(await getPublicPageUrls("sitemap-listings.xml", fetcher as unknown as typeof fetch, undefined)).toEqual([])
+    expect(fetcher).not.toHaveBeenCalled()
   })
 })
