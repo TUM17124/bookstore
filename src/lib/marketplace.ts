@@ -43,7 +43,36 @@ export async function trackListingClick(listing: number, placement = "marketplac
   await authFetch(`${API}/signals/`, { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ events: [{ kind: "click", listing_id: listing, placement }] }) }).catch(() => undefined)
 }
-export async function myListings() { return json<Page<MarketListing>>(await authFetch(`${API}/marketplace/me/listings/`)) }
+export async function myListings() {
+  const endpoint = `${API}/marketplace/me/listings/`
+  const first = await json<Page<MarketListing>>(await authFetch(endpoint))
+  const results = [...first.results]
+  let next = first.next
+  const base = typeof window === "undefined" ? "https://plugyard.invalid" : window.location.origin
+  const collection = new URL(endpoint, base)
+  const visited = new Set<string>()
+  const pageSize = Math.max(first.results.length, 1)
+  const maximumPages = Math.min(1000, Math.max(1, Math.ceil(first.count / pageSize) + 1))
+  let fetchedPages = 1
+
+  while (next) {
+    const nextUrl = new URL(next, base)
+    if (nextUrl.origin !== collection.origin || nextUrl.pathname !== collection.pathname) {
+      throw new Error("The listings API returned an invalid next-page link.")
+    }
+    const canonicalNext = nextUrl.toString()
+    if (visited.has(canonicalNext) || fetchedPages >= maximumPages) {
+      throw new Error("Could not safely finish loading all of your listings.")
+    }
+    visited.add(canonicalNext)
+    const page = await json<Page<MarketListing>>(await authFetch(canonicalNext))
+    results.push(...page.results)
+    next = page.next
+    fetchedPages += 1
+  }
+
+  return { ...first, results, next: null, previous: null }
+}
 export async function updateMyListing(id: number, payload: Record<string, unknown>) { return json<MarketListing>(await authFetch(`${API}/marketplace/me/listings/${id}/`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), idempotencyKey: newIdempotencyKey() })) }
 async function sellerListingAction(id: number, action: "archive" | "restore") {
   const response = await authFetch(`${API}/marketplace/me/listings/${id}/${action}/`, { method: "POST", idempotencyKey: newIdempotencyKey() })
