@@ -12,6 +12,7 @@ import { PAGE_H, PAGE_W, paintFace, paintPaper, planFaces } from '@/lib/book3d/p
 import { HINT_H, PHONE_TOP, TOOL_H, fitArea, phoneBookHeight } from '@/lib/book3d/layout';
 import { loadPreviewPages } from '@/lib/book3d/preview';
 import { useRouter } from 'next/navigation';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useBookmarks } from '@/components/bookmarks-context';
 import { useAsyncAction } from '@/hooks/use-async-action';
@@ -210,6 +211,8 @@ export interface BooksShowcaseProps {
   onNearEnd?: () => void;
   openBookId?: string;
   openView?: string;
+  /** Keep the catalogue and detail view in the page's normal document flow. */
+  documentFlow?: boolean;
 }
 
 const OPEN_SLIP_CLASS =
@@ -476,6 +479,10 @@ function SectionRow({
   // No visible scrollbar; a soft fade on the edge that has more books.
   const rowRef = useRef<HTMLUListElement | null>(null);
   const edges = useScrollEdges(rowRef);
+  const scrollRow = (direction: -1 | 1) => {
+    const row = rowRef.current;
+    if (row) row.scrollBy({ left: direction * Math.max(240, row.clientWidth * 0.82), behavior: 'smooth' });
+  };
   return (
     <section aria-labelledby={headingId} className="mb-8">
       <div className="mb-3 flex min-h-[var(--bs-section-head)] items-end justify-between gap-3">
@@ -487,17 +494,25 @@ function SectionRow({
             <p className="mt-0.5 text-[13px] text-current/60">{section.description}</p>
           ) : null}
         </div>
-        {section.personal && section.why ? (
-          <button
-            type="button"
-            onClick={() => setWhyOpen((v) => !v)}
-            aria-expanded={whyOpen}
-            aria-controls={`${headingId}-why`}
-            className="shrink-0 rounded-full px-2.5 py-1 text-[12px] font-semibold text-current/65 underline-offset-2 hover:underline"
-          >
-            Why am I seeing this?
+        <div className="flex shrink-0 items-center gap-1.5">
+          {section.personal && section.why ? (
+            <button
+              type="button"
+              onClick={() => setWhyOpen((v) => !v)}
+              aria-expanded={whyOpen}
+              aria-controls={`${headingId}-why`}
+              className="rounded-full px-2.5 py-1 text-[12px] font-semibold text-current/65 underline-offset-2 hover:underline"
+            >
+              Why am I seeing this?
+            </button>
+          ) : null}
+          <button type="button" aria-label={`Scroll ${section.title} left`} disabled={!edges.start} onClick={() => scrollRow(-1)} className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-current/15 disabled:opacity-35">
+            <ChevronLeft className="h-4 w-4" aria-hidden />
           </button>
-        ) : null}
+          <button type="button" aria-label={`Scroll ${section.title} right`} disabled={!edges.end} onClick={() => scrollRow(1)} className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-current/15 disabled:opacity-35">
+            <ChevronRight className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
       </div>
       {section.personal && whyOpen ? (
         <p id={`${headingId}-why`} className="mb-3 rounded-xl bg-current/[0.06] px-3 py-2 text-[13px] text-current/75">
@@ -522,7 +537,9 @@ function SectionRow({
       <ul
         ref={rowRef}
         style={{ ...edgeMask(edges.start, edges.end), ['--bs-card-meta' as string]: 'var(--bs-section-meta)' }}
-        className="flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain scroll-px-6 px-6 py-5 sm:scroll-px-10 sm:px-10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        aria-label={`${section.title} books`}
+        tabIndex={edges.start || edges.end ? 0 : undefined}
+        className="flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain scroll-px-8 px-8 py-8 sm:scroll-px-10 sm:px-10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {section.books.filter((book) => !hiddenIds?.has(book.id)).map((book, i) => (
           <li key={book.id} className="w-[44%] shrink-0 snap-start @min-[520px]:w-[30%] @min-[768px]:w-[200px]">
@@ -643,14 +660,20 @@ function apiBookToMiniCfg(b: ApiBook): BookCfg {
   };
 }
 
-function RecommendedBooks({ book }: { book: BookCfg }) {
+function RecommendedBooks({ book, onBookSelect }: { book: BookCfg; onBookSelect?: (book: BookCfg | null) => void }) {
   const router = useRouter();
   const [items, setItems] = useState<BookCfg[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
+    setItems([]);
+    setLoading(true);
+    setError(false);
 
     async function load() {
       try {
@@ -664,30 +687,31 @@ function RecommendedBooks({ book }: { book: BookCfg }) {
           .map(apiBookToMiniCfg);
         if (!cancelled) setItems(list.slice(0, 8));
       } catch {
-        if (!cancelled) setItems([]);
+        if (!cancelled) setError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
     void load();
     return () => {
       cancelled = true;
     };
-  }, [book.id]);
+  }, [book.id, attempt]);
 
   useEffect(() => {
     setOpeningId(null);
   }, [book.id]);
 
-  if (items.length === 0) return null;
-
   const skip = (dir: 1 | -1) => {
-    scrollRef.current?.scrollBy({ left: dir * 320, behavior: 'smooth' });
+    const row = scrollRef.current;
+    if (row) row.scrollBy({ left: dir * Math.max(240, row.clientWidth * 0.82), behavior: 'smooth' });
   };
 
   return (
-    <div className="w-full border-t border-current/10 bg-[var(--bs-bg-light)] text-[var(--bs-fg-light)] dark:bg-[var(--bs-bg-dark)] dark:text-[var(--bs-fg-dark)]">
+    <section aria-label="Recommendations" className="w-full border-t border-current/10 bg-[var(--bs-bg-light)] text-[var(--bs-fg-light)] dark:bg-[var(--bs-bg-dark)] dark:text-[var(--bs-fg-dark)]">
       <div className="flex items-center justify-between px-4 pt-5 sm:px-8">
         <h3 className="text-[13px] font-bold uppercase tracking-wide text-current/60">Recommendations</h3>
-        <div className="flex gap-2">
+        {items.length > 1 ? <div className="flex gap-2">
           <button
             type="button"
             aria-label="Scroll recommendations left"
@@ -704,11 +728,16 @@ function RecommendedBooks({ book }: { book: BookCfg }) {
           >
             ›
           </button>
-        </div>
+        </div> : null}
       </div>
-      <div
+      {loading ? <p role="status" className="px-4 py-6 text-sm text-current/65 sm:px-8">Loading related books…</p> : null}
+      {error ? <p role="alert" className="px-4 py-6 text-sm text-current/65 sm:px-8">Related books could not be loaded. <button type="button" className="font-semibold underline" onClick={() => setAttempt((value) => value + 1)}>Try again</button></p> : null}
+      {!loading && !error && !items.length ? <p role="status" className="px-4 py-6 text-sm text-current/65 sm:px-8">No related books are available yet.</p> : null}
+      {items.length > 0 ? <div
         ref={scrollRef}
-        className="flex gap-4 overflow-x-auto px-4 py-5 sm:px-8 [scrollbar-width:thin]"
+        aria-label="Related books"
+        tabIndex={items.length > 1 ? 0 : undefined}
+        className="flex gap-4 overflow-x-auto px-8 py-8 sm:px-10 [scrollbar-width:thin]"
       >
         {items.map((b, i) => (
           <div key={b.id} className="w-[132px] shrink-0 @min-[768px]:w-[240px]">
@@ -718,15 +747,20 @@ function RecommendedBooks({ book }: { book: BookCfg }) {
               spinning={openingId === b.id}
               onOpen={() => {
                 setOpeningId(b.id);
-                const params = new URLSearchParams(window.location.search);
-                params.set('book', b.id);
-                router.push(`/?${params.toString()}`);
+                if (onBookSelect) {
+                  onBookSelect(b);
+                } else {
+                  const params = new URLSearchParams(window.location.search);
+                  params.set('book', b.id);
+                  params.delete('view');
+                  router.push(`/books/?${params.toString()}`);
+                }
               }}
             />
           </div>
         ))}
-      </div>
-    </div>
+      </div> : null}
+    </section>
   );
 }
 
@@ -783,6 +817,7 @@ export function BooksShowcase({
   onNearEnd,
   openBookId,
   openView,
+  documentFlow = false,
 }: BooksShowcaseProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1063,6 +1098,13 @@ export function BooksShowcase({
     if (openView === 'read') setReaderOpen(true);
     if (openView === 'listen') setPlayerOpen(true);
   }, [openBookId, openView, books]);
+
+  // On the dedicated Books route, browser Back removes `?book=` from the URL.
+  // Close the visual detail view with it so the catalogue controls return.
+  useEffect(() => {
+    if (!documentFlow || openBookId || uiMode !== 'detail' || !selectedCfg) return;
+    sceneApiRef.current?.closeCurrent();
+  }, [documentFlow, openBookId, uiMode, selectedCfg?.id]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -2800,10 +2842,10 @@ export function BooksShowcase({
       aria-label={`${heroTitle} book showcase`}
       data-state={uiMode}
       className={cn(
-        'book-showcase relative isolate h-full min-h-[560px] font-sans outline-none [container-type:size] [-webkit-tap-highlight-color:transparent]',
+        cn('book-showcase relative isolate font-sans outline-none [container-type:inline-size] [-webkit-tap-highlight-color:transparent]', documentFlow ? 'h-auto min-h-0 overflow-visible' : 'h-full min-h-[560px]'),
         'focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-current/40',
         'transition-colors duration-500 ease-out',
-        uiMode === 'closing' ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden',
+        documentFlow ? 'overflow-visible' : uiMode === 'closing' ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden',
         uiMode === 'hero' || uiMode === 'opening'
           ? 'bg-[var(--bs-bg-light)] text-[var(--bs-fg-light)] dark:bg-[var(--bs-bg-dark)] dark:text-[var(--bs-fg-dark)]'
           : 'bg-[var(--bs-bg-light)] text-[var(--bs-fg-light)] dark:bg-[var(--bs-bg-dark)] dark:text-[var(--bs-fg-dark)]',
@@ -3414,7 +3456,7 @@ export function BooksShowcase({
         document.body,
       )}
 
-      {shelfActive && selectedCfg && <div id="recommended-books" className="scroll-mt-20"><RecommendedBooks book={selectedCfg} /></div>}
+      {shelfActive && selectedCfg && <div id="recommended-books" className="scroll-mt-20"><RecommendedBooks book={selectedCfg} onBookSelect={onBookSelectRef.current || undefined} /></div>}
 
       {/* Not interested toast: reason picker → confirmed → error */}
       {hideToast && typeof document !== 'undefined' && createPortal(

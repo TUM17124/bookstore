@@ -197,19 +197,22 @@ body.book-detail-open .book-showcase {
   flex-shrink: 0;
 }
 
-/* The Books department stays in normal document flow. Its open-book shelf
-   can occupy one viewport, but never creates a second vertical scrollport. */
+/* Books uses inline-size queries for its responsive cards. Keep its block size
+   content-driven so CSS containment cannot let the footer pass the catalogue
+   or recommendations, and clip only sideways 3D cover overhang. */
 .books-department-showcase {
   height: auto !important;
   min-height: 0 !important;
-  overflow: visible !important;
+  overflow-x: clip !important;
+  overflow-y: visible !important;
 }
 .books-department-showcase[data-state="opening"],
 .books-department-showcase[data-state="detail"],
 .books-department-showcase[data-state="closing"] {
-  height: calc(100dvh - 4rem) !important;
+  height: auto !important;
   min-height: calc(100dvh - 4rem) !important;
-  overflow: visible !important;
+  overflow-x: clip !important;
+  overflow-y: visible !important;
 }
 
 /* Pin the close button to the actual top-left corner, clear of any

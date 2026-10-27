@@ -5,6 +5,7 @@ import { useCategories, categoryHref, CategoryIcon } from "@/lib/categories"
 import { usePairs, useText } from "@/lib/site-config"
 import { marketListings, type MarketListing } from "@/lib/marketplace"
 import { ListingCard } from "./listing-card"
+import { Banners, useBannerData } from "@/components/offers/banners"
 
 export function MarketplaceHome() {
   const { all } = useCategories()
@@ -12,10 +13,20 @@ export function MarketplaceHome() {
   const title = useText('marketplace.hero_title')
   const description = useText('marketplace.hero_description')
   const categoriesTitle = useText('marketplace.categories_title')
+  // Homepage promotions are published and scheduled in Django admin. Keep
+  // the request warm while the rest of the marketplace page is rendering.
+  useBannerData()
   return <main className="mx-auto max-w-7xl space-y-10 px-4 py-8 sm:px-6">
-    <section className="rounded-[2rem] bg-muted p-6 sm:p-12"><h1 className="max-w-3xl text-4xl font-black sm:text-6xl">{title}</h1><p className="mt-4 max-w-2xl text-lg text-muted-foreground">{description}</p>
-      <form action="/marketplace/" className="mt-7 flex flex-wrap gap-3"><label className="min-w-0 basis-full sm:flex-1 sm:basis-0"><span className="sr-only">Search products and services</span><input name="search" placeholder="Search products and services" className="min-h-12 w-full rounded-full border border-input bg-background px-5" /></label><button className="min-h-12 rounded-full bg-primary px-6 font-bold text-primary-foreground">Search</button></form>
-    </section>
+    <Banners
+      placement="home"
+      className="-mt-2"
+      emptyFallback={
+        <section className="rounded-2xl border bg-card px-5 py-6 sm:px-8">
+          <h1 className="text-2xl font-bold sm:text-3xl">{title}</h1>
+          <p className="mt-2 max-w-3xl text-muted-foreground">{description}</p>
+        </section>
+      }
+    />
     {all.length > 0 && <section><h2 className="text-2xl font-bold">{categoriesTitle}</h2><nav aria-label="Marketplace departments" className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{all.filter(c => !c.parent).map(c => <Link key={c.slug} href={categoryHref(c)} className="flex min-h-24 items-center gap-3 rounded-2xl border bg-card p-4 hover:bg-accent"><CategoryIcon name={c.icon} className="size-6 shrink-0 text-[var(--brand-pink-text)]" /><span className="font-semibold">{c.label}</span></Link>)}</nav></section>}
     {sections.map(section => <HomeCollection key={section.value} title={section.label} source={section.value} />)}
   </main>

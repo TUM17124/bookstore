@@ -229,18 +229,20 @@ export function Banners({
   category = "",
   placement,
   className = "mb-6",
+  emptyFallback,
 }: {
   category?: string
   placement?: BannerPlacement
   /** Outer spacing (default: space below). */
   className?: string
+  /** Render only after the request completes with no active banners. */
+  emptyFallback?: React.ReactNode
 }) {
   const where: BannerPlacement = placement ?? (category ? "category" : "home")
   // First render: the preloaded answer if it is already in; otherwise the
   // space this page needed last time (or nothing on a first visit).
   const [page, setPage] = useState<BannersPage | null>(() => ready(where, category) ?? null)
   const [shape] = useState<Shape>(() => (page ? null : readShape(where, category)))
-  const [show] = useState(() => !!page?.banners.length || !!shape)
   const [hidden, setHidden] = useState<Set<number>>(new Set())
   const [ended, setEnded] = useState<Set<number>>(new Set())
   const [active, setActive] = useState(0)
@@ -298,8 +300,6 @@ export function Banners({
     return () => clearInterval(t)
   }, [banners.length, autoplay, paused, active, goTo])
 
-  if (!show) return null
-
   // Reserved space while the answer is on its way.
   if (!page) {
     if (!shape) return null
@@ -312,7 +312,7 @@ export function Banners({
       </div>
     )
   }
-  if (!banners.length) return null
+  if (!banners.length) return emptyFallback ?? null
 
   // A "Starts in" countdown reaching zero turns into "Ends in" on the
   // server: ask again. One that ends: hide the banner or show its message.
