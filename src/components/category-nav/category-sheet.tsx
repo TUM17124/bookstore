@@ -7,8 +7,8 @@ import { X } from "lucide-react"
 import { CategoryIcon, categoryHref, useCategories } from "@/lib/categories"
 
 /**
- * Phones: a bottom sheet listing every navbar category (with icons). Opened
- * from the "All" chip or the menu's "Browse categories"; closes on tap
+ * Responsive category browser listing every navbar category (with icons).
+ * Opened from the "All" chip or the menu's "Browse categories"; closes on tap
  * outside, Esc, swipe down, or choosing a category. One instance is mounted
  * by the navbar; anything can open it with openCategorySheet().
  */
@@ -60,7 +60,7 @@ export function CategorySheet({ activeSlug }: { activeSlug: string }) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[90] lg:hidden" role="presentation">
+    <div className="fixed inset-0 z-[90]" role="presentation">
       <button
         type="button"
         aria-label="Close categories"
@@ -72,7 +72,7 @@ export function CategorySheet({ activeSlug }: { activeSlug: string }) {
         role="dialog"
         aria-modal="true"
         aria-label="All categories"
-        className="absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto overscroll-contain rounded-t-3xl bg-background pb-[max(16px,env(safe-area-inset-bottom))] text-foreground shadow-2xl motion-safe:transition-transform motion-safe:duration-200 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto overscroll-contain rounded-t-3xl bg-background pb-[max(16px,env(safe-area-inset-bottom))] text-foreground shadow-2xl motion-safe:transition-transform motion-safe:duration-200 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:inset-x-auto lg:bottom-auto lg:right-6 lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:w-[min(760px,calc(100vw-3rem))] lg:rounded-3xl lg:border lg:pb-5"
         style={{ transform: dragY ? `translateY(${dragY}px)` : undefined }}
         onTouchStart={(e) => {
           if ((panelRef.current?.scrollTop ?? 0) > 0) return

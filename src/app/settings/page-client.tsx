@@ -662,7 +662,7 @@ export default function SettingsPage() {
             {active === "affiliate" && (
               <section className="min-w-0 space-y-4 rounded-xl border p-5">
                 <h2 className="text-xl font-semibold">Affiliate & rewards</h2>
-                <AffiliateInvite code={a.code} referralReward={a.referral_reward} />
+                <AffiliateInvite code={a.code} referralReward={a.referral_reward} bookReward={a.book_reward} />
                 <p className="text-sm text-muted-foreground">
                   Payout account:{" "}
                   {payoutReady
@@ -676,6 +676,8 @@ export default function SettingsPage() {
                   <Stat label="Pending withdrawals" value={money(a.pending_withdrawal || 0)} />
                   <Stat label="Invite rewards earned" value={money(a.invite_rewards_earned || 0)} />
                   <Stat label="Accepted-book rewards earned" value={money(a.book_rewards_earned || 0)} />
+                  <Stat label="Historical author rewards" value={money(a.legacy_author_rewards_earned || 0)} />
+                  <Stat label="Historical referral rewards" value={money(a.legacy_referral_rewards_earned || 0)} />
                   <Stat label="Other ledger adjustments" value={money(a.adjustments || 0)} />
                   <Stat label="Invited accounts (all time)" value={a.referrals} />
                   <Stat label="Eligible invitees" value={a.eligible_referrals} />
@@ -684,7 +686,7 @@ export default function SettingsPage() {
                   <Stat label="Reward per accepted book" value={money(a.book_reward)} />
                   <Stat label="Minimum withdrawal" value={money(a.minimum_withdrawal)} />
                 </div>
-                <p className="text-xs text-muted-foreground">Reward totals come from ledger entries. Referral and book activity counts are shown separately; pending withdrawals are not counted as paid.</p>
+                <p className="text-xs text-muted-foreground">Reward totals come from ledger entries. Invitation rewards are issued once when an invitee publishes their first eligible book; referred-book rewards are issued for each eligible book. Historical author and referral entries remain visible in lifetime earnings. Pending withdrawals are not counted as paid.</p>
                 <ActionForm
                   run={(ctx, f) => requestAffiliateWithdrawal(String(f.get("amount")), ctx)}
                   onDone={broadcastAccountChange}
@@ -767,7 +769,7 @@ export default function SettingsPage() {
                               <td className="py-2 pr-3 whitespace-nowrap">
                                 {x.created_at ? new Date(x.created_at).toLocaleString() : "—"}
                               </td>
-                              <td className="py-2 pr-3">{x.kind}</td>
+                              <td className="py-2 pr-3">{x.kind === "invitation" ? "Invitation reward" : x.kind === "book" ? "Book publishing reward" : x.kind === "referral" ? "Historical referral reward" : x.kind === "adjustment" ? "Ledger adjustment" : "Withdrawal"}</td>
                               <td className="py-2 pr-3">{money(x.amount)}</td>
                               <td className="py-2 text-muted-foreground">{x.description || "—"}</td>
                             </tr>

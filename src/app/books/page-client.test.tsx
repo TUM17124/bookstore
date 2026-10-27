@@ -21,6 +21,7 @@ vi.mock('@/components/ui/books-showcase', () => ({
   BooksShowcase: ({ documentFlow, openBookId }: { documentFlow: boolean; openBookId?: string }) => (
     <div data-testid="showcase" data-document-flow={String(documentFlow)}>{openBookId ? `Selected book ${openBookId}` : 'Book catalogue'}</div>
   ),
+  RecommendedBooks: ({ book }: { book: { title: string } }) => <section data-testid="recommendations">Recommendations for {book.title}</section>,
 }))
 
 let root: Root | null = null
@@ -48,6 +49,8 @@ describe('Books detail route separation', () => {
     expect(host!.querySelector('nav[aria-label="Browse by genre"]')).toBeNull()
     expect(host!.textContent).not.toContain('Browse by format')
     expect(host!.textContent).not.toContain('Search books or authors')
-    expect(host!.querySelector('a')?.textContent).toBe('Back to Books')
+    expect(host!.textContent).not.toContain('Back to Books')
+    expect(host!.querySelector('[data-testid="recommendations"]')?.textContent).toContain('Test Title')
+    expect(host!.querySelector('[data-testid="showcase"]')?.nextElementSibling?.getAttribute('id')).toBe('recommended-books')
   })
 })

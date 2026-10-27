@@ -7,14 +7,18 @@ import { useFeature, useOffMessage } from "@/lib/site-config"
 export function AffiliateInvite({
   code,
   referralReward,
+  bookReward,
 }: {
   code: string
   referralReward?: string
+  bookReward?: string
 }) {
   const money = useMoney()
   const [copied, setCopied] = useState<"link" | "code" | "">("")
   // Site: Features → invite rewards. Earned balances stay withdrawable.
   const invitesOn = useFeature("affiliate")
+  const invitationRewardOn = useFeature("affiliate_invitation_rewards")
+  const referredBookRewardOn = useFeature("affiliate_referred_book_rewards")
   const invitesOff = useOffMessage("affiliate")
   const origin =
     typeof window !== "undefined" ? window.location.origin : "https://plugyard.com"
@@ -40,12 +44,15 @@ export function AffiliateInvite({
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-foreground/70">
-        Share your invite link or code. When someone creates an account with it,
-        they are tied to you. You earn{" "}
-        <strong>{money(referralReward || 0)}</strong> when a referred author is
-        published.
-      </p>
+      <div className="space-y-1 text-sm text-foreground/70">
+        <p>Share your invite link or code. When a referred author publishes their first eligible book, they qualify for an invitation reward.</p>
+        {invitationRewardOn
+          ? <p>Invitation reward: <strong>{money(referralReward || 0)}</strong>, once per eligible invite.</p>
+          : <p role="status">Invitation rewards are paused. Existing rewards remain available.</p>}
+        {referredBookRewardOn
+          ? <p>Referred book publishing reward: <strong>{money(bookReward || 0)}</strong> for each eligible book.</p>
+          : <p role="status">Referred book publishing rewards are paused. Existing rewards remain available.</p>}
+      </div>
 
       <div>
         <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">

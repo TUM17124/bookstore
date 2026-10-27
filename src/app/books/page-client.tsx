@@ -7,6 +7,7 @@ import { BooksShowcase, type BookCfg, type ShowcaseSection } from "@/components/
 import { asBookList, getBook, getHomeSections } from "@/lib/api"
 import { useCategories } from "@/lib/categories"
 import { toCfg } from "@/components/books-department-legacy"
+import { RecommendedBooks } from "@/components/ui/books-showcase"
 
 function booksHref(params: URLSearchParams) {
   const query = params.toString()
@@ -122,20 +123,13 @@ function BooksDepartmentContent() {
     router.replace(booksHref(params), { scroll: false })
   }, [router])
 
-  const backParams = new URLSearchParams(query.toString())
-  backParams.delete("book")
-  backParams.delete("view")
   const showcaseBooks = selectedBookId && detailBook
     ? books.some((book) => book.id === detailBook.id) ? books : [...books, detailBook]
     : books
 
   return (
     <main className="mx-auto max-w-[1600px] px-4 py-8 sm:px-8">
-      {selectedBookId ? (
-        <Link href={booksHref(backParams)} className="mb-5 inline-flex min-h-11 items-center rounded-full border px-4 font-semibold hover:bg-accent">
-          Back to Books
-        </Link>
-      ) : (
+      {!selectedBookId ? (
         <>
           <nav aria-label="Breadcrumb" className="mb-5 flex flex-wrap gap-2 text-sm text-muted-foreground">
             <Link href="/">Marketplace</Link><span>/</span><Link href="/books/">Books</Link>{current && <><span>/</span><span>{current.label}</span></>}
@@ -153,7 +147,7 @@ function BooksDepartmentContent() {
             <label className="flex items-center gap-2"><input type="checkbox" checked={free} onChange={(event) => { setFree(event.target.checked); setPage(1) }} />Free books</label>
           </div>
         </>
-      )}
+      ) : null}
 
       {selectedBookId && detailLoading && <p role="status" className="py-10 text-center text-muted-foreground">Loading book…</p>}
       {selectedBookId && detailError && <p role="alert" className="py-10 text-center">{detailError}</p>}
@@ -168,6 +162,7 @@ function BooksDepartmentContent() {
           books={showcaseBooks}
           sections={[]}
           showNav={false}
+          showRecommendations={false}
           heroTitle="Book details"
           openBookId={selectedBookId}
           openView={query.get("view") || ""}
@@ -184,6 +179,12 @@ function BooksDepartmentContent() {
           onBookSelect={onBookSelect}
         />
       ) : null}
+
+      {selectedBookId && detailBook && !detailLoading && !detailError && (
+        <div id="recommended-books" className="mt-8 scroll-mt-20">
+          <RecommendedBooks book={detailBook} onBookSelect={onBookSelect} />
+        </div>
+      )}
 
       {!selectedBookId && <nav aria-label="Book pages" className="mt-6 flex justify-center gap-4">
         <button className="rounded-full border px-5 py-3 disabled:opacity-50" disabled={page === 1 || loading} onClick={() => setPage((value) => value - 1)}>Previous</button>

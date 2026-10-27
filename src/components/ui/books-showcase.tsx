@@ -180,6 +180,7 @@ export interface BooksShowcaseProps {
   navTitle?: string;
   showNav?: boolean;
   showDetailPanel?: boolean;
+  showRecommendations?: boolean;
   showCarousel?: boolean;
   themeColors?: {
     navy?: string;
@@ -660,7 +661,7 @@ function apiBookToMiniCfg(b: ApiBook): BookCfg {
   };
 }
 
-function RecommendedBooks({ book, onBookSelect }: { book: BookCfg; onBookSelect?: (book: BookCfg | null) => void }) {
+export function RecommendedBooks({ book, onBookSelect }: { book: BookCfg; onBookSelect?: (book: BookCfg | null) => void }) {
   const router = useRouter();
   const [items, setItems] = useState<BookCfg[]>([]);
   const [loading, setLoading] = useState(true);
@@ -668,6 +669,7 @@ function RecommendedBooks({ book, onBookSelect }: { book: BookCfg; onBookSelect?
   const [attempt, setAttempt] = useState(0);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const edges = useScrollEdges(scrollRef);
 
   useEffect(() => {
     let cancelled = false;
@@ -715,16 +717,18 @@ function RecommendedBooks({ book, onBookSelect }: { book: BookCfg; onBookSelect?
           <button
             type="button"
             aria-label="Scroll recommendations left"
+            disabled={!edges.start}
             onClick={() => skip(-1)}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-current/10 hover:bg-current/20"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-current/10 hover:bg-current/20 disabled:cursor-default disabled:opacity-35"
           >
             ‹
           </button>
           <button
             type="button"
             aria-label="Scroll recommendations right"
+            disabled={!edges.end}
             onClick={() => skip(1)}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-current/10 hover:bg-current/20"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-current/10 hover:bg-current/20 disabled:cursor-default disabled:opacity-35"
           >
             ›
           </button>
@@ -737,7 +741,7 @@ function RecommendedBooks({ book, onBookSelect }: { book: BookCfg; onBookSelect?
         ref={scrollRef}
         aria-label="Related books"
         tabIndex={items.length > 1 ? 0 : undefined}
-        className="flex gap-4 overflow-x-auto px-8 py-8 sm:px-10 [scrollbar-width:thin]"
+        className="flex gap-4 overflow-x-auto overscroll-x-contain px-12 py-8 [scroll-padding-inline:3rem] sm:px-14 sm:[scroll-padding-inline:3.5rem] [scrollbar-width:thin]"
       >
         {items.map((b, i) => (
           <div key={b.id} className="w-[132px] shrink-0 @min-[768px]:w-[240px]">
@@ -805,6 +809,7 @@ export function BooksShowcase({
   navTitle = 'Bestsellers',
   showNav = true,
   showDetailPanel = true,
+  showRecommendations = true,
   themeColors,
   className,
   sections = [],
@@ -852,6 +857,7 @@ export function BooksShowcase({
   const [uiMode, setUiMode] = useState<'hero' | 'opening' | 'detail' | 'closing'>('hero');
   const [linkOpen, setLinkOpen] = useState(() => !!openBookId);
   const [selectedCfg, setSelectedCfg] = useState<BookCfg | null>(null);
+  const [detailPanelHeight, setDetailPanelHeight] = useState(0);
 
   // What the SERVER says this user may do with the selected book. Display
   // only — every reader page, stream and download is re-checked server-side.
@@ -964,6 +970,20 @@ export function BooksShowcase({
   // opening, so the book view is in its final place from the first frame
   // (the grid used to show first, then vanish and pull the view up a screen).
   const showGrid = uiMode === 'hero' || (uiMode === 'opening' && !linkOpen);
+
+  useEffect(() => {
+    if (!documentFlow || !shelfActive || !showDetailPanel || !dpRef.current) {
+      setDetailPanelHeight(0);
+      return;
+    }
+    const panel = dpRef.current;
+    const measure = () => setDetailPanelHeight(Math.ceil(panel.scrollHeight));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(panel);
+    if (panel.firstElementChild) observer.observe(panel.firstElementChild);
+    return () => observer.disconnect();
+  }, [documentFlow, shelfActive, showDetailPanel, selectedCfg?.id]);
 
   useEffect(() => {
     // Opening a book (including from Recommendations, while scrolled down
@@ -3025,7 +3045,11 @@ export function BooksShowcase({
           after it, sits below the fold instead of overlapping the book. */}
       <div
         className={cn('relative w-full shrink-0', shelfActive ? 'h-full' : 'h-0 overflow-hidden')}
-        style={shelfActive && layout?.phone ? ({ minHeight: layout.wrapMin, '--bs-panel-top': `${layout.panelTop}px`, '--bs-hint-h': `${HINT_H}px` } as React.CSSProperties) : undefined}
+        style={shelfActive && layout?.phone
+          ? ({ minHeight: layout.wrapMin, '--bs-panel-top': `${layout.panelTop}px`, '--bs-hint-h': `${HINT_H}px` } as React.CSSProperties)
+          : shelfActive && documentFlow
+            ? { minHeight: `max(calc(100dvh - 4rem), ${detailPanelHeight + 64}px)` }
+            : undefined}
       >
       <canvas
         ref={canvasRef}
@@ -3132,12 +3156,12 @@ export function BooksShowcase({
         <div
           ref={dpRef}
           aria-live="polite"
-          className={`absolute right-[5%] top-8 bottom-4 z-[15] flex w-[min(520px,40%)] flex-col justify-start pt-0 pointer-events-none
+          className={`absolute right-[5%] top-8 ${documentFlow && !layout?.phone ? 'bottom-auto' : 'bottom-4'} z-[15] flex w-[min(520px,40%)] flex-col justify-start pt-0 pointer-events-none
             @max-[760px]:right-auto @max-[760px]:left-1/2 @max-[760px]:top-[var(--bs-panel-top,200px)] @max-[760px]:bottom-[var(--bs-hint-h,16px)]
             @max-[760px]:w-[min(560px,92cqw)] @max-[760px]:max-h-none @max-[760px]:-translate-x-1/2
             ${panelVisible ? 'visible' : 'invisible delay-[500ms]'}`}
         >
-        <div className="pointer-events-auto min-h-0 flex-1 pr-1">
+        <div className={`pointer-events-auto pr-1 ${documentFlow && !layout?.phone ? 'shrink-0' : 'min-h-0 flex-1'}`}>
           <h1 className={`m-0 mb-2 line-clamp-2 text-[var(--brand-pink-text)] text-[clamp(22px,3.2cqw,42px)] font-extrabold leading-[1.12] tracking-[-0.02em] @max-[760px]:text-[clamp(20px,6cqw,32px)] ${dpChild(50)}`}>
             {selectedCfg?.title}
           </h1>
@@ -3456,7 +3480,7 @@ export function BooksShowcase({
         document.body,
       )}
 
-      {shelfActive && selectedCfg && <div id="recommended-books" className="scroll-mt-20"><RecommendedBooks book={selectedCfg} onBookSelect={onBookSelectRef.current || undefined} /></div>}
+      {showRecommendations && shelfActive && selectedCfg && <div id="recommended-books" className="scroll-mt-20"><RecommendedBooks book={selectedCfg} onBookSelect={onBookSelectRef.current || undefined} /></div>}
 
       {/* Not interested toast: reason picker → confirmed → error */}
       {hideToast && typeof document !== 'undefined' && createPortal(

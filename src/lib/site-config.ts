@@ -35,6 +35,8 @@ export type FeatureName =
   | "publishing"
   | "boosts"
   | "affiliate"
+  | "affiliate_invitation_rewards"
+  | "affiliate_referred_book_rewards"
   | "guest_checkout"
   | "reviews"
   | "pro_signups"
