@@ -45,7 +45,17 @@ export async function trackListingClick(listing: number, placement = "marketplac
 }
 export async function myListings() { return json<Page<MarketListing>>(await authFetch(`${API}/marketplace/me/listings/`)) }
 export async function updateMyListing(id: number, payload: Record<string, unknown>) { return json<MarketListing>(await authFetch(`${API}/marketplace/me/listings/${id}/`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), idempotencyKey: newIdempotencyKey() })) }
-export async function archiveMyListing(id: number) { const response = await authFetch(`${API}/marketplace/me/listings/${id}/`, { method: "DELETE", idempotencyKey: newIdempotencyKey() }); if (!response.ok) { const body = await response.json().catch(() => ({})) as Record<string, unknown>; throw new Error(String(body.error || body.detail || `Could not archive this listing (${response.status}).`)) } }
+async function sellerListingAction(id: number, action: "archive" | "restore") {
+  const response = await authFetch(`${API}/marketplace/me/listings/${id}/${action}/`, { method: "POST", idempotencyKey: newIdempotencyKey() })
+  if (!response.ok) { const body = await response.json().catch(() => ({})) as Record<string, unknown>; throw new Error(String(body.error || body.detail || `Could not ${action} this listing (${response.status}).`)) }
+  return response.json() as Promise<MarketListing>
+}
+export async function archiveMyListing(id: number) { return sellerListingAction(id, "archive") }
+export async function restoreMyListing(id: number) { return sellerListingAction(id, "restore") }
+export async function deleteMyListing(id: number) {
+  const response = await authFetch(`${API}/marketplace/me/listings/${id}/`, { method: "DELETE", idempotencyKey: newIdempotencyKey() })
+  if (!response.ok) { const body = await response.json().catch(() => ({})) as Record<string, unknown>; throw new Error(String(body.error || body.detail || `Could not delete this listing (${response.status}).`)) }
+}
 export async function replaceListingMedia(id: number, mediaId: number, file: File) { const body = new FormData(); body.set("media_id", String(mediaId)); body.set("image", file); return json<ListingMedia>(await authFetch(`${API}/marketplace/me/listings/${id}/media/`, { method: "PATCH", body, idempotencyKey: newIdempotencyKey() })) }
 export async function createListing(payload: Record<string, unknown>) { return json<MarketListing>(await authFetch(`${API}/marketplace/me/listings/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), idempotencyKey: newIdempotencyKey() })) }
 export async function uploadListingMedia(id: number, slot: string, image: File) { const body = new FormData(); body.set("slot", slot); body.set("image", image); return json<ListingMedia>(await authFetch(`${API}/marketplace/me/listings/${id}/media/`, { method: "POST", body, idempotencyKey: newIdempotencyKey() })) }

@@ -35,7 +35,8 @@ import SellerOrdersPage from "@/app/seller/orders/page-client";
 
 const SECTIONS = [
   { id: "sales", label: "Overview & earnings" },
-  { id: "products", label: "Products & services" },
+  { id: "products", label: "Products" },
+  { id: "services", label: "Services" },
   { id: "books", label: "Books" },
   { id: "orders", label: "Orders" },
   { id: "auctions", label: "Auctions" },
@@ -666,7 +667,8 @@ export default function DashboardPage() {
 
         {/* Content */}
         <div className="min-w-0 flex-1 space-y-8">
-          {active === "products" && <SellerListings embedded />}
+          {active === "products" && <SellerListings embedded kind="product" />}
+          {active === "services" && <SellerListings embedded kind="service" />}
           {active === "orders" && <SellerOrdersPage embedded />}
           {active === "auctions" && <section className="space-y-4 rounded-2xl border p-5"><h2 className="text-2xl font-black">Your auctions</h2><p className="text-sm text-muted-foreground">Manage auction activity and create an auction from an approved listing.</p><Link href="/auctions?mine=1" className="inline-flex min-h-11 items-center rounded-full bg-pink-600 px-5 font-bold text-white">Open My Auctions</Link></section>}
           {active === "inventory" && <InventoryClient embedded />}

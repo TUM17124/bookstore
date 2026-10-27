@@ -14,6 +14,12 @@ import {
   Headphones,
   Heart,
   Landmark,
+  Laptop,
+  Package,
+  Shirt,
+  Sofa,
+  House,
+  Gavel,
   Sparkles,
   Tag,
   Utensils,
@@ -45,10 +51,32 @@ const ICONS: Record<string, LucideIcon> = {
   utensils: Utensils,
   headphones: Headphones,
   tag: Tag,
+  laptop: Laptop,
+  shirt: Shirt,
+  sofa: Sofa,
+  package: Package,
+  house: House,
+  gavel: Gavel,
 }
 
 export function categoryIcon(name: string | undefined): LucideIcon {
   return (name && ICONS[name]) || BookOpen
+}
+
+/** A useful visual fallback for marketplace departments that still have the historical
+ * default book icon. Explicit non-book admin choices always take precedence. */
+export function marketplaceCategoryIcon(label: string, slug: string, configuredIcon?: string, isBookDepartment = false): LucideIcon {
+  if (isBookDepartment) return BookOpen
+  if (configuredIcon && configuredIcon !== "book-open" && ICONS[configuredIcon]) return ICONS[configuredIcon]
+  const value = `${label} ${slug}`.toLowerCase()
+  if (/book|author|publish|literature/.test(value)) return BookOpen
+  if (/laptop|computer|electronic|technology|phone/.test(value)) return Laptop
+  if (/fashion|clothing|apparel|shirt|denim/.test(value)) return Shirt
+  if (/furniture|sofa|chair|home decor/.test(value)) return Sofa
+  if (/home|kitchen|house|storage|appliance/.test(value)) return House
+  if (/service|professional|consult|repair/.test(value)) return Briefcase
+  if (/auction|bid/.test(value)) return Gavel
+  return Package
 }
 
 /** The admin-chosen icon for a category (Lucide), rendered. */
