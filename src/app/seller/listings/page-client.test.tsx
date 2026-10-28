@@ -105,6 +105,16 @@ describe("seller listing access and actions", () => {
     expect(host!.querySelector('[data-testid="seller-listing-count"]')?.textContent).toBe("0 products")
   })
 
+  it("keeps a protected listing visible and shows the backend delete reason", async () => {
+    api.remove.mockRejectedValueOnce(new Error("This listing has purchase history. Archive it to keep buyer and transaction records."))
+    await render("product")
+    const remove = [...host!.querySelectorAll("button")].find((button) => button.textContent === "Delete")!
+    await act(async () => { remove.click(); await Promise.resolve(); await Promise.resolve() })
+    expect(host!.textContent).toContain("This listing has purchase history. Archive it to keep buyer and transaction records.")
+    expect(host!.textContent).toContain("Physical item")
+    expect(host!.querySelector('[data-testid="seller-listing-count"]')?.textContent).toBe("1 product")
+  })
+
   it("saves an edited title through the API and updates the dashboard", async () => {
     await render("product")
     const edit = [...host!.querySelectorAll("button")].find((button) => button.textContent === "Edit listing")!

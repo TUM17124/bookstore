@@ -9,8 +9,17 @@ export default function InventoryClient({ embedded = false }: { embedded?: boole
   const [selected, setSelected] = useState<MarketListing | null>(null)
   const [rows, setRows] = useState<InventoryRow[]>([])
   const [notice, setNotice] = useState("")
-  const load = () => myListings().then((page) => { setListings(page.results); return page.results }).catch((reason) => { setNotice(reason instanceof Error ? reason.message : "Could not load inventory."); return [] as MarketListing[] })
-  useEffect(() => { void load().then((rows) => { const id = new URLSearchParams(window.location.search).get("listing"); const target = rows.find((row) => String(row.id) === id); if (target) void choose(target) }) }, [])
+  const [reactivating, setReactivating] = useState(false)
+  const load = () => myListings().then((page) => {
+    const inventoryListings = page.results.filter((listing) => !listing.legacy_book_id && listing.viewer?.mode !== "book_3d")
+    setListings(inventoryListings)
+    return inventoryListings
+  }).catch((reason) => {
+    const message = reason instanceof Error ? reason.message : "Could not load inventory."
+    setNotice(message)
+    throw reason
+  })
+  useEffect(() => { void load().then((rows) => { const id = new URLSearchParams(window.location.search).get("listing"); const target = rows.find((row) => String(row.id) === id); if (target) void choose(target) }).catch(() => undefined) }, [])
   async function choose(listing: MarketListing) {
     setSelected(listing); setNotice("")
     try { setRows((await listingInventory(listing.id)).rows) }
@@ -25,10 +34,29 @@ export default function InventoryClient({ embedded = false }: { embedded?: boole
   }
   async function reactivate() {
     if (!selected) return
-    try { await confirmSellerAvailability([selected.id]); setNotice("Availability confirmed. Any required moderation will run before publication."); await load() }
-    catch (reason) { setNotice(reason instanceof Error ? reason.message : "Could not confirm availability.") }
+    setReactivating(true)
+    setNotice("")
+    try {
+      const result = await confirmSellerAvailability([selected.id])
+      if (!result.restored.includes(selected.id)) {
+        setNotice(result.skipped_reasons[String(selected.id)] || result.message || "This listing could not be restored. Review its stock and moderation status.")
+        return
+      }
+      let refreshed: MarketListing[]
+      try { refreshed = await load() }
+      catch {
+        setNotice("Availability was confirmed, but the dashboard could not refresh. Reload the page to verify its current status.")
+        return
+      }
+      const updated = refreshed.find((listing) => listing.id === selected.id)
+      if (updated) setSelected(updated)
+      setNotice(result.requires_moderation
+        ? "Availability confirmed. The listing is restored and awaiting administrator review before publication."
+        : "Availability confirmed. The listing is restored.")
+    } catch (reason) { setNotice(reason instanceof Error ? reason.message : "Could not confirm availability.") }
+    finally { setReactivating(false) }
   }
-  return <section className={embedded ? "space-y-6" : "mx-auto max-w-5xl px-4 py-10"}><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-semibold text-[var(--brand-pink-text)]">Seller dashboard</p>{embedded ? <h2 className="text-3xl font-black">Inventory</h2> : <h1 className="text-4xl font-black">Inventory</h1>}<p className="mt-2 text-muted-foreground">Available stock excludes units reserved by active checkouts and auctions.</p></div>{!embedded && <Link href="/seller/listings" className="rounded-full border border-border px-5 py-3 font-bold text-[var(--brand-pink-text)]">Back to listings</Link>}</div><div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]"><section className="space-y-3">{listings.map((listing) => <button type="button" key={listing.id} onClick={() => void choose(listing)} className={`w-full rounded-2xl border p-4 text-left ${selected?.id === listing.id ? "border-pink-500 bg-muted" : "border-border"}`}><span className="block font-black">{listing.title}</span><span className="text-sm">{listingPrice(listing)}</span>{listing.inactive_paused_at && <span className="mt-1 block text-sm font-semibold text-warning">Paused for availability confirmation</span>}</button>)}</section><section className="rounded-3xl border border-border p-5">{!selected ? <p>Select a listing to manage stock.</p> : <><h3 className="text-2xl font-black">{selected.title}</h3>{selected.inactive_paused_at && <button type="button" onClick={() => void reactivate()} className="mt-4 min-h-11 rounded-full bg-pink-600 px-5 font-bold text-white">Confirm inventory and reactivate</button>}<div className="mt-5 space-y-3">{rows.map((row) => <InventoryEditor key={row.id} row={row} save={save} />)}{!rows.length && <p className="rounded-xl bg-muted p-4 text-sm">This listing does not use finite stock tracking.</p>}</div></>}{notice && <p role="status" className="mt-4 rounded-xl bg-muted p-3 text-sm">{notice}</p>}</section></div></section>
+  return <section className={embedded ? "space-y-6" : "mx-auto max-w-5xl px-4 py-10"}><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-semibold text-[var(--brand-pink-text)]">Seller dashboard</p>{embedded ? <h2 className="text-3xl font-black">Inventory</h2> : <h1 className="text-4xl font-black">Inventory</h1>}<p className="mt-2 text-muted-foreground">Available stock excludes units reserved by active checkouts and auctions.</p></div>{!embedded && <Link href="/seller/listings" className="rounded-full border border-border px-5 py-3 font-bold text-[var(--brand-pink-text)]">Back to listings</Link>}</div><div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]"><section className="space-y-3">{listings.map((listing) => <button type="button" key={listing.id} onClick={() => void choose(listing)} className={`w-full rounded-2xl border p-4 text-left ${selected?.id === listing.id ? "border-pink-500 bg-muted" : "border-border"}`}><span className="block font-black">{listing.title}</span><span className="text-sm">{listingPrice(listing)}</span>{listing.inactive_paused_at && <span className="mt-1 block text-sm font-semibold text-warning">Paused for availability confirmation</span>}</button>)}</section><section className="rounded-3xl border border-border p-5">{!selected ? <p>Select a listing to manage stock.</p> : <><h3 className="text-2xl font-black">{selected.title}</h3>{selected.inactive_paused_at && <button type="button" disabled={reactivating} onClick={() => void reactivate()} className="mt-4 min-h-11 rounded-full bg-pink-600 px-5 font-bold text-white disabled:opacity-50">{reactivating ? "Confirming…" : "Confirm inventory and reactivate"}</button>}<div className="mt-5 space-y-3">{rows.map((row) => <InventoryEditor key={row.id} row={row} save={save} />)}{!rows.length && <p className="rounded-xl bg-muted p-4 text-sm">This listing does not use finite stock tracking.</p>}</div></>}{notice && <p role="status" className="mt-4 rounded-xl bg-muted p-3 text-sm">{notice}</p>}</section></div></section>
 }
 
 function InventoryEditor({ row, save }: { row: InventoryRow; save: (row: InventoryRow, total: number) => Promise<void> }) {
