@@ -56,7 +56,7 @@ export default function SellPage() {
         administrative_area: fd.get("administrative_area"), locality: fd.get("locality"), attributes,
         inventory: category.variants_enabled ? undefined : inventoryPayload, variants: variantPayload,
       })
-      setSavedListingLink({ href: "/seller/listings/", label: isService ? "Manage this service" : "Manage this product" })
+      setSavedListingLink({ href: isService ? "/dashboard?tab=services" : "/dashboard?tab=products", label: isService ? "Manage this service" : "Manage this product" })
       for (const slot of category.media_slots) {
         const files = fd.getAll(`media.${slot.key}`).filter((item): item is File => item instanceof File && item.size > 0)
         for (const file of files) await uploadListingMedia(listing.id, slot.key, file)
@@ -64,7 +64,7 @@ export default function SellPage() {
       if (complianceHold) {
         setNotice("Saved as an unpublished draft. This restricted category cannot be listed or sold until compliance approval and any required age-verification controls are complete.")
       } else if (saveAsDraft) {
-        setNotice(`${isService ? "Service" : "Product"} draft saved. You can reopen and edit it from your seller listings.`)
+        setNotice(`${isService ? "Service" : "Product"} draft saved. You can reopen and edit it from the matching section in your Seller Dashboard.`)
       } else {
         const submitted = await submitListing(listing.id)
         setNotice(submitted.status === "active" ? `Your ${isService ? "service" : "product"} is live.` : `Your ${isService ? "service" : "product"} was submitted for review.`)

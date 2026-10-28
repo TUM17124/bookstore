@@ -54,7 +54,7 @@ describe("product and service listing forms", () => {
     expect(createListing).toHaveBeenCalledWith(expect.objectContaining({ category: "consulting" }))
     expect(submitListing).toHaveBeenCalledWith(71)
     expect(host.textContent).toContain("Your service was submitted for review.")
-    expect(host.querySelector("a[href='/seller/listings/']")?.textContent).toBe("Manage this service")
+    expect(host.querySelector("a[href='/dashboard?tab=services']")?.textContent).toBe("Manage this service")
   })
 
   it("saves a product as a draft without submitting it for review", async () => {
@@ -74,6 +74,6 @@ describe("product and service listing forms", () => {
     expect(createListing).toHaveBeenCalledWith(expect.objectContaining({ category: "electronics", inventory: expect.objectContaining({ quantity: 3 }) }))
     expect(submitListing).not.toHaveBeenCalled()
     expect(host.textContent).toContain("Product draft saved.")
-    expect(host.querySelector("a[href='/seller/listings/']")?.textContent).toBe("Manage this product")
+    expect(host.querySelector("a[href='/dashboard?tab=products']")?.textContent).toBe("Manage this product")
   })
 })
