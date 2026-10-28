@@ -684,12 +684,10 @@ export default function SettingsPage() {
                   <p>Accepted-book reward: <strong>{money(a.book_reward)}</strong> per qualifying accepted book from a referred publisher.</p>
                   <p>Minimum withdrawal: <strong>{money(a.minimum_withdrawal)}</strong></p>
                 </div>
-                {rewardReconciliation ? (
+                {rewardReconciliation && Number(rewardReconciliation.obsolete_direct_book_net) !== 0 && (
                   <p className="text-xs text-muted-foreground">
-                    Balance reconciliation: invitation {money(rewardReconciliation.invitation_net)} + accepted-book {money(rewardReconciliation.accepted_book_net)} + earlier-program balance carried forward {money(rewardReconciliation.previous_program_net)} + withdrawals {money(rewardReconciliation.withdrawals_net)} + adjustments {money(rewardReconciliation.adjustments_net)} + other ledger entries {money(rewardReconciliation.other_ledger_net)} = available {money(rewardReconciliation.available_balance)}.
+                    This balance includes {money(rewardReconciliation.obsolete_direct_book_net)} in credits from a retired direct-author reward scheme. They are not earnings from either current program and remain in the wallet pending an auditable account review.
                   </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Your balance is calculated from all ledger entries. Earlier rewards remain part of your wallet and appear in the reward history.</p>
                 )}
                 <ActionForm
                   run={(ctx, f) => requestAffiliateWithdrawal(String(f.get("amount")), ctx)}
@@ -773,7 +771,7 @@ export default function SettingsPage() {
                               <td className="py-2 pr-3 whitespace-nowrap">
                                 {x.created_at ? new Date(x.created_at).toLocaleString() : "—"}
                               </td>
-                              <td className="py-2 pr-3">{x.program === "invitation" ? "Invitation reward" : x.program === "accepted_book" ? "Accepted-book reward" : x.program === "withdrawal" ? "Withdrawal" : "Previous program transaction"}</td>
+                              <td className="py-2 pr-3">{x.program === "invitation" ? "Invitation reward" : x.program === "accepted_book" ? "Accepted-book publishing reward" : x.program === "obsolete_direct_book" ? "Retired direct-author credit" : x.program === "legacy_reversal" ? "Audited legacy-credit reversal" : x.program === "adjustment" ? "Account adjustment" : x.program === "withdrawal" ? "Withdrawal" : "Historical ledger transaction"}</td>
                               <td className="py-2 pr-3">{money(x.amount)}</td>
                               <td className="py-2 text-muted-foreground">{x.description || "—"}</td>
                             </tr>
