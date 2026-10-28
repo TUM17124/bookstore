@@ -51,12 +51,12 @@ const baseMetadata: Metadata = {
   // design/logo-source.png). /logo.png still answers, at 512 px, for old links.
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "16x16 32x32 48x48" },
-      { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
-      { url: "/icon-512.png", type: "image/png", sizes: "512x512" },
+      { url: "/favicon-20261028.ico", sizes: "16x16 32x32 48x48" },
+      { url: "/icon-192-20261028.png", type: "image/png", sizes: "192x192" },
+      { url: "/icon-512-20261028.png", type: "image/png", sizes: "512x512" },
     ],
-    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
-    shortcut: "/favicon.ico",
+    apple: [{ url: "/apple-touch-icon-20261028.png", sizes: "180x180" }],
+    shortcut: "/favicon-20261028.ico",
   },
   manifest: "/manifest.webmanifest",
   openGraph: {
@@ -69,7 +69,7 @@ const baseMetadata: Metadata = {
       "Shop books, products, and services from independent sellers on PlugYard.",
     images: [
       {
-        url: "/icon-512.png",
+        url: "/icon-512-20261028.png",
         width: 512,
         height: 512,
         alt: "PlugYard",
@@ -81,7 +81,7 @@ const baseMetadata: Metadata = {
     title: "PlugYard Marketplace",
     description:
       "Shop books, products, and services or publish your own listing on PlugYard.",
-    images: ["/icon-512.png"],
+    images: ["/icon-512-20261028.png"],
   },
 }
 
@@ -129,7 +129,7 @@ const jsonLd = (websiteDescription: string) => ({
       "name": "PlugYard",
       "alternateName": "Plug Yard",
       "url": SITE,
-      "logo": { "@type": "ImageObject", "url": `${SITE}/icon-512.png`, "width": 512, "height": 512 },
+      "logo": { "@type": "ImageObject", "url": `${SITE}/icon-512-20261028.png`, "width": 512, "height": 512 },
       "contactPoint": { "@type": "ContactPoint", "email": "contact@plugyard.com", "contactType": "customer support" },
       "sameAs": [],
     },
