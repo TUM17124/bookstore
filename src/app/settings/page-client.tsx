@@ -354,6 +354,7 @@ export default function SettingsPage() {
 
 
   const a = data?.affiliate
+  const rewardReconciliation = a?.balance_reconciliation
   const payoutReady = Boolean(data?.payout_account?.ready)
 
   return (
@@ -683,7 +684,13 @@ export default function SettingsPage() {
                   <p>Accepted-book reward: <strong>{money(a.book_reward)}</strong> per qualifying accepted book from a referred publisher.</p>
                   <p>Minimum withdrawal: <strong>{money(a.minimum_withdrawal)}</strong></p>
                 </div>
-                <p className="text-xs text-muted-foreground">Your available balance is the sum of all wallet ledger entries, including earlier program transactions and withdrawals. New rewards use the two programs above; earlier records remain in your account history.</p>
+                {rewardReconciliation ? (
+                  <p className="text-xs text-muted-foreground">
+                    Balance reconciliation: invitation {money(rewardReconciliation.invitation_net)} + accepted-book {money(rewardReconciliation.accepted_book_net)} + earlier-program balance carried forward {money(rewardReconciliation.previous_program_net)} + withdrawals {money(rewardReconciliation.withdrawals_net)} + adjustments {money(rewardReconciliation.adjustments_net)} + other ledger entries {money(rewardReconciliation.other_ledger_net)} = available {money(rewardReconciliation.available_balance)}.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Your balance is calculated from all ledger entries. Earlier rewards remain part of your wallet and appear in the reward history.</p>
+                )}
                 <ActionForm
                   run={(ctx, f) => requestAffiliateWithdrawal(String(f.get("amount")), ctx)}
                   onDone={broadcastAccountChange}
