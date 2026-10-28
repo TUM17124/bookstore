@@ -38,3 +38,9 @@ All future AI agents must read this instruction before modifying database-relate
 ## Owner request tracking
 
 Before continuing PlugYard work, read the cross-repository source of truth at `../bookstore_backend/docs/PLUGYARD_MASTER_TRACKER.md`, then the latest report at `../bookstore_backend/docs/PLUGYARD_PROGRESS_REPORT.md` and `../bookstore_backend/docs/AGENT_SESSION_CHECKPOINT.md`. Preserve unfinished tasks and distinguish local tests, GitHub sync, deployment, and live verification.
+
+## Mandatory session close and access boundary
+
+At session start, read this file, the backend master tracker, progress report and checkpoint; inspect both repository statuses and resume existing work. At session end, update those records with changed files, tests, commit/push/deployment outcomes, live evidence and next actions. Do not mark a task complete from source changes or HTTP status alone.
+
+Preserve unrelated untracked audit artifacts. Production SSH is not available through every agent runtime: this managed Windows runtime resolves `ssh` to a sandbox-deny wrapper before OpenSSH. Do not bypass that wrapper with an absolute executable path; use an owner-authorized terminal when required. The owner-confirmed Oct 28 production reward correction is ledger rows 1/2 (+KES 10 each) offset by row 3 (-KES 20), with balance verified 0.00. Never apply another reversal. Backend migrations 0134/0135 are not confirmed applied.
