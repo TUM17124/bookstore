@@ -44,4 +44,26 @@ describe('responsive category browser', () => {
     expect(host.querySelector('[role="dialog"]')).toBeNull()
     expect(document.body.style.overflow).toBe('')
   })
+
+  it('keeps keyboard focus inside while open and restores the opening control on Escape', () => {
+    const trigger = document.createElement('button')
+    trigger.textContent = 'Browse categories'
+    document.body.appendChild(trigger)
+    trigger.focus()
+
+    act(() => openCategorySheet())
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), summary'))
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    last.focus()
+    act(() => last.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })))
+    expect(document.activeElement).toBe(first)
+
+    act(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+    expect(host.querySelector('[role="dialog"]')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+    expect(document.body.style.overflow).toBe('')
+    trigger.remove()
+  })
 })

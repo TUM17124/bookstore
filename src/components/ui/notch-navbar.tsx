@@ -414,6 +414,8 @@ function NotchNavbarInner({
                   className="p-1 text-foreground/70 hover:text-foreground transition-colors"
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                   aria-label="Toggle menu"
+                  aria-expanded={isMobileMenuOpen}
+                  aria-controls="plugyard-mobile-navigation"
                 >
                   {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
                 </button>
@@ -483,6 +485,7 @@ function NotchNavbarInner({
       <NavCategorySheet />
       {menuMounted && (
           <div
+            id="plugyard-mobile-navigation"
             data-state={menuShown ? "open" : "closed"}
             className="fixed inset-x-0 top-16 z-40 bg-zinc-50 dark:bg-background border-b border-foreground/5 p-4 lg:hidden shadow-lg max-h-[calc(100vh-4rem)] overflow-y-auto transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none data-[state=closed]:-translate-y-5 data-[state=closed]:opacity-0"
           >
@@ -530,10 +533,6 @@ function NotchNavbarInner({
               <Link href="/notes" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
                 <Bookmark className="w-5 h-5 opacity-70" />
                 <span className="font-medium text-foreground/90">My notes</span>
-              </Link>
-              <Link href="/wishlist" className="flex items-center gap-3 p-3 rounded-lg hover:bg-foreground/5" onClick={() => setIsMobileMenuOpen(false)}>
-                <Heart className="w-5 h-5 opacity-70" />
-                <span className="font-medium text-foreground/90">Wishlist</span>
               </Link>
               <div className="h-px bg-foreground/10 my-3" />
               <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Account</p>

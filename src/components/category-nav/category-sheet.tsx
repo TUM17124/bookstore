@@ -45,7 +45,29 @@ export function CategorySheet({ activeSlug }: { activeSlug: string }) {
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close()
+      if (e.key === "Escape") {
+        close()
+        return
+      }
+      if (e.key !== "Tab" || !panelRef.current) return
+      const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => !element.hasAttribute("disabled"))
+      if (!focusable.length) {
+        e.preventDefault()
+        panelRef.current.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+      if (e.shiftKey && (active === first || !panelRef.current.contains(active))) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && (active === last || !panelRef.current.contains(active))) {
+        e.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener("keydown", onKey)
     const prevOverflow = document.body.style.overflow
@@ -72,6 +94,7 @@ export function CategorySheet({ activeSlug }: { activeSlug: string }) {
         role="dialog"
         aria-modal="true"
         aria-label="All categories"
+        tabIndex={-1}
         className="absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto overscroll-contain rounded-t-3xl bg-background pb-[max(16px,env(safe-area-inset-bottom))] text-foreground shadow-2xl motion-safe:transition-transform motion-safe:duration-200 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:inset-x-auto lg:bottom-auto lg:right-6 lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:w-[min(760px,calc(100vw-3rem))] lg:rounded-3xl lg:border lg:pb-5"
         style={{ transform: dragY ? `translateY(${dragY}px)` : undefined }}
         onTouchStart={(e) => {
