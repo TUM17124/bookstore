@@ -20,7 +20,7 @@ This repository is PlugYard's Next.js App Router / React / TypeScript frontend. 
 
 ## PLUGYARD DATABASE — READ BEFORE WORKING
 
-PlugYard's owner has stated that Supabase is no longer the intended production database. Do not automatically assume Supabase is active based on older documentation, commit history, or legacy configuration.
+The owner most recently confirmed (2026-10-28) that production uses the Supabase PostgreSQL session pooler, with a reported 15-session limit and `EMAXCONNSESSION` errors. An earlier owner statement concerned the intended future provider. This runtime has not independently inspected the active VPS environment. Do not change the production DB URL/provider or increase pool limits as a workaround.
 
 Before database operations:
 
@@ -29,9 +29,9 @@ Before database operations:
 3. Verify the current production database infrastructure.
 4. Use the verified database for read-only investigations.
 5. Back up production data before schema changes.
-6. Never change production database connections based solely on old documentation.
+6. Never change production database connections based solely on old documentation or as a pool-exhaustion workaround.
 
-If the active configuration still points to Supabase, report the discrepancy rather than silently changing it. Read `../bookstore_backend/docs/PRODUCTION_INFRASTRUCTURE.md` before database-related work; it records what is verified and what remains unverified.
+Read `../bookstore_backend/docs/PRODUCTION_INFRASTRUCTURE.md` before database-related work; it distinguishes owner-confirmed current facts from independent live verification.
 
 All future AI agents must read this instruction before modifying database-related code.
 
