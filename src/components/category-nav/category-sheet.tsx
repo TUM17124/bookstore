@@ -151,7 +151,7 @@ export function CategorySheet({ activeSlug }: { activeSlug: string }) {
                     on ? "border-foreground bg-foreground/10" : "border-foreground/15"
                   }`}
                 >
-                  <CategoryIcon name={c.icon} className="h-5 w-5 shrink-0 opacity-75" />
+                  <CategoryIcon category={c} className="h-5 w-5 shrink-0 opacity-75" />
                   <span className="min-w-0 break-words leading-tight">{c.label}</span>
                 </Link>
                 <DepartmentMenu category={c} onNavigate={close} inline />

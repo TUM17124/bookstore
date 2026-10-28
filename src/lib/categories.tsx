@@ -17,6 +17,7 @@ import {
   Heart,
   Landmark,
   Laptop,
+  Smartphone,
   Package,
   Shirt,
   Sofa,
@@ -56,6 +57,7 @@ const ICONS: Record<string, LucideIcon> = {
   headphones: Headphones,
   tag: Tag,
   laptop: Laptop,
+  smartphone: Smartphone,
   shirt: Shirt,
   sofa: Sofa,
   package: Package,
@@ -70,13 +72,18 @@ export function categoryIcon(name: string | undefined): LucideIcon {
 /** A useful visual fallback for marketplace departments that still have the historical
  * default book icon. Explicit non-book admin choices always take precedence. */
 export function marketplaceCategoryIcon(label: string, slug: string, configuredIcon?: string, isBookDepartment = false, fulfillmentType?: string): LucideIcon {
-  if (isBookDepartment) return BookOpen
   if (configuredIcon && configuredIcon !== "book-open" && ICONS[configuredIcon]) return ICONS[configuredIcon]
   const value = `${label} ${slug}`.toLowerCase()
+  if (/\b(career|academic|education)\b/.test(value)) return GraduationCap
+  if (/\b(business)\b/.test(value)) return Briefcase
+  if (/\b(finance|financial)\b/.test(value)) return Wallet
+  if (/\b(lifestyle)\b/.test(value)) return Heart
+  if (isBookDepartment) return BookOpen
   if (/book|author|publish|literature/.test(value)) return BookOpen
-  if (/car|vehicle|automotive|motor|truck/.test(value)) return CarFront
+  if (/\b(cars?|vehicles?|automotive|motors?|trucks?)\b/.test(value)) return CarFront
   if (/digital.?download|download|ebook|software|file/.test(value)) return Download
-  if (/laptop|computer|electronic|technology|phone|device/.test(value)) return Laptop
+  if (/phone|mobile/.test(value)) return Smartphone
+  if (/laptop|computer|electronic|technology|device/.test(value)) return Laptop
   if (/fashion|clothing|apparel|shirt|denim/.test(value)) return Shirt
   if (/furniture|sofa|chair|home decor/.test(value)) return Sofa
   if (/home|kitchen|house|storage|appliance/.test(value)) return House
@@ -86,8 +93,11 @@ export function marketplaceCategoryIcon(label: string, slug: string, configuredI
 }
 
 /** The admin-chosen icon for a category (Lucide), rendered. */
-export function CategoryIcon({ name, className }: { name?: string; className?: string }) {
-  return createElement(categoryIcon(name), { className, "aria-hidden": true })
+export function CategoryIcon({ name, category, className }: { name?: string; category?: Pick<CategoryInfo, "label" | "slug" | "icon" | "viewer_mode" | "fulfillment_type">; className?: string }) {
+  const Icon = category
+    ? marketplaceCategoryIcon(category.label, category.slug, category.icon, category.viewer_mode === "book_3d", category.fulfillment_type)
+    : categoryIcon(name)
+  return createElement(Icon, { className, "aria-hidden": true })
 }
 
 export function categoryHref(category: string | CategoryInfo): string {

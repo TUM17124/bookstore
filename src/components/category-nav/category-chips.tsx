@@ -63,7 +63,7 @@ export function CategoryChips({ activeSlug }: { activeSlug: string }) {
                   on ? "border-current bg-current/10" : "border-current/20 opacity-80"
                 }`}
               >
-                <CategoryIcon name={c.icon} className="h-4 w-4 shrink-0" />
+                <CategoryIcon category={c} className="h-4 w-4 shrink-0" />
                 <span className="truncate">{c.label}</span>
               </Link>
             </li>

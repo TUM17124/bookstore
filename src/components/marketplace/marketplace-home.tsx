@@ -27,7 +27,7 @@ export function MarketplaceHome() {
         </section>
       }
     />
-    {all.length > 0 && <section><h2 className="text-2xl font-bold">{categoriesTitle}</h2><nav aria-label="Marketplace departments" className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{all.filter(c => !c.parent).map(c => <Link key={c.slug} href={categoryHref(c)} className="flex min-h-24 items-center gap-3 rounded-2xl border bg-card p-4 hover:bg-accent"><CategoryIcon name={c.icon} className="size-6 shrink-0 text-[var(--brand-pink-text)]" /><span className="font-semibold">{c.label}</span></Link>)}</nav></section>}
+    {all.length > 0 && <section><h2 className="text-2xl font-bold">{categoriesTitle}</h2><nav aria-label="Marketplace departments" className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{all.filter(c => !c.parent).map(c => <Link key={c.slug} href={categoryHref(c)} className="flex min-h-24 items-center gap-3 rounded-2xl border bg-card p-4 hover:bg-accent"><CategoryIcon category={c} className="size-6 shrink-0 text-[var(--brand-pink-text)]" /><span className="font-semibold">{c.label}</span></Link>)}</nav></section>}
     {sections.map(section => <HomeCollection key={section.value} title={section.label} source={section.value} />)}
   </main>
 }

@@ -36,7 +36,7 @@ function Item({ c, active, tabIndex }: { c: CategoryInfo; active: boolean; tabIn
         active ? "bg-foreground/10 text-foreground" : "text-foreground/70 hover:text-foreground",
       )}
     >
-      <CategoryIcon name={c.icon} className="h-4 w-4 shrink-0 opacity-70 group-hover:opacity-100" />
+      <CategoryIcon category={c} className="h-4 w-4 shrink-0 opacity-70 group-hover:opacity-100" />
       <span className="max-w-[16ch] truncate">{c.label}</span>
     </Link>{tabIndex !== -1 && <DepartmentMenu category={c} />}</div>
   )
@@ -220,7 +220,7 @@ export function CategoryBar({ categories, activeSlug }: { categories: CategoryIn
                         on && "bg-foreground/10",
                       )}
                     >
-                      <CategoryIcon name={c.icon} className="h-4 w-4 shrink-0 opacity-70" />
+                      <CategoryIcon category={c} className="h-4 w-4 shrink-0 opacity-70" />
                       <span className="min-w-0 break-words leading-snug">{c.label}</span>
                     </Link>
                   )

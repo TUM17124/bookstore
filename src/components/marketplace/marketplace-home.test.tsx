@@ -9,10 +9,17 @@ vi.mock("@/components/offers/banners", () => ({
     <div data-testid="home-banners" data-placement={placement} className={className}>{emptyFallback}</div>,
   useBannerData: banners.preload,
 }))
-vi.mock("@/lib/categories", () => ({
-  useCategories: () => ({ all: [] }),
+vi.mock("@/lib/categories", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/categories")>(),
+  useCategories: () => ({ all: [
+    { label: "Cars and vehicles", slug: "cars", icon: "book-open", viewer_mode: "gallery" },
+    { label: "Phones", slug: "phones", icon: "book-open", viewer_mode: "gallery" },
+    { label: "Career", slug: "career", icon: "book-open", viewer_mode: "book_3d" },
+    { label: "Furniture", slug: "furniture", icon: "book-open", viewer_mode: "gallery" },
+    { label: "Books", slug: "books", icon: "book-open", viewer_mode: "book_3d" },
+    { label: "Custom", slug: "custom", icon: "wallet", viewer_mode: "gallery" },
+  ] }),
   categoryHref: () => "/marketplace/",
-  CategoryIcon: () => null,
 }))
 vi.mock("@/lib/site-config", () => ({
   usePairs: () => [],
@@ -50,5 +57,12 @@ describe("MarketplaceHome admin banner placement", () => {
     expect(host.querySelector("h1")?.textContent).toBe("Admin site title")
     expect(host.querySelector("input[name=search]")).toBeNull()
     expect(host.textContent).toContain("Admin site description")
+    const departments = host.querySelector('nav[aria-label="Marketplace departments"]')!
+    expect(departments.querySelectorAll('.lucide-book-open')).toHaveLength(1)
+    expect(departments.querySelector('.lucide-car-front')).not.toBeNull()
+    expect(departments.querySelector('.lucide-smartphone')).not.toBeNull()
+    expect(departments.querySelector('.lucide-graduation-cap')).not.toBeNull()
+    expect(departments.querySelector('.lucide-sofa')).not.toBeNull()
+    expect(departments.querySelector('.lucide-wallet')).not.toBeNull()
   })
 })
