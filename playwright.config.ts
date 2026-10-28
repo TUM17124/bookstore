@@ -15,7 +15,9 @@ export default defineConfig({
   webServer: {
     command: "python -m http.server 4173 --directory out",
     url: "http://127.0.0.1:4173",
-    reuseExistingServer: false,
+    // An explicit opt-in supports managed runners that permit browser
+    // execution but deny Playwright from spawning its own static server.
+    reuseExistingServer: process.env.PW_REUSE_SERVER === "1",
   },
   projects: [
     { name: "desktop-edge", use: { ...devices["Desktop Chrome"], channel: "msedge" } },

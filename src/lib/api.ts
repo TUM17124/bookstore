@@ -1491,6 +1491,7 @@ export async function unsubscribePush(endpoint?: string, call?: CallOptions) {
 export type CategoryInfo = {
   parent?: string | null
   viewer_mode?: string
+  fulfillment_type?: string
   browse_url?: string
   children?: CategoryInfo[]
   slug: string

@@ -9,7 +9,8 @@
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { GridBookCard, type BookCfg } from './books-showcase'
+import { GridBookCard, RecommendedBooks, type BookCfg } from './books-showcase'
+import { getRelatedBooks } from '@/lib/api'
 
 // ------------------------------------------------------------------ mocks
 
@@ -30,6 +31,7 @@ vi.mock('@/lib/api', () => ({
 vi.mock('@/lib/site-config', () => ({
   useSignalsOn: () => false,
   useFeature: () => false,
+  useSiteConfig: () => [{}, true],
 }))
 
 vi.mock('next/navigation', () => ({
@@ -42,6 +44,11 @@ vi.mock('@/components/bookmarks-context', () => ({
   useBookmarks: () => ({ isBookmarked: () => false, toggleBookmark: vi.fn() }),
 }))
 
+vi.mock('@/components/category-nav/use-scroll-edges', async () => {
+  const actual = await vi.importActual<typeof import('@/components/category-nav/use-scroll-edges')>('@/components/category-nav/use-scroll-edges')
+  return { ...actual, useScrollEdges: () => ({ start: true, end: true, update: vi.fn() }) }
+})
+
 // jsdom doesn't have IntersectionObserver
 beforeEach(() => {
   if (!globalThis.IntersectionObserver) {
@@ -51,6 +58,13 @@ beforeEach(() => {
       unobserve() {}
       disconnect() {}
     }
+  }
+  if (!globalThis.ResizeObserver) {
+    ;(globalThis as unknown as { ResizeObserver: typeof ResizeObserver }).ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver
   }
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 })
@@ -134,5 +148,57 @@ describe('GridBookCard ✕ button', () => {
   it('is not rendered while spinning', async () => {
     await render(<GridBookCard book={BOOK} onOpen={vi.fn()} onHide={vi.fn()} spinning />)
     expect(hideBtn()).toBeNull()
+  })
+
+  it('shows normal-size brand-pink stars only when backend ratings exist', async () => {
+    await render(<GridBookCard book={{ ...BOOK, ratingAvg: 4.5, ratingCount: 2 }} onOpen={vi.fn()} />)
+    const rating = el!.querySelector('[aria-label="Rating 4.5 out of 5"]')
+    expect(rating).not.toBeNull()
+    const stars = Array.from(rating!.querySelectorAll("svg"))
+    expect(stars).toHaveLength(5)
+    expect(stars.every((star) => star.className.baseVal.includes("var(--brand-pink-text)"))).toBe(true)
+    expect(stars.every((star) => /h-4\s+w-4/.test(star.className.baseVal))).toBe(true)
+    expect(el!.textContent).toContain("2")
+  })
+
+  it('does not invent filled review stars for an unrated book', async () => {
+    await render(<GridBookCard book={BOOK} onOpen={vi.fn()} />)
+    expect(el!.querySelector('[aria-label^="Rating "]')).toBeNull()
+    expect(el!.textContent).toContain("No ratings yet")
+  })
+
+  it('renders recommendation books in a large, touch-scrollable carousel and opens the selected book', async () => {
+    vi.mocked(getRelatedBooks).mockResolvedValue([
+      { id: 43, title: 'A Related Book With A Longer Title', author: 'Writer', year: '2025', rating_avg: 4.5, rating_count: 2, images: { front: '/cover.jpg' }, ebook_price: 450, hasEbook: true } as never,
+      { id: 44, title: 'Second Related Book', author: 'Writer', year: '2024', rating_avg: null, rating_count: 0, images: { front: '/cover-2.jpg' } } as never,
+    ])
+    const onBookSelect = vi.fn()
+    await render(<RecommendedBooks book={BOOK} onBookSelect={onBookSelect} />)
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+
+    const carousel = el!.querySelector('[aria-label="Related books"]')!
+    expect(carousel.getAttribute('aria-roledescription')).toBe('carousel')
+    expect(carousel.className).toContain('overflow-x-auto')
+    expect(carousel.className).toContain('touch-pan-x')
+    const card = carousel.firstElementChild as HTMLElement
+    expect(card.className).toContain('w-[clamp(14rem,24vw,18rem)]')
+    expect(card.querySelector('[class*="aspect-[2/2.85]"]')).not.toBeNull()
+    expect(card.querySelector('img')?.className).toContain('object-contain')
+    expect(card.querySelector('.line-clamp-2')?.className).toContain('text-[14px]')
+    expect(el!.textContent).toContain('A Related Book With A Longer Title')
+    expect(el!.querySelector('[aria-label^="Rating 4.5"]')).not.toBeNull()
+    expect(el!.querySelector('[aria-label="Scroll recommendations right"]')).not.toBeNull()
+
+    const scrollBy = vi.fn()
+    Object.defineProperty(carousel, 'clientWidth', { configurable: true, value: 600 })
+    Object.defineProperty(carousel, 'scrollBy', { configurable: true, value: scrollBy })
+    const next = el!.querySelector<HTMLButtonElement>('[aria-label="Scroll recommendations right"]')!
+    expect(next.disabled).toBe(false)
+    await act(async () => next.click())
+    expect(scrollBy).toHaveBeenCalledWith({ left: expect.closeTo(492), behavior: 'smooth' })
+
+    const bookButton = Array.from(carousel.querySelectorAll('button')).find(button => button.textContent?.includes('A Related Book With A Longer Title'))!
+    await act(async () => bookButton.click())
+    expect(onBookSelect).toHaveBeenCalledWith(expect.objectContaining({ id: '43', title: 'A Related Book With A Longer Title' }))
   })
 })

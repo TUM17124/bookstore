@@ -13,9 +13,15 @@ const listing = {
 }
 const category = {
   slug: 'electronics', label: 'Electronics', parent: null, fulfillment_type: 'shipping',
-  pricing_options: ['fixed'], viewer_mode: 'gallery', attributes: [], media_slots: [],
+  pricing_options: ['fixed'], viewer_mode: 'gallery', attributes: [], media_slots: [], icon: 'laptop',
+  description: 'Computers and related devices.', show_in_navbar: true,
   inventory_policy: 'finite', variants_enabled: false,
 }
+const serviceCategory = {
+  ...category, slug: 'consulting', label: 'Consulting', fulfillment_type: 'service', icon: 'briefcase',
+  description: 'Professional consulting services.', inventory_policy: 'booking', inventory_required: false,
+}
+const bookCategory = { ...category, slug: 'books', label: 'Books', viewer_mode: 'book_3d', browse_url: '/books/' }
 
 async function fixture(page: Page, theme: string) {
   await page.addInitScript(({ theme, token }) => {
@@ -33,11 +39,11 @@ async function fixture(page: Page, theme: string) {
     let data: unknown = {}
     if (path === '/api/site/config/') data = { currency: { code: 'KES', symbol: 'KES', position: 'before', decimals: 2 }, features: { install_prompt: false, push_prompt: false, marketplace: true, publishing: true }, site: { name: 'PlugYard' } }
     else if (path.includes('/recommendations')) data = { results: [{ listing, reason: 'Selected from your interests' }] }
-    else if (path === '/api/marketplace/categories/') data = [category]
+    else if (path === '/api/marketplace/categories/') data = [category, serviceCategory, bookCategory]
     else if (path.includes('/conditions')) data = [{ key: 'used', label: 'Used' }]
     else if (path.startsWith('/api/marketplace/listings/')) data = { count: 43, results: [listing], next: null, previous: null }
     else if (path === '/api/wishlist/') data = { count: 1, results: [{ id: 3, listing }], next: null, previous: null }
-    else if (path.includes('/categories')) data = { all: [category], navbar: [category], tree: [category] }
+    else if (path.includes('/categories')) data = { all: [category, serviceCategory, bookCategory], navbar: [category, serviceCategory, bookCategory], tree: [category, serviceCategory, bookCategory] }
     else if (path === '/api/me/') data = { id: 1, email: 'test@example.invalid', username: 'test-user' }
     else if (path === '/api/books/') data = { results: [{ id: 8, title: 'Theme test book', author: 'Test author', slug: 'theme-test-book' }] }
     else if (path === '/api/notifications/') data = { unread: 1, results: [{ id: 4, title: 'Your order update', body: 'Review your order timeline.', url: '/purchases/', read: false, created_at: '2026-10-24T08:00:00Z' }] }
@@ -102,7 +108,7 @@ for (const theme of ['light', 'dark']) for (const width of [320, 375, 390, 768, 
     await readable(page.getByText('Sold by Test Seller', { exact: true }))
     await page.screenshot({ path: info.outputPath('wishlist.png'), fullPage: true })
     await page.goto('/publish/?category=electronics')
-    await readable(page.getByRole('heading', { name: 'Create a listing' }))
+    await readable(page.getByRole('heading', { name: 'Sell a product' }))
     await readable(page.getByLabel('Title', { exact: true }))
     await readable(page.getByLabel('Description', { exact: true }))
     await page.screenshot({ path: info.outputPath('publishing.png'), fullPage: true })
@@ -161,8 +167,6 @@ for (const width of [390, 1440]) test(`${width}px theme toggle, search and notif
 for (const theme of ['light', 'dark']) test(`${theme} marketplace homepage, publishing and wishlist interactions`, async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await fixture(page, theme)
-  const bookCategory = { ...category, slug: 'books', label: 'Books', viewer_mode: 'book_3d', browse_url: '/books/' }
-  await page.route('**/api/categories/**', route => route.fulfill({ json: { all: [category, bookCategory], navbar: [category, bookCategory] } }))
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Browse departments' })).toBeVisible()
   expect((await page.getByRole('textbox', { name: 'Search products and services' }).boundingBox())?.width).toBeGreaterThan(200)
@@ -172,7 +176,13 @@ for (const theme of ['light', 'dark']) test(`${theme} marketplace homepage, publ
   await page.screenshot({ path: info.outputPath('homepage.png'), fullPage: true })
   await page.goto('/publish/')
   await expect(page.getByRole('heading', { name: 'What would you like to sell or publish?' })).toBeVisible()
-  await page.locator('article').filter({ has: page.getByRole('heading', { name: 'Electronics' }) }).getByRole('link', { name: 'List product' }).click()
+  await expect(page.getByRole('heading', { name: 'Publish a book' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Sell products' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Offer a service' })).toBeVisible()
+  await expect(page.locator('article').filter({ has: page.getByRole('heading', { name: 'Electronics' }) }).locator('svg.lucide-laptop')).toBeVisible()
+  await expect(page.locator('article').filter({ has: page.getByRole('heading', { name: 'Consulting' }) }).getByText('Professional consulting services.')).toBeVisible()
+  await page.locator('article').filter({ has: page.getByRole('heading', { name: 'Electronics' }) }).getByRole('link', { name: 'List in this department' }).click()
+  await expect(page.getByRole('heading', { name: 'Sell a product' })).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'Category', exact: true })).toHaveValue('electronics')
   let submitted: Record<string, unknown> | null = null
   await page.route('**/api/marketplace/me/listings/**', async route => {
@@ -183,8 +193,18 @@ for (const theme of ['light', 'dark']) test(`${theme} marketplace homepage, publ
   await page.getByLabel('Description', { exact: true }).fill('Synthetic demonstration of the publishing workflow.')
   await page.getByLabel('Quantity available', { exact: true }).fill('2')
   await page.getByLabel('Price', { exact: true }).fill('100')
-  await page.getByRole('button', { name: 'Submit listing', exact: true }).click()
-  await expect(page.locator('main').getByRole('status')).toContainText('submitted for review')
+  await page.getByRole('button', { name: 'Submit product', exact: true }).click()
+  await expect(page.locator('main').getByRole('status')).toContainText('product was submitted for review')
+  await expect(page.getByRole('link', { name: 'Manage this product' })).toHaveAttribute('href', '/seller/listings/')
+  await page.getByRole('link', { name: 'All publishing options' }).click()
+  await page.locator('article').filter({ has: page.getByRole('heading', { name: 'Consulting' }) }).getByRole('link', { name: 'Offer this service' }).click()
+  await expect(page.getByRole('heading', { name: 'Offer a service' })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Category', exact: true })).toHaveValue('consulting')
+  await page.getByLabel('Title', { exact: true }).fill('Synthetic consulting service')
+  await page.getByLabel('Description', { exact: true }).fill('A synthetic service for isolated UI acceptance.')
+  await page.getByLabel('Price', { exact: true }).fill('1200')
+  await page.getByRole('button', { name: 'Submit service', exact: true }).click()
+  await expect(page.locator('main').getByRole('status')).toContainText('service was submitted for review')
   expect(submitted).toMatchObject({ category: 'electronics', inventory: { quantity: 2 }, title: 'Synthetic laptop submission' })
   await page.screenshot({ path: info.outputPath('publishing-submitted.png'), fullPage: true })
   await page.goto('/wishlist/')

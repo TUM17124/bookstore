@@ -22,6 +22,7 @@ export default function AuctionsPage() {
     return auctions(query).then((page) => setRows(page.results)).catch((reason) => setError(reason instanceof Error ? reason.message : "Could not load auctions."))
   }, [status])
   useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => { if (new URLSearchParams(window.location.search).get("create") === "1") setCreating(true) }, [])
   useEffect(() => { const slug = new URLSearchParams(window.location.search).get("auction"); if (slug) loadAuction(slug).then(setSelected).catch(() => undefined) }, [])
   const categories = Array.from(new Set(rows.map((row) => row.listing.category).filter(Boolean))).sort()
   const visibleRows = rows.filter((row) => (!category || row.listing.category === category) && (!search || `${row.title} ${row.listing.title} ${row.listing.category}`.toLowerCase().includes(search.toLowerCase()))).sort((a,b) => sort === "bid" ? Number(b.current_bid || b.starting_bid) - Number(a.current_bid || a.starting_bid) : sort === "title" ? a.title.localeCompare(b.title) : new Date(a.ends_at).getTime() - new Date(b.ends_at).getTime())

@@ -233,9 +233,10 @@ function coverSrcSet(book: BookCfg) {
   return thumbs?.length ? thumbs.map((t) => `${t.url} ${t.w}w`).join(', ') : '';
 }
 
-// The card's cover face: ~84% of a card that is 44% of the row on phones
-// and 200px from 768px up.
+// Related-card widths range from 224px on phones to 288px on desktop; the
+// artwork is inset slightly by the 3D book stage.
 const CARD_COVER_SIZES = '(min-width: 768px) 170px, 36vw';
+const RECOMMENDATION_COVER_SIZES = '(min-width: 1280px) 242px, (min-width: 768px) 215px, 70vw';
 
 function StarsRow({ value, className }: { value: number; className?: string }) {
   const id = useId().replaceAll(":", "");
@@ -246,7 +247,7 @@ function StarsRow({ value, className }: { value: number; className?: string }) {
         <svg
           key={i}
           viewBox="0 0 24 24"
-          className="h-[19px] w-[19px] shrink-0 text-[var(--brand-pink-text)] sm:h-[21px] sm:w-[21px]"
+          className="h-4 w-4 shrink-0 text-[var(--brand-pink-text)]"
         >
           <defs><linearGradient id={`${id}-star-${i}`}><stop offset={`${Math.max(0, Math.min(1, rating - i)) * 100}%`} stopColor="currentColor"/><stop offset={`${Math.max(0, Math.min(1, rating - i)) * 100}%`} stopColor="currentColor" stopOpacity=".22"/></linearGradient></defs>
           <path fill={`url(#${id}-star-${i})`} d="M12 2.6l2.8 6 6.6.6-5 4.4 1.5 6.5L12 16.7 6.1 20.1l1.5-6.5-5-4.4 6.6-.6z" />
@@ -263,11 +264,14 @@ export function GridBookCard({
   eager = false,
   slot,
   onHide,
+  recommendationSize = false,
 }: {
   book: BookCfg;
   /** Where the card is (section, position) for the interaction signals. */
   slot?: CardSlot;
   onOpen: () => void;
+  /** Larger, uncropped presentation used only in the related-books carousel. */
+  recommendationSize?: boolean;
   spinning?: boolean;
   /** Perf Step 2: covers in the first row load at once; the rest when near the screen. */
   eager?: boolean;
@@ -348,8 +352,8 @@ export function GridBookCard({
               {src && !broken ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <picture className="block h-full w-full">
-                  {srcSet && <source type="image/webp" srcSet={srcSet} sizes={CARD_COVER_SIZES} />}
-                  <img src={src} alt={book.title} loading={eager ? 'eager' : 'lazy'} decoding="async" className="block h-full w-full object-cover" onError={() => setBroken(true)} />
+                  {srcSet && <source type="image/webp" srcSet={srcSet} sizes={recommendationSize ? RECOMMENDATION_COVER_SIZES : CARD_COVER_SIZES} />}
+                  <img src={src} alt={book.title} loading={eager ? 'eager' : 'lazy'} decoding="async" className={cn("block h-full w-full", recommendationSize ? "object-contain" : "object-cover")} onError={() => setBroken(true)} />
                 </picture>
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center px-3 text-center">
@@ -387,7 +391,7 @@ export function GridBookCard({
             {book.sponsored.label || 'Sponsored'}
           </span>
         )}
-        <div className="line-clamp-2 text-[13px] font-semibold leading-snug text-current">{book.title}</div>
+        <div className={cn("line-clamp-2 font-semibold leading-snug text-current", recommendationSize ? "min-h-[2.5rem] text-[14px]" : "text-[13px]")}>{book.title}</div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {count > 0 && <StarsRow value={avg} />}
           {count > 0 ? (
@@ -723,18 +727,18 @@ export function RecommendedBooks({ book, onBookSelect }: { book: BookCfg; onBook
             aria-label="Scroll recommendations left"
             disabled={!edges.start}
             onClick={() => skip(-1)}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-current/10 hover:bg-current/20 disabled:cursor-default disabled:opacity-35"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-current/20 bg-current/10 hover:bg-current/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-pink-text)] disabled:cursor-default disabled:opacity-45"
           >
-            ‹
+            <ChevronLeft aria-hidden="true" className="h-5 w-5" />
           </button>
           <button
             type="button"
             aria-label="Scroll recommendations right"
             disabled={!edges.end}
             onClick={() => skip(1)}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-current/10 hover:bg-current/20 disabled:cursor-default disabled:opacity-35"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-current/20 bg-current/10 hover:bg-current/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-pink-text)] disabled:cursor-default disabled:opacity-45"
           >
-            ›
+            <ChevronRight aria-hidden="true" className="h-5 w-5" />
           </button>
         </div> : null}
       </div>
@@ -743,14 +747,17 @@ export function RecommendedBooks({ book, onBookSelect }: { book: BookCfg; onBook
       {!loading && !error && !items.length ? <p role="status" className="px-4 py-6 text-sm text-current/65 sm:px-8">No related books are available yet.</p> : null}
       {items.length > 0 ? <div
         ref={scrollRef}
+        role="region"
         aria-label="Related books"
+        aria-roledescription="carousel"
         tabIndex={items.length > 1 ? 0 : undefined}
-        className="flex gap-4 overflow-x-auto overscroll-x-contain px-12 py-8 [scroll-padding-inline:3rem] sm:px-14 sm:[scroll-padding-inline:3.5rem] [scrollbar-width:thin]"
+        className="flex snap-x snap-mandatory touch-pan-x gap-4 overflow-x-auto overscroll-x-contain px-6 py-5 [scroll-padding-inline:1.5rem] [scrollbar-width:thin] sm:px-8 sm:py-6 sm:[scroll-padding-inline:2rem]"
       >
         {items.map((b, i) => (
-          <div key={b.id} className="w-[132px] shrink-0 @min-[768px]:w-[240px]">
+          <div key={b.id} className="w-[clamp(14rem,24vw,18rem)] shrink-0 snap-start">
             <GridBookCard
               book={b}
+              recommendationSize
               slot={{ placement: 'related', position: i }}
               spinning={openingId === b.id}
               onOpen={() => {

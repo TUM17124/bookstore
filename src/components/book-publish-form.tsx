@@ -13,7 +13,7 @@ import { useCategories } from '@/lib/categories'
 import { DescriptionField } from '@/components/description-field'
 
 
-function PublishPageInner() {
+function PublishPageInner({ initialCategory = "" }: { initialCategory?: string }) {
   const currency = useCurrency()
   // Admin-editable (Django admin → Site: General → Publish page; Site: Limits;
   // Site: Features → publishing).
@@ -28,6 +28,7 @@ function PublishPageInner() {
   // Admin-defined categories (Django admin → Categories), not a fixed list.
   const { all } = useCategories()
   const categories = all.filter(category => category.viewer_mode === 'book_3d')
+  const [selectedCategory, setSelectedCategory] = useState('')
   const [error, setError] = useState('')
   const [ok, setOk] = useState('')
   const [isFree, setIsFree] = useState(false)
@@ -37,6 +38,12 @@ function PublishPageInner() {
   useEffect(() => {
     setLoggedIn(!!getToken())
   }, [])
+
+  useEffect(() => {
+    if (initialCategory && categories.some(category => category.slug === initialCategory)) {
+      setSelectedCategory(initialCategory)
+    }
+  }, [initialCategory, all])
 
   // Upload + create: idempotent server-side, so a dropped connection is
   // retried with ONE key and can never create the book twice.
@@ -152,7 +159,8 @@ function PublishPageInner() {
         <select
           name="category"
           required
-          defaultValue=""
+          value={selectedCategory}
+          onChange={event => setSelectedCategory(event.target.value)}
           className="rounded-lg border border-foreground/15 bg-background px-3 py-2"
         >
           <option value="" disabled>
@@ -246,6 +254,6 @@ function PublishPageInner() {
   )
 }
 
-export default function PublishPage() {
-  return <PublishPageInner />
+export default function PublishPage({ initialCategory = "" }: { initialCategory?: string }) {
+  return <PublishPageInner initialCategory={initialCategory} />
 }
