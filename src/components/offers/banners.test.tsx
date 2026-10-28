@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import React, { act } from "react"
-import { createRoot, type Root } from "react-dom/client"
+import { createRoot, hydrateRoot, type Root } from "react-dom/client"
+import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const api = vi.hoisted(() => ({
@@ -21,6 +22,7 @@ describe("Banners", () => {
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     api.getBanners.mockReset()
     api.peekBanners.mockReset().mockReturnValue(undefined)
+    localStorage.clear()
   })
 
   afterEach(() => {
@@ -77,5 +79,45 @@ describe("Banners", () => {
     const view = await render(<Banners placement="dashboard" emptyFallback={<p>Existing site text</p>} />)
     expect(view.textContent).toContain("Existing site text")
     expect(view.querySelector("[data-banner-id]")).toBeNull()
+  })
+
+  it("hydrates the static markup even with a remembered browser shape", async () => {
+    const { Banners } = await import("./banners")
+    const element = <Banners placement="home" emptyFallback={<p>No campaigns</p>} />
+    const html = renderToString(element)
+    localStorage.setItem("plugyard_banner_shape_v2:home:-", JSON.stringify({ m: "1 / 1", d: "4 / 1" }))
+    api.getBanners.mockResolvedValue({ banners: [] })
+    host = document.createElement("div")
+    host.innerHTML = html
+    document.body.append(host)
+    const onRecoverableError = vi.fn()
+    await act(async () => { root = hydrateRoot(host!, element, { onRecoverableError }) })
+    expect(onRecoverableError).not.toHaveBeenCalled()
+    expect(host.textContent).toContain("No campaigns")
+    expect(api.peekBanners).not.toHaveBeenCalled()
+  })
+
+  it("reselects on category navigation and ignores a late response from the previous category", async () => {
+    const { Banners } = await import("./banners")
+    let finish!: (page: { banners: [] }) => void
+    api.getBanners.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+      .mockResolvedValueOnce({ banners: [] })
+    await render(<Banners category="fiction" emptyFallback={<p>Fiction empty</p>} />)
+    await act(async () => { root!.render(<Banners category="cars" emptyFallback={<p>Cars empty</p>} />) })
+    expect(api.getBanners).toHaveBeenLastCalledWith("category", "cars")
+    await act(async () => { finish({ banners: [] }) })
+    expect(host!.textContent).toBe("Cars empty")
+  })
+
+  it("refetches after account changes and later visits instead of retaining a personalized answer", async () => {
+    const { Banners } = await import("./banners")
+    api.getBanners.mockResolvedValue({ banners: [] })
+    await render(<Banners placement="home" />)
+    expect(api.getBanners).toHaveBeenCalledTimes(1)
+    await act(async () => { window.dispatchEvent(new Event("auth-changed")) })
+    expect(api.getBanners).toHaveBeenCalledTimes(2)
+    await act(async () => { root!.render(null) })
+    await act(async () => { root!.render(<Banners placement="home" />) })
+    expect(api.getBanners).toHaveBeenCalledTimes(3)
   })
 })

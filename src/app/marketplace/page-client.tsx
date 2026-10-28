@@ -8,6 +8,7 @@ import { ListingViewer } from "@/components/marketplace/listing-viewer"
 import { addWishlist, inventoryLabel, listingPrice, makeOffer, marketCategories, marketListing, marketListings, marketRecommendations, marketplaceCheckout, removeWishlist, startConversation, trackListingClick, type MarketCategory, type MarketListing, type MarketRecommendation } from "@/lib/marketplace"
 import { getToken } from "@/lib/api"
 import { useText } from "@/lib/site-config"
+import { Banners } from "@/components/offers/banners"
 
 export default function MarketplacePage() {
   const [categories, setCategories] = useState<MarketCategory[]>([])
@@ -55,6 +56,7 @@ export default function MarketplacePage() {
   useEffect(() => { const initial = new URLSearchParams(window.location.search); setCategory(initial.get("category") || ""); setSearch(initial.get("search") || initial.get("q") || ""); const slug = initial.get("listing"); if (slug) marketListing(slug).then(setSelected).catch(() => undefined) }, [])
 
   return <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
+    {category && <Banners placement="category" category={category} />}
     <header className="mb-5">
       <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Marketplace</h1>
       <p className="mt-1 text-muted-foreground">Browse products and services available on PlugYard.</p>

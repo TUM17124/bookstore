@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { X } from "lucide-react"
-import { getBanners, peekBanners, sendBannerEvent, type BannerData, type BannerPlacement, type BannersPage } from "@/lib/api"
+import { getBanners, sendBannerEvent, type BannerData, type BannerPlacement, type BannersPage } from "@/lib/api"
 import { Countdown, noteServerTime } from "./countdown"
 
 /**
@@ -14,53 +14,14 @@ import { Countdown, noteServerTime } from "./countdown"
  * - Title, subtitle, button and countdown are live text over the image.
  * - No layout jump: the space is reserved from the image's real size, and
  *   remembered per page so the next visit reserves it before the answer
- *   arrives (like the section skeletons). On a first visit a banner shows
- *   only if its answer is already in when the page first draws.
+ *   arrives (like the section skeletons). Browser data is read only after
+ *   hydration so the first client render matches the static export.
  * - Several banners = a carousel (dots, optional autoplay that pauses on
  *   hover/focus/touch and for reduced motion).
  * - Counts one view per banner when half on screen; clicks and closes.
  */
 
 type Shape = { m: string; d: string } | null
-const pages = new Map<string, Promise<BannersPage>>()
-// Answers that have arrived, so a component drawn after the early load
-// (useBannerData) can use one in its very first render.
-const resolved = new Map<string, BannersPage>()
-
-function load(placement: BannerPlacement, category: string) {
-  const key = `${placement}|${category}`
-  let p = pages.get(key)
-  if (!p) {
-    p = getBanners(placement, category).then((page) => {
-      noteServerTime(page.server_now)
-      resolved.set(key, page)
-      return page
-    })
-    pages.set(key, p)
-  }
-  return p
-}
-
-function ready(placement: BannerPlacement, category: string): BannersPage | undefined {
-  const key = `${placement}|${category}`
-  const done = resolved.get(key)
-  if (done) return done
-  const pre = peekBanners(placement, category)
-  if (pre) {
-    noteServerTime(pre.server_now)
-    resolved.set(key, pre)
-    pages.set(key, Promise.resolve(pre))
-  }
-  return pre
-}
-
-/** Start loading a page's banners early (e.g. with the page's other data). */
-export function useBannerData(category = "", placement: BannerPlacement = category ? "category" : "home") {
-  useEffect(() => {
-    void load(placement, category).catch(() => {})
-  }, [placement, category])
-}
-
 function shapeKey(placement: string, category: string) {
   return `plugyard_banner_shape_v2:${placement}:${category || "-"}`
 }
@@ -225,24 +186,42 @@ function BannerSlide({
   )
 }
 
-export function Banners({
+type BannersProps = {
+  category?: string
+  placement?: BannerPlacement
+  className?: string
+  emptyFallback?: React.ReactNode
+}
+
+export function Banners(props: BannersProps) {
+  const [audienceVersion, setAudienceVersion] = useState(0)
+  useEffect(() => {
+    const changed = () => setAudienceVersion((version) => version + 1)
+    const storageChanged = (event: StorageEvent) => {
+      if (event.key === null || ["bookstore_user", "access_token", "access", "token"].includes(event.key)) changed()
+    }
+    window.addEventListener("auth-changed", changed)
+    window.addEventListener("storage", storageChanged)
+    return () => {
+      window.removeEventListener("auth-changed", changed)
+      window.removeEventListener("storage", storageChanged)
+    }
+  }, [])
+  // A new route or audience must never render the previous selection,
+  // including while its new request is still pending.
+  return <BannerSelection key={JSON.stringify([props.placement, props.category, audienceVersion])} {...props} />
+}
+
+function BannerSelection({
   category = "",
   placement,
   className = "mb-6",
   emptyFallback,
-}: {
-  category?: string
-  placement?: BannerPlacement
-  /** Outer spacing (default: space below). */
-  className?: string
-  /** Render only after the request completes with no active banners. */
-  emptyFallback?: React.ReactNode
-}) {
+}: BannersProps) {
   const where: BannerPlacement = placement ?? (category ? "category" : "home")
-  // First render: the preloaded answer if it is already in; otherwise the
-  // space this page needed last time (or nothing on a first visit).
-  const [page, setPage] = useState<BannersPage | null>(() => ready(where, category) ?? null)
-  const [shape] = useState<Shape>(() => (page ? null : readShape(where, category)))
+  const [page, setPage] = useState<BannersPage | null>(null)
+  const [shape, setShape] = useState<Shape>(null)
+  const [refresh, setRefresh] = useState(0)
   const [hidden, setHidden] = useState<Set<number>>(new Set())
   const [ended, setEnded] = useState<Set<number>>(new Set())
   const [active, setActive] = useState(0)
@@ -250,15 +229,19 @@ export function Banners({
   const rowRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (page) return
     let live = true
-    load(where, category)
-      .then((p) => live && setPage(p))
+    setShape(readShape(where, category))
+    getBanners(where, category)
+      .then((p) => {
+        if (!live) return
+        noteServerTime(p.server_now)
+        setPage(p)
+      })
       .catch(() => live && setPage({ banners: [] }))
     return () => {
       live = false
     }
-  }, [where, category, page])
+  }, [where, category, refresh])
 
   // Remember the space for the next visit (or that there was none).
   useEffect(() => {
@@ -318,9 +301,7 @@ export function Banners({
   // server: ask again. One that ends: hide the banner or show its message.
   const countdownEnd = (b: BannerData) => {
     if (b.countdown?.label === "Starts in") {
-      pages.delete(`${where}|${category}`)
-      resolved.delete(`${where}|${category}`)
-      load(where, category).then(setPage).catch(() => {})
+      setRefresh((version) => version + 1)
     } else if (b.hide_when_ended === false && b.ended_message) {
       setEnded((s) => new Set(s).add(b.id))
     } else {
@@ -328,7 +309,7 @@ export function Banners({
     }
   }
 
-  const first = shape ?? shapeOf(banners[0])
+  const first = shapeOf(banners[0])
   return (
     <div
       className={className}

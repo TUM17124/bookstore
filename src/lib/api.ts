@@ -755,7 +755,7 @@ export async function getBanners(placement: BannerPlacement, category = ""): Pro
   }
   const pre = await takePreloaded<BannersPage>(path, token)
   if (pre && Array.isArray(pre.banners)) return pre
-  return getOr(path, { banners: [] }, { auth: false, headers: bannerHeaders(token) })
+  return getOr(path, { banners: [] }, { auth: false, cache: "no-store", headers: bannerHeaders(token) })
 }
 
 /** The preloaded answer if it has already arrived (first render), else undefined. */

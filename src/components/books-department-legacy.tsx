@@ -7,7 +7,7 @@ import { BooksShowcase, type BookCfg, type ShowcaseSection } from "@/components/
 import { getBooks, getBook, asBookList, getHomeSections, type Paginated, type ApiBook, type CategoryInfo, type SectionBook } from "@/lib/api"
 import { useCategories } from "@/lib/categories"
 import { CategoryChips } from "@/components/category-nav/category-chips"
-import { Banners, useBannerData } from "@/components/offers/banners"
+import { Banners } from "@/components/offers/banners"
 import { CategoryBar } from "@/components/category-nav/category-bar"
 import { errorMessage } from "@/lib/auth-fetch"
 import { useText } from "@/lib/site-config"
@@ -179,11 +179,6 @@ function HomeInner() {
   // straight away, so the header doesn't appear late and push things down.
   const catInfo =
     home.info ?? (category ? allCats.find((c) => c.slug.toLowerCase() === category.toLowerCase()) ?? null : null)
-  // Ask for the banners now (in parallel with the books and sections),
-  // not when the shelf first renders.
-  useBannerData(category)
-  // A book opened from the grid then has its banners ready (no late jump).
-  useBannerData("", "book")
   // How many section rows this page had last time: that many same-size
   // skeletons hold their place while the sections load (no jump).
   const shapeKey = `plugyard_sections_count_v1:${category || "home"}`

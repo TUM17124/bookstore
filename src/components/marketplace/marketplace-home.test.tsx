@@ -53,7 +53,6 @@ describe("MarketplaceHome admin banner placement", () => {
 
     const banner = host.querySelector('[data-testid="home-banners"]')
     expect(banner?.getAttribute("data-placement")).toBe("home")
-    expect(banners.preload).toHaveBeenCalledOnce()
     expect(host.querySelector("h1")?.textContent).toBe("Admin site title")
     expect(host.querySelector("input[name=search]")).toBeNull()
     expect(host.textContent).toContain("Admin site description")

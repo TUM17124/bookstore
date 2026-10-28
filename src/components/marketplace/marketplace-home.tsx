@@ -5,7 +5,7 @@ import { useCategories, categoryHref, CategoryIcon } from "@/lib/categories"
 import { usePairs, useText } from "@/lib/site-config"
 import { marketListings, type MarketListing } from "@/lib/marketplace"
 import { ListingCard } from "./listing-card"
-import { Banners, useBannerData } from "@/components/offers/banners"
+import { Banners } from "@/components/offers/banners"
 
 export function MarketplaceHome() {
   const { all } = useCategories()
@@ -13,9 +13,6 @@ export function MarketplaceHome() {
   const title = useText('marketplace.hero_title')
   const description = useText('marketplace.hero_description')
   const categoriesTitle = useText('marketplace.categories_title')
-  // Homepage promotions are published and scheduled in Django admin. Keep
-  // the request warm while the rest of the marketplace page is rendering.
-  useBannerData()
   return <main className="mx-auto max-w-7xl space-y-10 px-4 py-8 sm:px-6">
     <Banners
       placement="home"

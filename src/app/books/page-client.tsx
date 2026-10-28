@@ -8,6 +8,7 @@ import { asBookList, getBook, getHomeSections } from "@/lib/api"
 import { useCategories } from "@/lib/categories"
 import { toCfg } from "@/components/books-department-legacy"
 import { RecommendedBooks } from "@/components/ui/books-showcase"
+import { Banners } from "@/components/offers/banners"
 
 function booksHref(params: URLSearchParams) {
   const query = params.toString()
@@ -129,6 +130,7 @@ function BooksDepartmentContent() {
 
   return (
     <main className="mx-auto max-w-[1600px] px-4 py-8 sm:px-8">
+      {!selectedBookId && <Banners placement="category" category={category || genres.find((item) => !item.parent)?.slug || "books"} />}
       {!selectedBookId ? (
         <>
           <nav aria-label="Breadcrumb" className="mb-5 flex flex-wrap gap-2 text-sm text-muted-foreground">
@@ -182,6 +184,7 @@ function BooksDepartmentContent() {
 
       {selectedBookId && detailBook && !detailLoading && !detailError && (
         <div id="recommended-books" className="mt-8 scroll-mt-20">
+          <Banners placement="book" />
           <RecommendedBooks book={detailBook} onBookSelect={onBookSelect} />
         </div>
       )}
