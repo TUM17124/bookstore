@@ -34,3 +34,7 @@ Before database operations:
 If the active configuration still points to Supabase, report the discrepancy rather than silently changing it. Read `../bookstore_backend/docs/PRODUCTION_INFRASTRUCTURE.md` before database-related work; it records what is verified and what remains unverified.
 
 All future AI agents must read this instruction before modifying database-related code.
+
+## Owner request tracking
+
+Before continuing PlugYard work, read the cross-repository source of truth at `../bookstore_backend/docs/PLUGYARD_MASTER_TRACKER.md`, then the latest report at `../bookstore_backend/docs/PLUGYARD_PROGRESS_REPORT.md` and `../bookstore_backend/docs/AGENT_SESSION_CHECKPOINT.md`. Preserve unfinished tasks and distinguish local tests, GitHub sync, deployment, and live verification.
