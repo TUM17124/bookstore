@@ -604,7 +604,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-4 space-y-6">
+    <main className="mx-auto max-w-6xl p-4 space-y-6">
       {msg && (
         <div
           role={
@@ -1216,7 +1216,7 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 

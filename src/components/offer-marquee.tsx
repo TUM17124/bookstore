@@ -6,12 +6,27 @@ import { Pause, Play } from "lucide-react"
 import { authFetch } from "@/lib/auth-fetch"
 import { useSiteConfig } from "@/lib/site-config"
 
-/** The scrolling strip under the navbar. Admin-editable: Django admin →
- * Site: General → "Scrolling strip under the navbar", one item per line
- * (Part D). The built-in list lives in site-defaults.json. */
+/** Admin-managed announcement strips; eligibility is decided by Django. */
 export function OfferMarquee() {
   const path = usePathname()
   const categoryQuery = useSearchParams().get("category") || ""
+  const [audienceVersion, setAudienceVersion] = useState(0)
+  useEffect(() => {
+    const changed = () => setAudienceVersion(value => value + 1)
+    const storageChanged = (event: StorageEvent) => {
+      if (event.key === null || ["bookstore_user", "access_token", "access", "token"].includes(event.key)) changed()
+    }
+    window.addEventListener("auth-changed", changed)
+    window.addEventListener("storage", storageChanged)
+    return () => {
+      window.removeEventListener("auth-changed", changed)
+      window.removeEventListener("storage", storageChanged)
+    }
+  }, [])
+  return <AnnouncementSelection key={JSON.stringify([path, categoryQuery, audienceVersion])} path={path} categoryQuery={categoryQuery} />
+}
+
+function AnnouncementSelection({ path, categoryQuery }: { path: string; categoryQuery: string }) {
   const placement = announcementPlacement(path)
   const [config] = useSiteConfig()
   const [items, setItems] = useState<Announcement[]>([])
@@ -24,7 +39,7 @@ export function OfferMarquee() {
     if (category) query.set("category", category)
     async function refresh() {
       try {
-        const response = await authFetch(`${process.env.NEXT_PUBLIC_API_URL || '/api'}/site/announcements/?${query}`, { signal: controller.signal })
+        const response = await authFetch(`${process.env.NEXT_PUBLIC_API_URL || '/api'}/site/announcements/?${query}`, { signal: controller.signal, cache: "no-store" })
         if (!response.ok) throw new Error("Announcements unavailable")
         const data = await response.json()
         if (!controller.signal.aborted) setItems(data.items || [])

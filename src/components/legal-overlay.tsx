@@ -57,13 +57,13 @@ function OverlayInner({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <main className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 pb-[max(2rem,env(safe-area-inset-bottom))]">
           <div className="text-[15px] leading-relaxed text-foreground/80 [&_h2]:mt-8 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-foreground [&_h2]:first:mt-0 [&_p]:mt-3 [&_ul]:mt-3 [&_ul]:list-disc [&_ul]:space-y-1.5 [&_ul]:pl-5">
             {children}
           </div>
         </div>
-      </div>
+      </main>
     </div>
   )
 }

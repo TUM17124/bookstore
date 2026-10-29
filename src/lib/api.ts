@@ -755,7 +755,9 @@ export async function getBanners(placement: BannerPlacement, category = ""): Pro
   }
   const pre = await takePreloaded<BannersPage>(path, token)
   if (pre && Array.isArray(pre.banners)) return pre
-  return getOr(path, { banners: [] }, { auth: false, cache: "no-store", headers: bannerHeaders(token) })
+  // authFetch intentionally strips Authorization when auth=false. Preserve
+  // the authenticated audience on ordinary requests as well as preloads.
+  return getOr(path, { banners: [] }, { auth: token !== null, cache: "no-store", headers: bannerHeaders(token) })
 }
 
 /** The preloaded answer if it has already arrived (first render), else undefined. */
