@@ -30,7 +30,7 @@ test.afterEach(async ({ context }) => {
   await context.unrouteAll({ behavior: 'ignoreErrors' })
 })
 
-async function login(page: Page, role: 'seller' | 'buyer' | 'onboarding', next = '/') {
+async function login(page: Page, role: 'seller' | 'buyer' | 'onboarding' | 'legal_reader', next = '/') {
   const creds = credentials()
   await page.goto(`/login/?next=${encodeURIComponent(next)}`)
   await page.getByPlaceholder('Email', { exact: true }).fill(creds[role])
@@ -247,6 +247,27 @@ test('new seller profile onboarding persists public details and notification pre
   await expect(page.locator('[name="message_notifications"]')).not.toBeChecked()
   await expect(page.locator('[name="show_location"]')).not.toBeChecked()
   await expect(page.getByText('Identity Verified', { exact: true })).toHaveCount(0)
+})
+
+test('legal consent links every published policy and records acceptance after review', async ({ page, context }) => {
+  await login(page, 'legal_reader')
+  await expect(page.getByRole('heading', { name: 'Updated legal terms', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Synthetic auction terms', exact: true })).toBeVisible()
+  const opened = page.waitForEvent('popup')
+  await page.getByRole('link', { name: 'Acceptance additional policy', exact: true }).click()
+  const policyPage = await opened
+  await expect(policyPage.getByText('Synthetic additional policy for consent review.', { exact: true })).toBeVisible()
+  await policyPage.close()
+  const accepted = page.waitForResponse(response => response.url().includes('/legal/accept/') && response.request().method() === 'POST')
+  await page.getByRole('button', { name: 'I have read and accept', exact: true }).click()
+  expect((await accepted).ok()).toBeTruthy()
+  await expect(page.getByRole('heading', { name: 'Updated legal terms', exact: true })).toHaveCount(0)
+  const freshPage = await context.newPage()
+  const status = freshPage.waitForResponse(response => response.url().includes('/legal/status/')).then(response => response.json())
+  await freshPage.goto('/settings/')
+  expect((await status).accepted).toBe(true)
+  await expect(freshPage.getByRole('heading', { name: 'Updated legal terms', exact: true })).toHaveCount(0)
+  await freshPage.close()
 })
 
 test('public and authenticated routes fit desktop and mobile in both themes', async ({ page }, testInfo) => {
