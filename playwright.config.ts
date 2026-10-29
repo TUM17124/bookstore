@@ -13,7 +13,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: "python -m http.server 4173 --directory out",
+    command: "python e2e/serve_static.py --port 4173 --directory out",
     url: "http://127.0.0.1:4173",
     // An explicit opt-in supports managed runners that permit browser
     // execution but deny Playwright from spawning its own static server.
