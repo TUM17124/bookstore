@@ -1,4 +1,5 @@
 'use client'
+import { PolicyContextLinks } from '@/components/published-policies'
 
 import { Suspense, useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
@@ -174,7 +175,7 @@ function CheckoutInner() {
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
         Checkout
       </p>
-      <h1 className="mt-2 text-2xl font-bold tracking-tight">{title}</h1>
+      <PolicyContextLinks slugs={["terms", "refund-policy", "buyer-protection", "shipping-delivery", "payments-payouts"]} /><h1 className="mt-2 text-2xl font-bold tracking-tight">{title}</h1>
       <p className="mt-1 text-sm text-muted-foreground capitalize">{productLabel}</p>
 
       {isFree ? (
@@ -330,7 +331,7 @@ function CheckoutInner() {
               <span>
                 I accept the{' '}
                 <Link href="/terms" target="_blank" className="underline hover:text-foreground">
-                  Terms &amp; Conditions
+                  Terms of Service
                 </Link>
                 ,{' '}
                 <Link href="/terms-of-use" target="_blank" className="underline hover:text-foreground">

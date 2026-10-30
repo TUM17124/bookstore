@@ -3,6 +3,7 @@ import { authFetch, errorMessage, type CallOptions } from '@/lib/auth-fetch'
 export async function getLegalPages(slug?: string) {
   const q = slug ? `?slug=${encodeURIComponent(slug)}` : ""
   const r = await fetch(`${API}/legal/${q}`, { cache: "no-store" })
+  if (!r.ok) throw new Error("Published policies could not be loaded")
   return r.json()
 }
 
@@ -54,4 +55,12 @@ export async function acceptLegal(_token: string, call?: CallOptions) {
     ...call,
   })
   return response.json().catch(() => ({}))
+}
+
+export type PublicPolicy = { slug: string; title: string; body: string; policy_version: number | 'legacy'; updated_at?: string; effective_at?: string | null }
+export function policyHref(slug: string) {
+  return ['terms', 'terms-of-use', 'privacy', 'refund-policy'].includes(slug) ? `/${slug}/` : `/legal/?slug=${encodeURIComponent(slug)}`
+}
+export function policyLabel(policy: Pick<PublicPolicy, 'slug' | 'title'>) {
+  return policy.slug === 'terms' ? 'Terms of Service' : policy.title
 }

@@ -7,16 +7,11 @@ import { categoryHref, useCategories } from "@/lib/categories"
 import { BrandLogo } from "@/components/brand-logo"
 import { fill, usePairs, useSupportEmail, useText, type LinkPair } from "@/lib/site-config"
 
-const policyLinks = [
-  { href: "/terms", label: "Terms & Conditions" },
-  { href: "/privacy", label: "Privacy Policy" },
-  { href: "/refund-policy", label: "Returns & Refunds" },
-  { href: "/legal/buyer-protection", label: "Buyer Protection" },
-  { href: "/legal/shipping-delivery", label: "Shipping & Delivery" },
-  { href: "/legal/seller-policy", label: "Seller Policies" },
-  { href: "/support", label: "Contact Support" },
-]
 
+
+
+import { usePublishedPolicies } from "@/components/published-policies"
+import { policyHref, policyLabel } from "@/lib/legal"
 
 type FooterLink = { href: string; label: string }
 
@@ -43,7 +38,9 @@ function FooterLinkItem({ link, className }: { link: FooterLink; className: stri
 
 /** Footer texts and links (Django admin → Site: Footer). */
 function useFooter() {
+  const { pages } = usePublishedPolicies()
   return {
+    policyLinks: [{href:"/legal/",label:"All legal policies"}, ...pages.map(p=>({href:policyHref(p.slug),label:policyLabel(p)})), {href:"/support/",label:"Contact Support"}],
     toolsHeading: useText("footer.tools_heading"),
     toolLinks: toLinks(usePairs("footer.tools_links")),
     accountHeading: useText("footer.account_heading"),
@@ -148,12 +145,12 @@ function PhoneFooter({ year, f }: { year: number; f: Footer }) {
         <ExtraLinks f={f} className="flex flex-wrap gap-x-4" />
         <p className="text-xs leading-relaxed text-muted-foreground">
           © {year} PlugYard ·{" "}
-          {policyLinks.map((l, i) => (
+          {f.policyLinks.map((l, i) => (
             <span key={l.href}>
               <Link href={l.href} className="underline-offset-2 hover:text-foreground hover:underline">
                 {l.label.replace(" & Conditions", "").replace(" Policy", "")}
               </Link>
-              {i < policyLinks.length - 1 ? " · " : ""}
+              {i < f.policyLinks.length - 1 ? " · " : ""}
             </span>
           ))}
         </p>
@@ -276,7 +273,7 @@ function SiteFooterInner() {
               {f.legalHeading}
             </h3>
             <ul className="mt-4 space-y-2.5">
-              {policyLinks.map((l) => (
+              {f.policyLinks.map((l) => (
                 <li key={l.href}>
                   <Link
                     href={l.href}
