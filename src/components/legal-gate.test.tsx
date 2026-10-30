@@ -6,7 +6,7 @@ import { LegalGate } from './legal-gate'
 
 const api = vi.hoisted(() => ({ pages: vi.fn() }))
 vi.mock('@/lib/api', () => ({ getToken: () => 'synthetic-token' }))
-vi.mock('@/lib/legal', () => ({ getLegalStatus: async () => ({ legal_required: true }), needsLegalAccept: () => true, getLegalPages: api.pages, acceptLegal: vi.fn() }))
+vi.mock('@/lib/legal', async original => ({...await original<typeof import('@/lib/legal')>(), getLegalStatus: async () => ({ legal_required: true }), needsLegalAccept: () => true, getLegalPages: api.pages, acceptLegal: vi.fn() }))
 let root: Root
 let host: HTMLDivElement
 beforeEach(() => {

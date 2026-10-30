@@ -19,5 +19,5 @@ export function usePublishedPolicies() {
 
 export function PolicyContextLinks({slugs}:{slugs:string[]}) {
  const {pages}=usePublishedPolicies()
- return <nav aria-label="Applicable legal policies" className="my-4 flex flex-wrap gap-3 text-sm underline"><a href="/legal/" target="_blank" rel="noopener noreferrer">All legal policies</a>{pages.filter(p=>slugs.includes(p.slug)).map(p=><a key={p.slug} href={policyHref(p.slug)} target="_blank" rel="noopener noreferrer">{policyLabel(p)}</a>)}</nav>
+ return <nav aria-label="Applicable legal policies" className="my-4 flex flex-wrap gap-3 text-sm underline">{pages.filter(p=>slugs.includes(p.slug)).map(p=><a key={p.slug} href={policyHref(p.slug)} target="_blank" rel="noopener noreferrer">{policyLabel(p)}</a>)}</nav>
 }

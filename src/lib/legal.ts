@@ -59,7 +59,9 @@ export async function acceptLegal(_token: string, call?: CallOptions) {
 
 export type PublicPolicy = { slug: string; title: string; body: string; policy_version: number | 'legacy'; updated_at?: string; effective_at?: string | null }
 export function policyHref(slug: string) {
-  return ['terms', 'terms-of-use', 'privacy', 'refund-policy'].includes(slug) ? `/${slug}/` : `/legal/?slug=${encodeURIComponent(slug)}`
+  if (['terms', 'terms-of-use', 'privacy', 'refund-policy'].includes(slug)) return `/${slug}/`
+  if (['buyer-protection','shipping-delivery','seller-policy','acceptable-use','payments-payouts','auction-terms'].includes(slug)) return `/legal/${slug}/`
+  return `/legal/?slug=${encodeURIComponent(slug)}`
 }
 export function policyLabel(policy: Pick<PublicPolicy, 'slug' | 'title'>) {
   return policy.slug === 'terms' ? 'Terms of Service' : policy.title

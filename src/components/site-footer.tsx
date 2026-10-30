@@ -40,7 +40,7 @@ function FooterLinkItem({ link, className }: { link: FooterLink; className: stri
 function useFooter() {
   const { pages } = usePublishedPolicies()
   return {
-    policyLinks: [{href:"/legal/",label:"All legal policies"}, ...pages.map(p=>({href:policyHref(p.slug),label:policyLabel(p)})), {href:"/support/",label:"Contact Support"}],
+    policyLinks: [...pages.map(p=>({href:policyHref(p.slug),label:policyLabel(p)})), {href:"/support/",label:"Contact Support"}],
     toolsHeading: useText("footer.tools_heading"),
     toolLinks: toLinks(usePairs("footer.tools_links")),
     accountHeading: useText("footer.account_heading"),

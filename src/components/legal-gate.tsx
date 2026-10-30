@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getToken } from '@/lib/api'
 import {
+  policyHref,
+  policyLabel,
   acceptLegal,
   getLegalStatus,
   getLegalPages,
@@ -82,7 +84,7 @@ export function LegalGate() {
 
         <p className="text-sm text-foreground/70">Please review the current published policies before accepting.</p>
         {policiesReady ? <ul className="space-y-2 text-sm">{policies.map(policy => <li key={policy.slug}>
-          <a className="underline" href={['terms', 'terms-of-use', 'privacy', 'refund-policy'].includes(policy.slug) ? `/${policy.slug}/` : `/legal/?slug=${encodeURIComponent(policy.slug)}`} target="_blank" rel="noopener noreferrer">{policy.title}</a>
+          <a className="underline" href={policyHref(policy.slug)} target="_blank" rel="noopener noreferrer">{policyLabel(policy)}</a>
         </li>)}</ul> : <p role={policyError ? 'alert' : 'status'} className="text-sm">{policyError || 'Loading published policies…'}</p>}
         {policyError && <button type="button" className="text-sm underline" onClick={() => void checkLegal()}>Try loading policies again</button>}
 
